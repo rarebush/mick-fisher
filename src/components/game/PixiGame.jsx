@@ -28,6 +28,21 @@ function PixiGame() {
   // Get store references
   const gameStore = useGameStore;
   const sessionStore = useSessionStore;
+  const gamePhase = useGameStore((state) => state.gamePhase);
+  const lastCompletedCast = useGameStore((state) => state.lastCompletedCast);
+
+  // Control PixiJS ticker based on game phase and notification state
+  useEffect(() => {
+    if (!pixiAppRef.current || pixiAppRef.current.isDestroyed) return;
+
+    // Pause ticker when notification is showing
+    // Resume when no notification (regardless of gamePhase - idle just means between casts)
+    if (lastCompletedCast !== null) {
+      pixiAppRef.current.pauseTicker();
+    } else {
+      pixiAppRef.current.resumeTicker();
+    }
+  }, [gamePhase, lastCompletedCast]);
 
   useEffect(() => {
     if (!canvasRef.current || !containerRef.current) {

@@ -13,6 +13,14 @@ import {
   isQuadrantAccessible,
 } from "./mechanics/castMechanics.js";
 import { getItem } from "./data/itemDatabase.js";
+import {
+  createPlaceholderSprite,
+  createMagnetSprite,
+} from "./graphics/placeholderSprites.js";
+import {
+  loadSpriteSheet,
+  createTiledBackground,
+} from "./graphics/spriteLoader.js";
 import { processTap } from "./mechanics/dragMechanics.js";
 
 export class PixiApp {
@@ -53,9 +61,10 @@ export class PixiApp {
         width: this.width,
         height: this.height,
         backgroundColor: 0x4a7c9e,
-        antialias: true,
+        antialias: false, // Disable antialiasing for pixel art
         resolution: window.devicePixelRatio || 1,
         autoDensity: true,
+        roundPixels: true, // Round coordinates to whole pixels
       });
 
       if (this.isDestroyed) {
@@ -92,20 +101,14 @@ export class PixiApp {
   setupScene() {
     if (!this.app || this.isDestroyed) return;
 
-    // Water background
-    const water = new PIXI.Graphics()
-      .rect(0, 0, this.app.screen.width, this.app.screen.height)
-      .fill(0x3a6c8e);
-    this.app.stage.addChild(water);
+    // Add ticker for continuous sprite updates
+    this.app.ticker.add(this.updateSprites, this);
 
     // Shore
     const shore = new PIXI.Graphics()
       .rect(0, 0, this.app.screen.width, 80)
       .fill(0x8b7355);
     this.app.stage.addChild(shore);
-
-    // Quadrant grid
-    this.drawQuadrantGrid();
 
     // Text
     const text = new PIXI.Text({
@@ -117,6 +120,58 @@ export class PixiApp {
     text.y = this.app.screen.height / 2;
     text.alpha = 0.5;
     this.app.stage.addChild(text);
+
+    // Load and setup water tiles (if available), then draw grid on top
+    this.setupWaterBackground().then(() => {
+      this.drawQuadrantGrid();
+    });
+  }
+
+  /**
+   * Setup animated water background
+   * Falls back to solid color if sprite assets not available
+   */
+  async setupWaterBackground() {
+    if (!this.app || this.isDestroyed) return;
+
+    try {
+      // Try to load water sprite sheet
+      this.waterSpritesheet = await loadSpriteSheet(
+        "/sprites/water.png",
+        "/sprites/water.json",
+      );
+
+      // Get tile size from first frame
+      const firstTexture = this.waterSpritesheet.animations.default[0];
+      const tileWidth = firstTexture.width;
+      const tileHeight = firstTexture.height;
+
+      // Create water container to position below shore
+      const waterContainer = new PIXI.Container();
+      waterContainer.y = 80; // Start below shore area
+      this.app.stage.addChild(waterContainer);
+
+      // Create tiled background (only for the water area below shore)
+      this.waterTiles = createTiledBackground(
+        waterContainer,
+        this.waterSpritesheet,
+        this.app.screen.width,
+        this.app.screen.height - 80, // Height minus shore area
+        tileWidth,
+        tileHeight,
+        0.1, // Animation speed
+        2, // Scale 2x (32px tiles become 64px)
+      );
+
+      console.log("Water tiles loaded successfully");
+    } catch (error) {
+      // Fallback to solid color if sprite not found
+      console.log("Water sprites not found, using fallback color");
+      const water = new PIXI.Graphics()
+        .rect(0, 0, this.app.screen.width, this.app.screen.height)
+        .fill(0x3a6c8e);
+      this.app.stage.addChild(water);
+    }
   }
 
   drawQuadrantGrid() {
@@ -153,6 +208,14 @@ export class PixiApp {
     this.lastTapTime = 0;
     this.isCasting = false;
     this.activePointerId = null; // Track which pointer is active
+
+    // Sprite references
+    this.itemSprite = null;
+    this.magnetSprite = null;
+
+    // Spritesheet references
+    this.waterSpritesheet = null;
+    this.waterTiles = [];
 
     // Pointer down handler
     this.app.stage.on("pointerdown", (event) => {
@@ -783,6 +846,146 @@ export class PixiApp {
     return { x: currentX, y: currentY };
   }
 
+  /**
+   * Update sprite positions during drag phase (called by ticker)
+   */
+  updateSprites() {
+    if (!this.app || this.isDestroyed) return;
+
+    const gamePhase = this.gameStore.getState().gamePhase;
+    const dragState = this.sessionStore.getState().dragState;
+    const currentCast = this.gameStore.getState().currentCast;
+
+    // Show sprites during dragging phase
+    if (gamePhase === "dragging" && dragState.active) {
+      const itemPos = this.getItemPosition();
+      if (!itemPos) return;
+
+      // Create item sprite if needed
+      if (!this.itemSprite && currentCast.itemId) {
+        const item = getItem(currentCast.itemId);
+        if (item) {
+          this.itemSprite = createPlaceholderSprite(item.category);
+          this.itemSprite.scale.set(2); // Make it bigger for visibility
+          this.app.stage.addChild(this.itemSprite);
+        }
+      }
+
+      // Create magnet sprite if needed
+      if (!this.magnetSprite) {
+        this.magnetSprite = createMagnetSprite();
+        this.magnetSprite.scale.set(2);
+        this.app.stage.addChild(this.magnetSprite);
+      }
+
+      // Update positions
+      if (this.itemSprite) {
+        this.itemSprite.x = itemPos.x - this.itemSprite.width / 2;
+        this.itemSprite.y = itemPos.y - this.itemSprite.height / 2;
+      }
+
+      if (this.magnetSprite) {
+        // Magnet positioned above the item
+        this.magnetSprite.x = itemPos.x - this.magnetSprite.width / 2;
+        this.magnetSprite.y = itemPos.y - this.magnetSprite.height - 5;
+      }
+    } else {
+      // Clean up sprites when not dragging
+      this.clearSprites();
+    }
+  }
+
+  /**
+   * Remove item and magnet sprites
+   */
+  clearSprites() {
+    if (this.itemSprite) {
+      if (this.itemSprite.parent) {
+        this.app.stage.removeChild(this.itemSprite);
+      }
+      this.itemSprite.destroy();
+      this.itemSprite = null;
+    }
+
+    if (this.magnetSprite) {
+      if (this.magnetSprite.parent) {
+        this.app.stage.removeChild(this.magnetSprite);
+      }
+      this.magnetSprite.destroy();
+      this.magnetSprite = null;
+    }
+  }
+
+  /**
+   * Update sprite positions during drag phase (called by ticker)
+   */
+  updateSprites() {
+    if (!this.app || this.isDestroyed) return;
+
+    const gamePhase = this.gameStore.getState().gamePhase;
+    const dragState = this.sessionStore.getState().dragState;
+    const currentCast = this.gameStore.getState().currentCast;
+
+    // Show sprites during dragging phase
+    if (gamePhase === "dragging" && dragState.active) {
+      const itemPos = this.getItemPosition();
+      if (!itemPos) return;
+
+      // Create item sprite if needed
+      if (!this.itemSprite && currentCast.itemId) {
+        const item = getItem(currentCast.itemId);
+        if (item) {
+          this.itemSprite = createPlaceholderSprite(item.category);
+          this.itemSprite.scale.set(2); // Make it bigger for visibility
+          this.app.stage.addChild(this.itemSprite);
+        }
+      }
+
+      // Create magnet sprite if needed
+      if (!this.magnetSprite) {
+        this.magnetSprite = createMagnetSprite();
+        this.magnetSprite.scale.set(2);
+        this.app.stage.addChild(this.magnetSprite);
+      }
+
+      // Update positions
+      if (this.itemSprite) {
+        this.itemSprite.x = itemPos.x - this.itemSprite.width / 2;
+        this.itemSprite.y = itemPos.y - this.itemSprite.height / 2;
+      }
+
+      if (this.magnetSprite) {
+        // Magnet positioned above the item
+        this.magnetSprite.x = itemPos.x - this.magnetSprite.width / 2;
+        this.magnetSprite.y = itemPos.y - this.magnetSprite.height - 5;
+      }
+    } else {
+      // Clean up sprites when not dragging
+      this.clearSprites();
+    }
+  }
+
+  /**
+   * Remove item and magnet sprites
+   */
+  clearSprites() {
+    if (this.itemSprite) {
+      if (this.itemSprite.parent) {
+        this.app.stage.removeChild(this.itemSprite);
+      }
+      this.itemSprite.destroy();
+      this.itemSprite = null;
+    }
+
+    if (this.magnetSprite) {
+      if (this.magnetSprite.parent) {
+        this.app.stage.removeChild(this.magnetSprite);
+      }
+      this.magnetSprite.destroy();
+      this.magnetSprite = null;
+    }
+  }
+
   resize(width, height) {
     if (!this.app || this.isDestroyed) return;
 
@@ -793,6 +996,26 @@ export class PixiApp {
       this.setupInteraction();
     } catch (err) {
       console.warn("Error during resize:", err);
+    }
+  }
+
+  /**
+   * Pause the PixiJS ticker (stops rendering loop)
+   */
+  pauseTicker() {
+    if (this.app && !this.isDestroyed) {
+      this.app.ticker.stop();
+      console.log("PixiJS ticker paused");
+    }
+  }
+
+  /**
+   * Resume the PixiJS ticker (starts rendering loop)
+   */
+  resumeTicker() {
+    if (this.app && !this.isDestroyed) {
+      this.app.ticker.start();
+      console.log("PixiJS ticker resumed");
     }
   }
 
