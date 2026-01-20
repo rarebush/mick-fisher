@@ -5,30 +5,51 @@ Player pulls item horizontally through water toward shore/bank. Tension controls
 
 ---
 
-## Core Interaction: Hold-to-Pull
+## Core Interaction: Hold-to-Pull + Tap-to-Jerk
 
-**Input Method:**
+**Two Input Methods:**
 
-- Press and hold button/screen to generate pull force
-- Release to stop pulling and allow tension to decay
-- Resuming hold continues building tension from current level
+**1. Hold (Continuous Pull)**
+
+- Press and hold button/screen to generate sustained pull force
+- Tension builds gradually with diminishing returns
+- Release to allow tension decay
+- Resuming hold continues from current tension level
+
+**2. Tap (Quick Jerk)**
+
+- Quick press-release (down/up within 200ms)
+- Immediately adds 10% tension (fixed chunk)
+- Can tap repeatedly in quick succession
+- Used to rapidly build tension when needed
+
+**Combined Strategy:**
+
+- Hold to build baseline tension steadily
+- Tap when you need quick tension increase
+- Release to let tension decay when approaching limit
+- Pulse-hold (hold → release → hold) for control
+- Rapid tapping for emergency speed bursts
 
 **Tension Mechanics:**
 
 - **Tension Value:** 0-100% representing pulling force
-- **Build Rate:** Gradual increase while holding (base: 25%/second, modified by conditions)
-- **Decay Rate:** Gradual decrease when not holding (10%/second)
+- **Build Rate (Hold):** Gradual increase while holding with diminishing returns (base: 15%/second at 0% tension, modified by weight and current tension)
+- **Build Rate (Tap):** Instant +10% per tap (no diminishing returns)
+- **Decay Rate:** Gradual decrease when not holding (10%/second, constant)
 - **Visual Meter:** Shows current tension with color-coded zones
 
 **Tension Consequences:**
 
-| Tension Level      | Drag Speed           | Slip Accumulation Rate | Special Risk               |
-| ------------------ | -------------------- | ---------------------- | -------------------------- |
-| 0% (None)          | 0x (stopped)         | 0x (no slip)           | Safe but wastes time       |
-| 1-50% (Low-Medium) | 0.5x-1.0x base speed | 0.5x-1.0x slip rate    | Safe zone, controlled      |
-| 51-80% (High)      | 1.0x-1.5x base speed | 1.0x-2.5x slip rate    | Risky but efficient        |
-| 81-99% (Danger)    | 1.5x-2.0x base speed | 2.5x-5.0x slip rate    | Very dangerous, fast slip  |
-| 100% (Max)         | N/A                  | N/A                    | **INSTANT MAGNET RIP-OFF** |
+| Tension Level    | Drag Speed   | Slip Rate | Risk Level          |
+| ---------------- | ------------ | --------- | ------------------- |
+| 0%               | 0x (stopped) | 0x        | None                |
+| 1-30% (Low)      | 0.3x-0.6x    | 0.3x      | Very Safe           |
+| 31-50% (Medium)  | 0.6x-1.0x    | 0.7x      | Safe                |
+| 51-70% (High)    | 1.0x-1.4x    | 1.5x      | Moderate            |
+| 71-85% (Danger)  | 1.4x-1.8x    | 3.0x      | High                |
+| 86-99% (Extreme) | 1.8x-2.0x    | 6.0x      | Extreme             |
+| 100% (Max)       | N/A          | N/A       | **INSTANT RIP-OFF** |
 
 **Critical Rule: 100% Tension = Instant Failure**
 
@@ -40,28 +61,251 @@ Player pulls item horizontally through water toward shore/bank. Tension controls
 
 **Strategic Tension Management:**
 
-- **Low tension (0-50%):** Minimal slip build, safe but slow
-- **Medium tension (51-70%):** Optimal for most items, balanced risk/reward
-- **High tension (71-85%):** Speed gamble, requires good grip conditions
-- **Danger tension (86-99%):** Desperate/expert only, massive slip risk + near instant rip-off
+- **Low tension (0-30%):** Minimal slip build, very safe but very slow
+- **Medium tension (31-50%):** Safe and steady, good for unknown items
+- **High tension (51-70%):** Optimal speed, moderate slip risk
+- **Danger tension (71-85%):** Fast but risky, high slip accumulation
+- **Extreme tension (86-99%):** Expert only, extreme slip risk + near instant rip-off
+- **Hold strategy:** Gradual build with diminishing returns, good for controlled play
+- **Tap strategy:** Rapid bursts to desired tension, bypasses slow build on light items
 - **Pulse strategy:** Hold → release → hold pattern maintains average tension without hitting 100%
+- **Tap-hold combo:** Tap to target tension, hold to maintain it
 
 ---
 
 ## Tension Build Rate Modifiers
 
-**Base build rate: 25%/second** (reaches 100% in 4 seconds from zero)
+**Base build rate: 15%/second at 0% tension** (modified by weight and diminishing returns)
 
-**Modified by conditions:**
+**Weight Modifiers (INVERTED - heavier = faster build):**
+
+| Item Weight        | Weight Modifier | Tension Feel         | 0→50% Time (Hold) |
+| ------------------ | --------------- | -------------------- | ----------------- |
+| Light (0-10kg)     | 0.7x            | Easy, gentle pull    | ~5.5 seconds      |
+| Medium (10-30kg)   | 1.0x            | Standard resistance  | ~4.0 seconds      |
+| Heavy (30-60kg)    | 1.4x            | Strong resistance    | ~2.8 seconds      |
+| Very Heavy (60kg+) | 2.0x            | Immediate heavy feel | ~2.0 seconds      |
+
+**Diminishing Returns Curve (Realistic Tension Physics):**
+
+| Current Tension | Diminishing Returns Multiplier | Effective Build Rate (Medium Item) |
+| --------------- | ------------------------------ | ---------------------------------- |
+| 0-30%           | 1.0x (full rate)               | 15%/second                         |
+| 31-60%          | 0.8x (slowing down)            | 12%/second                         |
+| 61-85%          | 0.5x (much harder)             | 7.5%/second                        |
+| 86-99%          | 0.2x (extremely difficult)     | 3%/second                          |
+
+**Combined Formula:**
+
+```
+Tension Build Rate (Hold) = Base Rate (15%/s) × Weight Modifier × Diminishing Returns
+```
+
+**Event Modifiers (Applied on top of base formula):**
 
 | Condition             | Build Rate Modifier | Effect                                                    |
 | --------------------- | ------------------- | --------------------------------------------------------- |
-| Normal drag           | 1.0x                | Standard rate (25%/second)                                |
-| Heavy item            | 0.6x-0.8x           | Slower build (resistance)                                 |
-| Light item            | 1.2x                | Faster build                                              |
-| **Snagged (stopped)** | **8.0x-10.0x**      | **Extremely rapid (200-250%/second, hits 100% in ~0.5s)** |
+| Normal drag           | 1.0x                | Standard calculated rate                                  |
+| **Snagged (stopped)** | **8.0x-10.0x**      | **Extremely rapid (120-150%/s base, hits 100% in ~0.8s)** |
 | Current surge         | 2.0x-3.0x           | Temporary spike (3-5 seconds)                             |
 | Debris drag           | 1.3x                | Slightly faster build                                     |
+
+**Tap Mechanic (Bypasses All Modifiers):**
+
+- **Fixed +10% tension per tap**
+- No weight modifier (always 10%)
+- No diminishing returns (works at any tension level)
+- Detection: Press-release within 200ms
+- Can tap 3-4 times per second (human limit)
+- Strategic use: Overcome slow build on light items, precise tension control
+
+---
+
+## Tap-to-Jerk Mechanic (Detailed)
+
+**Input Detection:**
+
+```
+Tap = Press down → Release within 200ms
+
+If hold duration > 200ms: Treated as hold (continuous pull)
+If hold duration ≤ 200ms: Treated as tap (jerk)
+```
+
+**Tap Effect:**
+
+- **Instant tension increase: +10%** (fixed amount)
+- No diminishing returns (always +10%, even at high tension)
+- No weight modifiers (same effect on all items)
+- Can tap repeatedly with no cooldown
+- Visual: Tension bar "jumps" up in discrete chunk
+- Audio: Sharp "tug" sound per tap
+- Haptic: Quick pulse on mobile
+
+**Rapid Tapping:**
+
+```
+Player can tap 3-4 times per second maximum (human limit)
+
+Example sequence:
+Tension at 30%
+Tap → 40% (+10%)
+Tap → 50% (+10%)
+Tap → 60% (+10%)
+Tap → 70% (+10%)
+(4 taps in 1 second = +40% tension gain)
+```
+
+**Tension Decay During Taps:**
+
+- Decay rate: 10%/second (constant)
+- Time between taps: ~250-333ms
+- Decay during single tap cycle: 0.025-0.033% (negligible)
+- Player can tap-tap-tap with minimal tension loss between inputs
+
+**Use Cases:**
+
+**1. Emergency Speed Burst:**
+
+- Item far away, session time running low
+- Tap repeatedly to build tension fast (30% → 80% in ~1.5 seconds)
+- Accept higher slip risk for time efficiency
+- Example: 5 taps in quick succession = +50% tension instantly
+
+**2. Precise Tension Control:**
+
+- Hold to 55%, release
+- Tap twice → 75% exactly
+- Hold to maintain 75% (no overshoot to 100%)
+- Avoids danger zone while maintaining good speed
+
+**3. Light Item Optimization:**
+
+- Light item (5kg wrench): Hold builds slowly (10.5%/s at 0% tension)
+- Hold for 6 seconds → only 45% tension
+- Tap 3 times → 75% tension instantly
+- Now can drag light item at high speed (normally impossible with hold alone)
+
+**4. Snag Recovery:**
+
+- Snagged, tension at 70%, building toward 100%
+- Release hold immediately (tension starts decaying)
+- Clear snag with tug mini-game (tension frozen during game)
+- Snag clears, tension reset to 40%
+- Tap 3-5 times → back to 70-90% instantly
+- Resume drag at high speed without slow rebuild
+
+**5. Pulse-Tap Hybrid:**
+
+- Hold to 60% (safe zone)
+- Release, tap 2 times → 80% (high speed zone)
+- Release when approaching snag-prone area
+- Decay to 60%, resume holding
+- Maintains dynamic control without hitting 100%
+
+**Strategic Insight:**
+
+- **Heavy items:** Hold alone can easily reach 80-90% (fast build), use sparingly
+- **Light items:** Hold alone struggles to reach 70% (slow build), tap to compensate
+- **Best practice:** Combine both - hold for baseline, tap for bursts
+- **Expert play:** Pre-tap before drag starts (build to 60% instantly), then maintain with hold
+
+---
+
+## Combined Tension Management Examples
+
+**Example 1: Light Item, Clean Water, Conservative Play**
+
+```
+Item: 5kg wrench, clean metal surface
+Distance: 10m
+Session time remaining: 4 minutes (plenty of time)
+
+Strategy: Hold-only, low tension
+- Hold for 6 seconds → Tension reaches 45% (slow light-item build)
+- Maintain 40-50% tension throughout drag
+- Drag speed: 0.5x base (slow but safe)
+- Duration: ~30 seconds
+- Slip accumulated: 1.0 (clean) × 0.7 (low tension) × 30s = 21 slip
+- Result: SAFE - Low slip, successful drag
+```
+
+**Example 2: Light Item, Clean Water, Expert Play with Taps**
+
+```
+Item: 5kg wrench, clean metal surface
+Distance: 10m
+Session time remaining: 45 seconds (time pressure!)
+
+Strategy: Tap-burst, high tension
+- Tap 7 times rapidly → Tension at 70% instantly
+- Hold to maintain 65-70% tension
+- Drag speed: 1.3x base (fast)
+- Duration: ~12 seconds
+- Slip accumulated: 1.0 (clean) × 1.5 (high tension) × 12s = 18 slip
+- Result: SAFE - Fast completion, moderate slip, time saved
+```
+
+**Example 3: Heavy Item, Unknown Surface, Risky Play**
+
+```
+Item: 65kg safe, sludge-coated (unknown to player)
+Distance: 15m
+Session time: Not a concern
+
+Strategy: Hold with poor management
+- Heavy item: Hold for 3 seconds → Tension at 80% already! (fast heavy build)
+- Current surge triggers → Tension jumps to 92%!
+- Player doesn't release → tension hits 100%
+- Result: INSTANT RIP-OFF - Magnet detaches, item lost
+```
+
+**Example 4: Heavy Item, Cautious Recovery**
+
+```
+Item: 65kg safe, sludge-coated
+Distance: 15m
+Same scenario but better response:
+
+Strategy: Release during surge, tap recovery
+- Hold for 2.5 seconds → Tension at 70% (recognizes fast build = heavy item)
+- Current surge triggers → Tension jumping toward 90%
+- Player releases immediately → tension decays
+- Waits for surge to end (tension at 60%)
+- Taps 2 times → 80% tension
+- Maintains 75-80% with pulse-holding (release briefly when approaching 85%)
+- Duration: 22 seconds (slower but controlled)
+- Slip accumulated: 4.0 (sludge) × 3.0 (high tension) × 22s = 264 slip
+- Result: Completes drag, but WILL FAIL during lift (slip already extreme)
+- Learning moment: Heavy + sludge + high tension = disaster
+```
+
+**Example 5: Medium Item, Snag Event, Tap Recovery**
+
+```
+Item: 18kg bicycle, light rust
+Distance: 12m, currently at 8m remaining
+Tension: 60%, dragging steadily
+
+Event: SNAG DETECTED
+- Tension spikes: 60% → 75% → 88% (in 0.8 seconds, 8x build rate)
+- Player releases hold → tension decays at 10%/s
+- Tug mini-game triggers → player hits green zone
+- Snag clears, tension reset to 40%
+- Player taps 4 times → 80% tension instantly (no slow rebuild)
+- Hold to maintain 75-80%
+- Completes remaining 8m at high speed
+- Total slip: Moderate (mixed tension levels throughout)
+- Result: SUCCESS - Quick recovery, maintained good speed
+```
+
+**Key Insights from Examples:**
+
+1. Light items benefit massively from taps (overcome slow hold build)
+2. Heavy items dangerous with hold (build too fast, easy to hit 100%)
+3. Tap recovery after snags maintains momentum (no slow rebuild penalty)
+4. Hidden surface condition (sludge) can doom run even with "safe" tension management
+5. Expert players recognize weight signature (fast tension build = go easy on hold)
 
 **Snag Creates Panic:**
 When item snags on debris:
@@ -331,19 +575,23 @@ Higher tension when you hit snag = harder mini-game to clear it. Punishes reckle
 
 ## Weight Feedback During Drag
 
-**Tension Build Resistance:**
-Heavy items make tension build slower:
+**Tension Build Resistance (INVERTED - Heavy Feels Heavy):**
+Heavy items make tension build FASTER (realistic resistance feel):
 
-- Light items: Tension reaches 50% quickly (~2 seconds)
-- Heavy items: Tension reaches 50% slowly (~3-4 seconds)
-- Player feels "resistance" through slower bar fill
+- **Light items (5kg):** Tension reaches 50% slowly (~5-6 seconds) - Gentle, easy pull
+- **Medium items (20kg):** Tension reaches 50% moderately (~4 seconds) - Standard feel
+- **Heavy items (45kg):** Tension reaches 50% quickly (~2.8 seconds) - Strong resistance
+- **Very heavy items (80kg):** Tension reaches 50% very quickly (~2 seconds) - Immediate heavy feel
+- Player feels "weight" through faster tension bar fill
+- **Key insight:** If tension builds fast when you start pulling, it's heavy - be careful!
 
 **Drag Speed Variation:**
 Heavy items move slower even at same tension level:
 
 - Ripple progress visibly slower for heavy items
 - Distance counter updates less frequently
-- Creates suspense: "Is this heavy or just far away?"
+- Combined with fast tension build = clear "heavy item" signature
+- Creates suspense: "Tension building fast + moving slow = heavy and dangerous!"
 
 **Misleading Signals (Mystery Creation):**
 
@@ -360,10 +608,11 @@ Heavy items move slower even at same tension level:
 
 **Player Inference:**
 
-- Slow drag speed + slow tension build = "This is heavy"
-- Fast drag speed + fast tension build = "This is light"
+- **Slow drag speed + FAST tension build = Heavy item** → Use hold sparingly, rely on taps for control
+- **Fast drag speed + slow tension build = Light item** → Can use high tension safely, or use taps to speed up
 - Stop + tension spike = "Snagged or very heavy?"
-- Builds anticipation: "Is this the engine I'm hunting or another bike?"
+- Builds anticipation and teaches weight recognition
+- Expert players learn to "feel" weight within first 2 seconds of pulling
 
 ---
 
@@ -623,6 +872,55 @@ Item distance reaches 0m (arrived at shore/bank)
 - Avoided or cleared snags successfully
 - Now facing new challenge: lift without knowing slip state
 - Building anticipation for surface break reveal
+
+---
+
+## Player Skill Expression
+
+**Beginner Mistakes:**
+
+- Only uses hold input (ignores tap mechanic entirely) → slow on light items, can't recover quickly from snags
+- Holds constantly without releasing → tension drifts to 100% on heavy items (fast build catches them off guard)
+- Panics during snags → doesn't release hold, hits 100% rip-off
+- Doesn't recognize weight signatures → treats all items the same
+- Maintains high tension throughout drag → massive hidden slip accumulation
+- Success rate: ~40-50% of items reach shore
+
+**Intermediate Play:**
+
+- Uses tap mechanic for light items (recognizes slow hold build, uses taps for speed boost)
+- Pulses hold on heavy items (recognizes fast tension build = heavy, releases periodically)
+- Releases during snags (avoids 100% rip-off)
+- Maintains 50-70% average tension (balances speed vs slip risk)
+- Starts recognizing weight within 3-5 seconds of dragging
+- Adjusts strategy based on session time remaining (more aggressive when time pressure)
+- Success rate: ~70-80% of items reach shore
+
+**Expert Play:**
+
+- **Tap-hold mastery:** Tap to target tension instantly (e.g., 3 taps → 60%), hold to maintain without overshoot
+- **Weight signature reading:** Recognizes heavy items within 2 seconds (fast tension build), immediately switches to conservative strategy
+- **Pre-emptive tension management:** Lowers tension before snag-prone zones (industrial edges, debris-heavy quadrants)
+- **Optimal tension zones:** Maximizes tension on clean/light items (knows low slip risk), conservative on heavy/unknown items
+- **Rapid tap recovery:** After snag clears, taps 4-5 times to instantly rebuild tension (maintains momentum)
+- **Time optimization:** Uses rapid tapping for time-critical situations (session ending, maximizes catches per session)
+- **Pulse-tap hybrid:** Dynamically switches between hold (baseline) and tap (bursts) based on real-time conditions
+- **Current surge response:** Releases immediately when surge detected at high tension, taps back up after surge ends
+- **Diminishing returns awareness:** Knows that 85%+ tension is extremely hard to build with hold, uses taps to reach extreme zone when needed
+- Success rate: ~90-95% of items reach shore (failures usually due to hidden sludge + heavy weight combination)
+
+**Skill Progression Curve:**
+
+1. **Phase 1 (0-10 sessions):** Learning hold mechanic, frequent 100% rip-offs, slow drag speeds
+2. **Phase 2 (10-30 sessions):** Discovers tap mechanic, understands tension zones, avoids most rip-offs
+3. **Phase 3 (30-60 sessions):** Recognizes weight signatures, uses tap-hold combos, manages snags effectively
+4. **Phase 4 (60+ sessions):** Masters tension control, optimizes for item type + time pressure, minimal failures
+
+**What Separates Skill Levels:**
+
+- **Beginner → Intermediate:** Learning to release before 100% (basic survival)
+- **Intermediate → Expert:** Recognizing weight signatures early (proactive strategy adjustment)
+- **Expert mastery:** Seamless tap-hold integration + real-time risk assessment
 
 ---
 
