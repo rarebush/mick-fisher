@@ -35,92 +35,15 @@
 | Q4-Q6 | Left/Center/Right | 8-15m | Mid | 25-35s |
 | Q7-Q9 | Left/Center/Right | 15-25m | Far | 38-50s |
 
-**Depletion & Spawn System (Phase 2+ Feature - Not in MVP):**
+**MVP Spawn System:**
 
-_Future enhancement to encourage location rotation and create strategic time-based decisions:_
+- **Infinite spawns** - all locations have unlimited items
+- **No depletion** - quadrants remain equally viable throughout session
+- **Pure RNG** - each cast has independent chance based on quadrant's loot table
+- **Location variety** - different spawn tables per location (e.g., Industrial has more metal, River has more historical items)
+- **Depth-based rarity** - far quadrants (Q7-Q9) have higher rare item rates than near quadrants (Q1-Q3)
 
-**Spawn Timer Mechanics:**
-
-Each location tracks spawn state across time using chunk-based regeneration:
-
-```javascript
-location: {
-  initialSpawn: {
-    // Full loot table on first visit or after long absence
-    common: 15,
-    uncommon: 8,
-    rare: 3,
-    epic: 1
-  },
-  spawnTimers: [
-    {
-      chunksRequired: 2,  // 12 in-game hours (2 chunks × 6 hours)
-      rollChance: 0.6,    // 60% chance to spawn
-      itemTable: 'common_items',
-      quantity: { min: 3, max: 6 }
-    },
-    {
-      chunksRequired: 4,  // 24 in-game hours (1 full day)
-      rollChance: 0.3,    // 30% chance to spawn
-      itemTable: 'rare_items',
-      quantity: { min: 1, max: 3 }
-    },
-    {
-      chunksRequired: 8,  // 48 in-game hours (2 days)
-      rollChance: 0.1,    // 10% chance to spawn
-      itemTable: 'legendary_items',
-      quantity: { min: 1, max: 1 }
-    }
-  ]
-}
-```
-
-**How It Works:**
-
-1. **Initial Visit:** Location spawns full initial table (e.g., 15 common, 8 uncommon, 3 rare, 1 epic)
-2. **Fishing Session:** Player retrieves items, depleting location's available spawns
-3. **Chunk Tracking:** Each chunk spent NOT fishing that location = +1 to spawn timer
-4. **Spawn Rolls:** When timer thresholds reached, game rolls chance to add new items
-5. **Stale Locations:** Even fully depleted locations have small chance (5-10%) of random spawn
-
-**Example Player Experience:**
-
-```
-Day 1, Morning Chunk: Fish Picturesque River (depletes 8 common items)
-Day 1, Afternoon: Fish Industrial Canal (different location)
-Day 1, Evening: Shop operations
-Day 1, Night: Sleep
-  → Picturesque River timer: +3 chunks (18 hours)
-
-Day 2, Morning: Fish Picturesque River again
-  → 2-chunk timer triggered: 60% roll → SUCCESS, 4 common items respawned
-  → 4-chunk timer NOT triggered yet (only 3 chunks passed)
-  → Player fishes newly spawned items + any remaining from Day 1
-
-Day 3, Morning: Return to Picturesque River
-  → 2-chunk timer: 60% roll → SUCCESS, 5 common items
-  → 4-chunk timer: 30% roll → SUCCESS!, 2 rare items spawned
-  → Player finds rare item they hadn't seen before
-```
-
-**Strategic Depth:**
-
-- **Location Rotation:** Fishing same location repeatedly yields diminishing returns
-- **Planning Ahead:** "I'll fish Industrial today, River tomorrow when rares have chance to spawn"
-- **FOMO Element:** Rare spawns might trigger while you're shopping/sleeping
-- **Late-game Unlock:** "Detector" upgrade shows spawn timer status per location
-  - Early game: Blind (must guess when to return)
-  - Mid game: "Cold/Warm/Hot" indicator per location
-  - Late game: Shows estimated chunks until next spawn window
-
-**Visual Indicator (Future):**
-
-- Green (fresh): Initial spawn or recently respawned
-- Yellow (depleted): Some items remain, timers active
-- Red (exhausted): Fully fished, waiting on spawn rolls
-- Pulsing icon: Spawn timer threshold reached, likely new items
-
-**MVP Approach:** No depletion - all locations have infinite spawns, all quadrants remain equally viable
+_Note: Depletion & spawn timer system is planned for Phase 2+ - see Phase 2+ Features appendix_
 
 **Equipment Range Limitation:\*\***
 
@@ -204,9 +127,100 @@ Day 3, Morning: Return to Picturesque River
 - Doesn't spoil mystery (only affects 1 of 9 quadrants)
 - Helps new players get first successful cast quickly
 
-**Phase 2+ Feature: Detector Upgrades**
+---
 
-Unlockable equipment that reveals item presence:
+## Phase 2+ Features (Post-MVP)
+
+_This appendix contains detailed future feature designs. None of these systems are implemented in MVP._
+
+### Depletion & Spawn Timer System
+
+_Future enhancement to encourage location rotation and create strategic time-based decisions._
+
+**Spawn Timer Mechanics:**
+
+Each location tracks spawn state across time using chunk-based regeneration:
+
+```javascript
+location: {
+  initialSpawn: {
+    // Full loot table on first visit or after long absence
+    common: 15,
+    uncommon: 8,
+    rare: 3,
+    epic: 1
+  },
+  spawnTimers: [
+    {
+      chunksRequired: 2,  // 12 in-game hours (2 chunks × 6 hours)
+      rollChance: 0.6,    // 60% chance to spawn
+      itemTable: 'common_items',
+      quantity: { min: 3, max: 6 }
+    },
+    {
+      chunksRequired: 4,  // 24 in-game hours (1 full day)
+      rollChance: 0.3,    // 30% chance to spawn
+      itemTable: 'rare_items',
+      quantity: { min: 1, max: 3 }
+    },
+    {
+      chunksRequired: 8,  // 48 in-game hours (2 days)
+      rollChance: 0.1,    // 10% chance to spawn
+      itemTable: 'legendary_items',
+      quantity: { min: 1, max: 1 }
+    }
+  ]
+}
+```
+
+**How It Works:**
+
+1. **Initial Visit:** Location spawns full initial table (e.g., 15 common, 8 uncommon, 3 rare, 1 epic)
+2. **Fishing Session:** Player retrieves items, depleting location's available spawns
+3. **Chunk Tracking:** Each chunk spent NOT fishing that location = +1 to spawn timer
+4. **Spawn Rolls:** When timer thresholds reached, game rolls chance to add new items
+5. **Stale Locations:** Even fully depleted locations have small chance (5-10%) of random spawn
+
+**Example Player Experience:**
+
+```
+Day 1, Morning Chunk: Fish Picturesque River (depletes 8 common items)
+Day 1, Afternoon: Fish Industrial Canal (different location)
+Day 1, Evening: Shop operations
+Day 1, Night: Sleep
+  → Picturesque River timer: +3 chunks (18 hours)
+
+Day 2, Morning: Fish Picturesque River again
+  → 2-chunk timer triggered: 60% roll → SUCCESS, 4 common items respawned
+  → 4-chunk timer NOT triggered yet (only 3 chunks passed)
+  → Player fishes newly spawned items + any remaining from Day 1
+
+Day 3, Morning: Return to Picturesque River
+  → 2-chunk timer: 60% roll → SUCCESS, 5 common items
+  → 4-chunk timer: 30% roll → SUCCESS!, 2 rare items spawned
+  → Player finds rare item they hadn't seen before
+```
+
+**Strategic Depth:**
+
+- **Location Rotation:** Fishing same location repeatedly yields diminishing returns
+- **Planning Ahead:** "I'll fish Industrial today, River tomorrow when rares have chance to spawn"
+- **FOMO Element:** Rare spawns might trigger while you're shopping/sleeping
+- **Late-game Unlock:** "Detector" upgrade shows spawn timer status per location
+  - Early game: Blind (must guess when to return)
+  - Mid game: "Cold/Warm/Hot" indicator per location
+  - Late game: Shows estimated chunks until next spawn window
+
+**Visual Indicator:**
+
+- Green (fresh): Initial spawn or recently respawned
+- Yellow (depleted): Some items remain, timers active
+- Red (exhausted): Fully fished, waiting on spawn rolls
+- Pulsing icon: Spawn timer threshold reached, likely new items
+
+### Detector Upgrades
+
+_Unlockable equipment that reveals item presence in quadrants._
 
 **Basic Detector (Milestone: 50 items discovered)**
 
@@ -237,6 +251,8 @@ Unlockable equipment that reveals item presence:
 - MVP = Pure mystery and discovery
 - Mid-game = Player choice between speed and certainty
 - End-game = Convenience without eliminating all surprise
+
+---
 
 ## Open Questions
 
