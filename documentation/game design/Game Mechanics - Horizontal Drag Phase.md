@@ -120,6 +120,35 @@ Key: Higher multiplier = Faster tension = Heavier feel = More dangerous
 | Current surge         | 2.0x-3.0x           | Temporary spike (3-5 seconds)                                              |
 | Debris drag           | 1.3x                | Slightly faster build                                                      |
 
+**Snag Tension Build Examples (Crisis Math):**
+
+When snagged, tension builds at 8-10x normal rate. Time to reach 100% depends on current tension when snag occurs:
+
+| Starting Tension | Tension Points to 100% | Snag Build Rate | Time to Failure | Player Reaction Window |
+| ---------------- | ---------------------- | --------------- | --------------- | ---------------------- |
+| 30%              | 70 points              | 120%/s (8x)     | 0.58 seconds    | Must release NOW       |
+| 40%              | 60 points              | 120%/s (8x)     | 0.50 seconds    | Immediate crisis       |
+| 50%              | 50 points              | 135%/s (9x)     | 0.37 seconds    | Reflex-only window     |
+| 60%              | 40 points              | 150%/s (10x)    | 0.27 seconds    | Almost instant fail    |
+| 70%              | 30 points              | 150%/s (10x)    | 0.20 seconds    | Instant fail (no time) |
+| 85%              | 15 points              | 150%/s (10x)    | 0.10 seconds    | Guaranteed failure     |
+
+**Key Insight:** Higher tension when snagged = less time to react. Maintaining low-medium tension during drag provides safety buffer for snag events.
+
+**Calculation Formula:**
+
+```
+Time to 100% = (100 - Current Tension) ÷ Snag Build Rate
+Snag Build Rate = Base Rate (15%/s) × Snag Modifier (8-10x) = 120-150%/s
+```
+
+**Strategic Implications:**
+
+- Snag at 30-40% tension: Survivable if you release immediately (~0.5s reaction time)
+- Snag at 50-60% tension: Reflex test (~0.3s - very difficult)
+- Snag at 70%+ tension: Almost guaranteed failure (< 0.2s - faster than human reaction)
+- **Best practice:** Keep tension below 50% during drag to survive snag events
+
 **Tap Mechanic (Bypasses All Modifiers):**
 
 - **Fixed +10% tension per tap**

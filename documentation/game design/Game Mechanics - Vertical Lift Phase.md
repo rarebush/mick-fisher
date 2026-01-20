@@ -122,6 +122,7 @@ As item nears surface (depth <2m):
 **Timing: 3-second initial decision + optional 1-second confirmation**
 
 **Total Time:**
+
 - **Keep or timeout:** 3 seconds (auto-keeps if no input)
 - **Drop choice:** Up to 4 seconds total (3s decision + 1s confirmation)
 
