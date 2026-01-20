@@ -264,30 +264,48 @@ As item nears surface (depth <2m):
 
 **Same tapping interaction** as blind phase, but now:
 
-- **Slip meter visible** - player sees slip increasing in real time
+- **Slip position widget visible** - player sees magnet position and slip direction in real-time
+  - **Critical: UI updates at 30 FPS (33ms intervals)** during this phase for responsive feedback
+  - Position value updates every 33ms (vs 100ms for general UI)
+  - Essential for player skill expression and real-time decision making
 - **Visual warnings:**
-  - 80% of slip limit: meter flashes yellow, magnet wobbles on item
-  - 95% of slip limit: meter flashes red, urgent audio cue
-  - 100% slip limit reached: magnet pops off (soft failure)
+  - Magnet enters yellow zone (15-39 units from edge): widget pulses, magnet wobbles on item
+  - Magnet enters red zone (0-14 units from edge): widget flashes red, urgent audio cue
+  - Magnet slides off edge: magnet detaches (soft failure)
+
+**Technical Implementation Note:**
+
+```javascript
+// During revealed lift: increase UI sync rate from 10 FPS → 30 FPS
+const UI_UPDATE_INTERVAL_CRITICAL = 33; // 30 FPS for slip position display
+
+if (isRevealedLift) {
+  // Update React state every 33ms for responsive slip position feedback
+  setDisplayedSlipPosition(Math.round(magnetPosition));
+  setSlipDirection(slipDirection);
+}
+
+// PixiJS visual widget still updates at 60 FPS (smooth animation)
+```
 
 **Slip Rate Influenced By:**
 
 ```
-Current Slip Rate = Base Rate × Surface Condition × Tap Frequency × Tension
+Slip Position Change = slipDirection × (slipRate × deltaTime)
 
-Base Rate = 1.0 (standard)
-Surface Condition = 1.0 (clean), 2.0 (rusty), 4.0 (sludge)
-Tap Frequency Multiplier = 0.5 (slow), 1.0 (steady), 2.5 (fast), 5.0 (frantic)
-Tension = derived from tap frequency (slow = low, fast = high)
+slipRate = baseSlipRate × surfaceCondition × tensionModifier
+baseSlipRate = 1.0 units/second
+surfaceCondition = 1.0 (clean), 1.5 (rust), 2.5 (heavy rust), 3.0 (algae), 4.0 (sludge)
+tensionModifier = 0.5 (low), 1.0 (medium), 2.0 (high), 4.0 (danger)
 ```
 
 **Example Calculations:**
 
 **Safe scenario:**
 
-- Base rate: 1.0
+- Base rate: 1.0 units/s
 - Clean metal surface: ×1.0
-- Steady tapping (1.5 taps/s): ×1.0
+- Steady tapping (medium tension): ×1.0
 - Current slip: 30, Limit: 90
 - **Slip rate: 1.0/s, time to limit: 60s** (plenty of margin)
 

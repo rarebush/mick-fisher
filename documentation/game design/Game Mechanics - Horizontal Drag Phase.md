@@ -470,17 +470,34 @@ This creates genuine uncertainty and risk/reward calculation.
 
 ## Snag Event System
 
-**Trigger Conditions:**
+**Trigger Conditions (Distance-Based):**
 
-- Random probability per meter traveled (base 15% per 5m)
-- Higher probability in certain locations (industrial = more debris)
-- Quadrant position (center = fewer snags than edges)
+- **Probability check every 5 meters traveled:** 15% base chance
+- NOT time-based - triggered by distance accumulation, not polling interval
+- Higher probability in certain locations (industrial = 20% per 5m, pristine river = 10% per 5m)
+- Quadrant position affects debris density (center = fewer snags than edges)
 - **Tension level determines snag severity** (high tension when snagged = harder to clear)
+
+**Implementation Note:**
+
+```javascript
+// Distance accumulator triggers probability checks
+let distanceSinceLastCheck = 0;
+distanceSinceLastCheck += deltaDistance;
+
+if (distanceSinceLastCheck >= 5) {
+  distanceSinceLastCheck -= 5;
+  if (Math.random() < 0.15) {
+    // 15% per 5m
+    triggerSnag();
+  }
+}
+```
 
 **Snag Detection:**
 
 1. Forward progress stops (distance frozen)
-2. **Tension spikes rapidly** (8-10x build rate)
+2. **Tension spikes rapidly** (8-10x build rate: 120-150%/s)
 3. Audio cue: scrape/clunk sound
 4. Visual: tension bar flashes red
 5. Haptic: vibration on mobile
