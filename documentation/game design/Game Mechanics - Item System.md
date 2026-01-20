@@ -152,9 +152,13 @@ Containers are special items that hold other items inside. Their contents are **
 }
 ```
 
-**Opening Method Effects on Contents:**
+**Opening Method Effects on Contents (Phase 2+ Feature - NOT IN MVP):**
 
-Opening method creates meaningful strategic choices - fast and risky vs slow and safe:
+_Future enhancement for on-site container opening with tactical choice and risk/reward:_
+
+**MVP Approach:** All containers open via session-end gacha (see "Container Opening Mechanics" section below). This detailed opening method system is planned for Phase 2+.
+
+**Phase 2+ Vision:** Opening method creates meaningful strategic choices - fast and risky vs slow and safe:
 
 **1. Crowbar (On-Site) - Fast but Risky**
 
@@ -234,6 +238,8 @@ Option 3: Pay professional $150
   - Worth it if contents > $150
   - But you don't know contents value!
 ```
+
+**Note:** This tactical decision system is Phase 2+. For MVP, all containers use the session-end gacha system (see below).
 
 **Drop Mechanics Integration (Phase 2+):**
 
@@ -383,9 +389,13 @@ lootTables.safe_medium: {
 }
 ```
 
-**Container Opening Mechanics:**
+**Container Opening Mechanics (MVP Implementation):**
 
 **Session-End Gacha Reveal:**
+
+**This is the actual MVP system.** Containers open automatically at session end with gacha-style reveals. The detailed opening method system (crowbar/lockpick/professional) described above is Phase 2+.
+
+Containers function as a gacha-style reward system. When fishing session ends:
 
 Containers function as a gacha-style reward system. When fishing session ends:
 
