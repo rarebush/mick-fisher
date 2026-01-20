@@ -1,24 +1,35 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
+import useSessionStore from "../../game/state/sessionStore";
 import "./timer.css";
 
 function Timer() {
-  const [timeLeft, setTimeLeft] = useState(600); // 10 minutes in seconds
+  const { sessionTimeRemaining, sessionActive, tickTimer, startSession } =
+    useSessionStore();
+
+  // Auto-start session on mount (for MVP)
+  useEffect(() => {
+    if (!sessionActive) {
+      startSession();
+    }
+  }, []);
 
   useEffect(() => {
+    if (!sessionActive) return;
+
     const interval = setInterval(() => {
-      setTimeLeft((prev) => Math.max(0, prev - 1));
+      tickTimer();
     }, 1000);
 
     return () => clearInterval(interval);
-  }, []);
+  }, [sessionActive, tickTimer]);
 
-  const minutes = Math.floor(timeLeft / 60);
-  const seconds = timeLeft % 60;
+  const minutes = Math.floor(sessionTimeRemaining / 60);
+  const seconds = sessionTimeRemaining % 60;
 
   // Color coding
   let displayClass = "time-display";
-  if (timeLeft <= 60) displayClass += " danger";
-  else if (timeLeft <= 180) displayClass += " warning";
+  if (sessionTimeRemaining <= 60) displayClass += " danger";
+  else if (sessionTimeRemaining <= 180) displayClass += " warning";
 
   return (
     <div className="timer">
@@ -26,6 +37,9 @@ function Timer() {
       <div className={displayClass}>
         {minutes}:{seconds.toString().padStart(2, "0")}
       </div>
+      {!sessionActive && sessionTimeRemaining === 0 && (
+        <div className="session-ended">Session Complete!</div>
+      )}
     </div>
   );
 }

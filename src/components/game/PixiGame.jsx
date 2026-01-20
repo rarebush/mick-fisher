@@ -1,5 +1,7 @@
 import { useRef, useEffect, useState } from "react";
 import { PixiApp } from "../../game/PixiApp";
+import useGameStore from "../../game/state/gameStore";
+import useSessionStore from "../../game/state/sessionStore";
 import "./pixi-game.css";
 
 function PixiGame() {
@@ -8,14 +10,24 @@ function PixiGame() {
   const containerRef = useRef(null);
   const [ready, setReady] = useState(false);
 
+  // Get store references
+  const gameStore = useGameStore;
+  const sessionStore = useSessionStore;
+
   useEffect(() => {
     if (!canvasRef.current || !containerRef.current) return;
 
     let cancelled = false;
     const { clientWidth, clientHeight } = containerRef.current;
 
-    // Create PixiApp instance
-    const pixiApp = new PixiApp(canvasRef.current, clientWidth, clientHeight);
+    // Create PixiApp instance with store references
+    const pixiApp = new PixiApp(
+      canvasRef.current,
+      clientWidth,
+      clientHeight,
+      gameStore,
+      sessionStore,
+    );
     pixiAppRef.current = pixiApp;
 
     // Initialize asynchronously
@@ -23,8 +35,17 @@ function PixiGame() {
       .initialize()
       .then(() => {
         // Check if component unmounted during initialization
-        if (!cancelled && !pixiApp.isDestroyed) {
+        if (cancelled) {
+          console.log("Component unmounted during PixiJS init, cleaning up");
+          if (pixiApp && !pixiApp.isDestroyed) {
+            pixiApp.destroy();
+          }
+          return;
+        }
+
+        if (!pixiApp.isDestroyed && pixiApp.app) {
           setReady(true);
+          console.log("PixiGame ready");
         }
       })
       .catch((err) => {
@@ -52,6 +73,8 @@ function PixiGame() {
         pixiAppRef.current.destroy();
         pixiAppRef.current = null;
       }
+
+      setReady(false);
     };
   }, []); // Empty deps - only run once
 

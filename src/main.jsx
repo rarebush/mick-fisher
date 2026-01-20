@@ -3,8 +3,6 @@ import ReactDOM from "react-dom/client";
 import App from "./App.jsx";
 import "./styles/main.css";
 
-ReactDOM.createRoot(document.getElementById("root")).render(
-  <React.StrictMode>
-    <App />
-  </React.StrictMode>,
-);
+// Note: StrictMode disabled for now to prevent PixiJS double-mount issues
+// Re-enable once game loop is stable
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);

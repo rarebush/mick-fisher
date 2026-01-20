@@ -1,6 +1,8 @@
 import Sidebar from "../ui/Sidebar";
 import PixiGame from "../game/PixiGame";
 import TensionBar from "../game/TensionBar";
+import SlipMeter from "../game/SlipMeter";
+import GameNotification from "../ui/GameNotification";
 import "../../styles/game-layout.css";
 
 function GameLayout({ onQuit }) {
@@ -9,6 +11,8 @@ function GameLayout({ onQuit }) {
       <Sidebar />
       <main className="game-main">
         <PixiGame />
+        <GameNotification />
+        <SlipMeter />
         <TensionBar />
       </main>
       <button className="quit-btn" onClick={onQuit}>
