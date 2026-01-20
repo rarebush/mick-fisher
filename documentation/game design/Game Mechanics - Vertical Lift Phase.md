@@ -119,7 +119,11 @@ As item nears surface (depth <2m):
 
 **The Drop Decision Window**
 
-**Timing: 3-second auto-commit countdown**
+**Timing: 3-second initial decision + optional 1-second confirmation**
+
+**Total Time:**
+- **Keep or timeout:** 3 seconds (auto-keeps if no input)
+- **Drop choice:** Up to 4 seconds total (3s decision + 1s confirmation)
 
 **UI Display:**
 
@@ -152,17 +156,21 @@ As item nears surface (depth <2m):
 
 **Outcome B: Player Chooses "Drop Item"**
 
-- Must actively click/tap red button within 3 seconds
-- Confirmation: "Drop [Item Name]?" sub-prompt appears
-  - [Yes, Drop] [No, Keep] buttons
-  - Additional 1 second for confirmation (prevents accidents)
-- If confirmed:
+- Must actively click/tap red button within initial 3-second window
+- **Confirmation sub-prompt appears (pauses 3-second countdown):**
+  - "Drop [Item Name]?" prompt with [Yes, Drop] [No, Keep] buttons
+  - Additional 1 second timer for confirmation (prevents accidents)
+  - Total time elapsed: 3 seconds (initial) + up to 1 second (confirmation) = 4 seconds max
+- **If confirmed ([Yes, Drop] clicked):**
   - Item released, falls back to water
   - Splash animation, disappointed sound
   - Magnet returns to hand (clean state)
   - Can immediately recast
   - Session timer resumes
   - Saves 10-15 seconds vs completing lift
+- **If cancelled ([No, Keep] clicked or 1s expires):**
+  - Returns to Keep & Lift outcome
+  - Revealed lift phase begins
 
 **Benefits of Timed Window:**
 
