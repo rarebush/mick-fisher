@@ -8,29 +8,32 @@ Player owns a quirky pawn shop and must balance time between fishing (acquiring 
 **Core Concept: In-Game Time vs Real-World Time**
 
 **1 Chunk = 6 In-Game Hours**
+
 - A full in-game day (24 hours) is divided into 4 chunks
 - Each chunk represents a 6-hour period in the game world
 - Different activity types consume real-world time differently:
 
 **Real-World Time Per Activity Type:**
 
-| Activity Type              | Real-World Duration            | In-Game Time Consumed |
-| -------------------------- | ------------------------------ | --------------------- |
-| **Fishing**                | ~10 minutes gameplay           | 1 chunk (6 hours)     |
-| **Shop Operation**         | ~10 minutes gameplay (optional) | 1 chunk (6 hours)     |
-| **Sleep**                  | Instant (fade to black)        | 1 chunk (6 hours)     |
-| **Refurb/Crafting**        | Instant (queue processing)     | 1 chunk (6 hours)     |
-| **Container Opening**      | Instant (gacha reveal)         | 0 chunks (free)       |
-| **Equipment Upgrades**     | Instant (immediate)            | 0 chunks (free)       |
-| **3rd Party Services**     | Instant (shop NPC)             | 0 chunks (free)       |
+| Activity Type          | Real-World Duration             | In-Game Time Consumed |
+| ---------------------- | ------------------------------- | --------------------- |
+| **Fishing**            | ~10 minutes gameplay            | 1 chunk (6 hours)     |
+| **Shop Operation**     | ~10 minutes gameplay (optional) | 1 chunk (6 hours)     |
+| **Sleep**              | Instant (fade to black)         | 1 chunk (6 hours)     |
+| **Refurb/Crafting**    | Instant (queue processing)      | 1 chunk (6 hours)     |
+| **Container Opening**  | Instant (gacha reveal)          | 0 chunks (free)       |
+| **Equipment Upgrades** | Instant (immediate)             | 0 chunks (free)       |
+| **3rd Party Services** | Instant (shop NPC)              | 0 chunks (free)       |
 
 **Why This Matters:**
+
 - **Fishing chunks** are the primary gameplay - player actively plays for ~10 real-world minutes
 - **Shop chunks** could optionally be real-time simulation (customers browsing) or instant skip
 - **Sleep/Refurb/Other chunks** are instant - no waiting, just resource allocation
 - **Services** (container opening, repairs) happen instantly without consuming chunk time
 
 **Example Session:**
+
 - Morning chunk: Fish for 10 real minutes → catch 8-12 items
 - Afternoon chunk: Refurb (instant) → process 4 items from morning
 - Evening chunk: Shop (instant or 10 min simulation) → sell refurbed items
@@ -63,6 +66,7 @@ Player owns a quirky pawn shop and must balance time between fishing (acquiring 
 **Actual Real-World Duration:** Can extend beyond 10 minutes if retrieval in progress (overtime mechanic)
 
 **How It Works:**
+
 - Player selects "Fishing" activity for a chunk slot
 - Chooses location (Picturesque River, City River, etc.)
 - **Active gameplay begins:** 10-minute countdown timer starts
@@ -76,6 +80,7 @@ Player owns a quirky pawn shop and must balance time between fishing (acquiring 
 **Key Point:** The 10-minute timer represents the "fishing window" within that 6-hour in-game period. You're not fishing for 6 real-world hours - you're fishing for 10 real-world minutes, which narratively represents utilizing that 6-hour morning/afternoon/evening/night time slot.
 
 **Can fish multiple chunks consecutively:**
+
 - Morning chunk: Fish City River (10 min real-time, 06:00→12:00 in-game)
 - Afternoon chunk: Fish Industrial Canal (10 min real-time, 12:00→18:00 in-game)
 - Result: 20 minutes total gameplay, 12 in-game hours consumed
@@ -83,11 +88,13 @@ Player owns a quirky pawn shop and must balance time between fishing (acquiring 
 **Shop Operation (1 chunk = 6 in-game hours):**
 
 **Real-World Duration Options:**
+
 - **MVP (Instant):** Skip to results screen (no real-time gameplay)
 - **Optional (10-minute simulation):** Watch customers browse/buy in real-time
-**In-Game Time Consumed:** 6 hours (opens shop for morning/afternoon/evening period)
+  **In-Game Time Consumed:** 6 hours (opens shop for morning/afternoon/evening period)
 
 **How It Works:**
+
 - Player selects "Shop" activity for a chunk slot
 - Pre-shop setup (instant):
   - Choose which items to put "For Sale"
@@ -106,6 +113,7 @@ Player owns a quirky pawn shop and must balance time between fishing (acquiring 
   - More engaging but slower
 
 **Revenue Factors:**
+
 - Customer flow: morning/afternoon = high traffic, evening = moderate
 - Item value and condition (refurbed items sell faster/higher)
 - Shop reputation (unlocked through progression)
@@ -117,6 +125,7 @@ Player owns a quirky pawn shop and must balance time between fishing (acquiring 
 **In-Game Time Consumed:** 6 hours (refurb work happens during chunk)
 
 **How It Works:**
+
 - Player selects "Refurb" activity for a chunk slot
 - Opens refurb queue interface
 - Adds items to queue (each item has in-game time cost: 15-60 minutes)
@@ -139,6 +148,7 @@ Player owns a quirky pawn shop and must balance time between fishing (acquiring 
 **In-Game Time Consumed:** 6 hours (rests during evening or night period)
 
 **How It Works:**
+
 - Player selects "Sleep" activity for a chunk slot (usually evening or night)
 - Click "Sleep" → fade to black animation
 - In-game clock advances 6 hours instantly
@@ -146,6 +156,7 @@ Player owns a quirky pawn shop and must balance time between fishing (acquiring 
 - **Total real-world time:** ~2 seconds (just the transition)
 
 **Effects:**
+
 - Restores energy (cosmetic, no mechanical fatigue system for MVP)
 - Required once per day (cannot skip)
 - If neglected: warning appears during day planning
@@ -156,24 +167,28 @@ Player owns a quirky pawn shop and must balance time between fishing (acquiring 
 These activities happen **between chunks** and don't consume chunk time:
 
 **Container Opening (Session-End Gacha):**
+
 - Happens automatically when fishing session ends
 - Gacha reveal animation (~30s real-time for 3-5 containers)
 - No chunk time consumed
 - Can also use shop service for locked containers (instant, pay fee)
 
 **Equipment Upgrades:**
+
 - Visit shop NPC during any non-chunk time
 - Purchase/install instantly
 - No waiting, no chunk consumed
 - Immediate effect (next fishing session uses new gear)
 
 **Crafting/Materials:**
+
 - Crafting UI accessible between chunks
 - Click "Craft Magnet Upgrade" → instant result
 - Materials consumed, item created immediately
 - Could optionally require refurb chunk if complexity desired (TBD)
 
 **3rd Party Services:**
+
 - Line repair after snap: Pay $100-200, instant fix
 - Professional container opening: Pay $150, instant reveal
 - Equipment rental: Pay fee, immediate availability

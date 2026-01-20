@@ -96,9 +96,10 @@ Tension Modifier = f(tension level)
 **Phase 2b: Revealed Lift**
 
 - Slip meter becomes VISIBLE at surface break
-- Shows current accumulated slip vs inferred limit
+- Shows current accumulated slip value only (e.g., "45" - NOT "45/90")
 - Player can now react to slip in real-time
 - Influenced by same factors as blind lift, but player has agency to adjust
+- Player must infer limit from magnet position indicator and surface condition
 
 **Cumulative Nature:**
 
