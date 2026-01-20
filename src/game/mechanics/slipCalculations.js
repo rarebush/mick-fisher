@@ -8,10 +8,15 @@
 
 /**
  * Determine initial magnet landing position on item surface
+ * Ensures magnet contact area stays within bounds (0-100)
+ * @param {number} contactWidth - Width of magnet contact area (default 10)
  * @returns {number} - Position on surface (0-100 units)
  */
-export function rollMagnetLandingPosition() {
-  return Math.random() * 100;
+export function rollMagnetLandingPosition(contactWidth = 10) {
+  // Ensure magnet edges don't exceed boundaries
+  const minPosition = contactWidth / 2;
+  const maxPosition = 100 - contactWidth / 2;
+  return minPosition + Math.random() * (maxPosition - minPosition);
 }
 
 /**
@@ -57,9 +62,9 @@ export function calculateSlipRate(item, tension) {
  * @returns {number} - Slip rate multiplier
  */
 export function getTensionSlipMultiplier(tension) {
-  if (tension >= 81) return 4.0; // Danger zone
-  if (tension >= 61) return 2.0; // High
-  if (tension >= 31) return 1.0; // Medium
+  if (tension >= 81) return 5.0; // Danger zone (increased from 4.0)
+  if (tension >= 61) return 2.5; // High (increased from 2.0)
+  if (tension >= 31) return 1.3; // Medium (increased from 1.0)
   if (tension >= 1) return 0.5; // Low
   return 0; // No tension = no slip
 }
@@ -84,14 +89,16 @@ export function updateMagnetPosition(
 
 /**
  * Check if magnet has slipped off the item
+ * Only fails when magnet is COMPLETELY off (no contact remaining)
  * @param {number} position - Magnet center position (0-100)
  * @param {number} contactWidth - Magnet contact width (typically 10)
- * @returns {boolean} - True if magnet has fallen off
+ * @returns {boolean} - True if magnet has fallen off completely
  */
 export function hasMagnetSlippedOff(position, contactWidth = 10) {
   const magnetLeftEdge = position - contactWidth / 2;
   const magnetRightEdge = position + contactWidth / 2;
-  return magnetLeftEdge <= 0 || magnetRightEdge >= 100;
+  // Only fail if completely off - no contact remaining
+  return magnetRightEdge <= 0 || magnetLeftEdge >= 100;
 }
 
 /**
@@ -115,7 +122,7 @@ export function calculateDragSpeed(tension, itemWeight = 10) {
   const weightModifier = Math.max(0.5, Math.min(1.5, 10 / itemWeight));
 
   // Base drag speed (meters per second at optimal conditions)
-  const BASE_DRAG_SPEED = 2.0;
+  const BASE_DRAG_SPEED = 0.6; // Reduced from 2.0 for balanced gameplay
 
   return speedMultiplier * weightModifier * BASE_DRAG_SPEED;
 }

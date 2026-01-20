@@ -130,7 +130,7 @@ export function executeCast(quadrant, locationId) {
       distance: getRandomDistance(quadrant),
       depth: getRandomDepth(quadrant, locationId),
       magnetPosition: null,
-      magnetContactWidth: 10,
+      magnetContactWidth: 6, // Reduced for more slip risk
     };
   }
 
@@ -138,8 +138,8 @@ export function executeCast(quadrant, locationId) {
   const depth = getRandomDepth(quadrant, locationId);
 
   // Roll for magnet landing position (0-100 on item surface)
-  const magnetPosition = rollMagnetLandingPosition();
-  const magnetContactWidth = 10; // Basic magnet width
+  const magnetContactWidth = 6; // Basic magnet width (reduced for more slip risk)
+  const magnetPosition = rollMagnetLandingPosition(magnetContactWidth);
 
   // Calculate placement quality based on position
   const distanceToEdge = getDistanceToNearestEdge(magnetPosition);

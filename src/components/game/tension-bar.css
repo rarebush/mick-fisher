@@ -45,8 +45,8 @@
 
 .tension-bar {
   width: 32px;
-  height: 100%;
-  flex: 1;
+  height: 240px;
+  flex-shrink: 0;
   background: rgba(255, 255, 255, 0.1);
   border-radius: 16px;
   overflow: hidden;
@@ -65,32 +65,17 @@
   border-radius: 14px;
 }
 
-.pull-button {
+.drag-instruction {
   width: 100%;
-  padding: 12px 8px;
-  font-size: 12px;
+  padding: 8px 4px;
+  font-size: 10px;
   font-weight: bold;
-  border: none;
+  text-align: center;
+  color: rgba(255, 255, 255, 0.8);
+  background: rgba(102, 126, 234, 0.3);
   border-radius: 8px;
-  cursor: pointer;
-  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-  color: white;
-  transition: all 0.2s ease;
-  user-select: none;
-  -webkit-user-select: none;
-  touch-action: manipulation;
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
-}
-
-.pull-button:hover {
-  transform: scale(1.05);
-  box-shadow: 0 4px 8px rgba(102, 126, 234, 0.4);
-}
-
-.pull-button:active {
-  transform: scale(0.98);
-  background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+  border: 1px solid rgba(102, 126, 234, 0.5);
+  flex-shrink: 0;
 }
 
 .tension-hint {
@@ -98,10 +83,8 @@
   text-align: center;
   color: #aaa;
   font-style: italic;
-  writing-mode: vertical-rl;
-  text-orientation: mixed;
-  max-height: 120px;
-  overflow: hidden;
+  min-height: 16px;
+  flex-shrink: 0;
 }
 
 /* Mobile responsiveness */
@@ -115,9 +98,9 @@
     font-size: 12px;
   }
 
-  .pull-button {
+  .drag-instruction {
     padding: 12px;
-    font-size: 14px;
+    font-size: 12px;
   }
 
   .tension-hint {

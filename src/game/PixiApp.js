@@ -12,6 +12,8 @@ import {
   executeCast,
   isQuadrantAccessible,
 } from "./mechanics/castMechanics.js";
+import { getItem } from "./data/itemDatabase.js";
+import { processTap } from "./mechanics/dragMechanics.js";
 
 export class PixiApp {
   constructor(canvas, width, height, gameStore, sessionStore) {
@@ -19,6 +21,7 @@ export class PixiApp {
     this.width = width;
     this.height = height;
     this.isDestroyed = false;
+    this.isInitializing = false;
     this.gameStore = gameStore;
     this.sessionStore = sessionStore;
   }
@@ -29,36 +32,60 @@ export class PixiApp {
       return;
     }
 
-    // PixiJS v8 async initialization
-    this.app = new PIXI.Application();
-
-    await this.app.init({
-      canvas: this.canvas,
-      width: this.width,
-      height: this.height,
-      backgroundColor: 0x4a7c9e,
-      antialias: true,
-      resolution: window.devicePixelRatio || 1,
-      autoDensity: true,
-    });
-
-    if (this.isDestroyed) {
-      console.log("PixiApp was destroyed during init");
-      this.app.destroy(true);
-      this.app = null;
+    if (this.isInitializing) {
+      console.warn("PixiApp initialization already in progress");
       return;
     }
 
-    // Enable PixiJS DevTools
-    if (import.meta.env.DEV) {
-      globalThis.__PIXI_APP__ = this.app;
+    if (this.app) {
+      console.warn("PixiApp already initialized");
+      return;
     }
 
-    // Final check before setting up scene
-    if (!this.isDestroyed && this.app) {
-      this.setupScene();
-      this.setupInteraction();
-      console.log("PixiJS initialized successfully");
+    this.isInitializing = true;
+
+    try {
+      // PixiJS v8 async initialization
+      this.app = new PIXI.Application();
+
+      await this.app.init({
+        canvas: this.canvas,
+        width: this.width,
+        height: this.height,
+        backgroundColor: 0x4a7c9e,
+        antialias: true,
+        resolution: window.devicePixelRatio || 1,
+        autoDensity: true,
+      });
+
+      if (this.isDestroyed) {
+        console.log("PixiApp was destroyed during init");
+        this.app.destroy(true);
+        this.app = null;
+        this.isInitializing = false;
+        return;
+      }
+
+      // Enable PixiJS DevTools
+      if (import.meta.env.DEV) {
+        globalThis.__PIXI_APP__ = this.app;
+      }
+
+      // Final check before setting up scene
+      if (!this.isDestroyed && this.app) {
+        this.setupScene();
+        this.setupInteraction();
+        console.log("PixiJS initialized successfully");
+      }
+    } catch (err) {
+      console.error("PixiJS initialization error:", err);
+      this.isDestroyed = true;
+      if (this.app) {
+        this.app.destroy(true);
+        this.app = null;
+      }
+    } finally {
+      this.isInitializing = false;
     }
   }
 
@@ -121,14 +148,47 @@ export class PixiApp {
     this.app.stage.eventMode = "static";
     this.app.stage.hitArea = this.app.screen;
 
+    // Track input state
+    this.isDragging = false;
+    this.lastTapTime = 0;
+    this.isCasting = false;
+    this.activePointerId = null; // Track which pointer is active
+
+    // Pointer down handler
     this.app.stage.on("pointerdown", (event) => {
+      // Ignore if we're already tracking a pointer
+      if (
+        this.activePointerId !== null &&
+        this.activePointerId !== event.pointerId
+      ) {
+        return;
+      }
+
       const { x, y } = event.global;
-      if (y < 80) return; // Shore area, no casting
+      if (y < 80) return; // Shore area, no interaction
+
+      const gamePhase = this.gameStore?.getState().gamePhase;
+
+      // Handle dragging phase
+      if (gamePhase === "dragging") {
+        this.activePointerId = event.pointerId;
+        this.handleDragMouseDown();
+        return;
+      }
 
       // Only allow casting when idle
-      const gamePhase = this.gameStore?.getState().gamePhase;
       if (gamePhase !== "idle") {
-        console.log("Cannot cast - game phase:", gamePhase);
+        return;
+      }
+
+      // Block casting while notification is showing
+      const lastCompletedCast = this.gameStore?.getState().lastCompletedCast;
+      if (lastCompletedCast) {
+        return;
+      }
+
+      // Prevent duplicate casts
+      if (this.isCasting) {
         return;
       }
 
@@ -138,16 +198,148 @@ export class PixiApp {
       // Check if quadrant is accessible
       const equipment = this.gameStore?.getState().equipment;
       if (!isQuadrantAccessible(quadrant, equipment?.lineLength || 8)) {
-        console.log("Quadrant not accessible with current equipment");
         this.showAccessMessage(x, y);
         return;
       }
 
-      console.log(
-        `Cast at quadrant ${quadrant}: ${Math.round(x)}, ${Math.round(y)}`,
-      );
-      this.executeCastSequence(x, y, quadrant);
+      this.activePointerId = event.pointerId;
+      this.isCasting = true;
+      this.executeCastSequence(x, y, quadrant).finally(() => {
+        this.isCasting = false;
+        this.activePointerId = null;
+      });
     });
+
+    // Pointer up handler
+    this.app.stage.on("pointerup", (event) => {
+      // Only handle if this is our tracked pointer
+      if (this.activePointerId !== event.pointerId) {
+        return;
+      }
+
+      const gamePhase = this.gameStore?.getState().gamePhase;
+      if (gamePhase === "dragging") {
+        this.handleDragMouseUp();
+      }
+
+      this.activePointerId = null;
+    });
+
+    // Pointer up outside (when pointer leaves canvas while down)
+    this.app.stage.on("pointerupoutside", (event) => {
+      if (this.activePointerId !== event.pointerId) {
+        return;
+      }
+
+      const gamePhase = this.gameStore?.getState().gamePhase;
+      if (gamePhase === "dragging") {
+        this.handleDragMouseUp();
+      }
+
+      this.activePointerId = null;
+    });
+
+    // Pointer cancel (important for touch devices)
+    this.app.stage.on("pointercancel", (event) => {
+      if (this.activePointerId !== event.pointerId) {
+        return;
+      }
+
+      // Force cleanup on cancel
+      this.resetInputState();
+    });
+
+    // Add keyboard support for dragging
+    window.addEventListener("keydown", this.handleKeyDown);
+    window.addEventListener("keyup", this.handleKeyUp);
+
+    // Ensure cleanup when losing focus
+    window.addEventListener("blur", this.handleWindowBlur);
+  }
+
+  handleKeyDown = (event) => {
+    const gamePhase = this.gameStore?.getState().gamePhase;
+    if (gamePhase !== "dragging") return;
+
+    // Space or any key to drag
+    if (event.code === "Space" || event.key === " ") {
+      event.preventDefault();
+      if (!this.isDragging) {
+        this.handleDragMouseDown();
+      }
+    }
+  };
+
+  handleKeyUp = (event) => {
+    const gamePhase = this.gameStore?.getState().gamePhase;
+    if (gamePhase !== "dragging") return;
+
+    if (event.code === "Space" || event.key === " ") {
+      event.preventDefault();
+      this.handleDragMouseUp();
+    }
+  };
+
+  handleWindowBlur = () => {
+    // Reset all input state when window loses focus
+    this.resetInputState();
+  };
+
+  resetInputState() {
+    this.isDragging = false;
+    this.activePointerId = null;
+
+    if (this.sessionStore) {
+      this.sessionStore.setState({ isDragging: false });
+    }
+  }
+
+  handleDragMouseDown() {
+    const now = performance.now();
+    const timeSinceLastTap = now - this.lastTapTime;
+
+    // Detect tap (quick press) vs hold
+    if (timeSinceLastTap < 200) {
+      // This is part of rapid tapping, don't set holding
+      return;
+    }
+
+    this.lastTapTime = now;
+    this.isDragging = true;
+
+    // Update session store
+    if (this.sessionStore) {
+      this.sessionStore.setState({ isDragging: true });
+    }
+  }
+
+  handleDragMouseUp() {
+    if (!this.isDragging) return;
+
+    const now = performance.now();
+    const pressDuration = now - this.lastTapTime;
+
+    // If released within 200ms, treat as tap
+    if (pressDuration < 200) {
+      const currentCast = this.gameStore?.getState().currentCast;
+      const dragState = this.sessionStore?.getState().dragState;
+
+      if (currentCast?.itemId && dragState) {
+        const item = getItem(currentCast.itemId);
+
+        if (item) {
+          const newTension = processTap(dragState.tension);
+          this.sessionStore.getState().updateDragTension(newTension);
+        }
+      }
+    }
+
+    this.isDragging = false;
+
+    // Update session store
+    if (this.sessionStore) {
+      this.sessionStore.setState({ isDragging: false });
+    }
   }
 
   getQuadrantFromPosition(x, y) {
@@ -168,8 +360,14 @@ export class PixiApp {
   }
 
   async executeCastSequence(x, y, quadrant) {
-    // Visual feedback - ripple
+    // Animate casting line
+    await this.animateCastLine(x, y);
+
+    // Visual feedback - ripple at landing point
     this.createRipple(x, y);
+
+    // Create bubbles to show magnet sinking
+    this.createBubbles(x, y, 500);
 
     // Execute cast mechanics
     const currentLocation =
@@ -182,8 +380,8 @@ export class PixiApp {
         this.gameStore.getState();
       startCast(quadrant, castResult.distance, castResult.depth);
 
-      // Simulate cast/sink animation (1-2 seconds)
-      await new Promise((resolve) => setTimeout(resolve, 1500));
+      // Simulate cast/sink animation
+      await new Promise((resolve) => setTimeout(resolve, 500));
 
       if (castResult.success) {
         // Item found!
@@ -203,8 +401,12 @@ export class PixiApp {
           castResult.distance,
           castResult.magnetPosition,
           castResult.magnetContactWidth,
+          { x, y },
         );
         setGamePhase("dragging");
+
+        // Start periodic bubble animation during drag
+        this.startDragBubbles();
 
         console.log(
           "Item caught:",
@@ -336,6 +538,105 @@ export class PixiApp {
     setTimeout(fadeOut, 1500);
   }
 
+  animateCastLine(targetX, targetY) {
+    return new Promise((resolve) => {
+      if (!this.app || this.isDestroyed) {
+        resolve();
+        return;
+      }
+
+      // Starting point - center of top edge (shore)
+      const startX = this.app.screen.width / 2;
+      const startY = 40; // Middle of shore area
+
+      // Calculate arc control point (creates downward curve)
+      const midX = (startX + targetX) / 2;
+      const midY = (startY + targetY) / 2 - 50; // Raised up to create arc
+
+      // Create graphics object for the line
+      const line = new PIXI.Graphics();
+      this.app.stage.addChild(line);
+
+      // Animation parameters
+      const duration = 400; // milliseconds
+      const startTime = performance.now();
+
+      const animate = (currentTime) => {
+        if (this.isDestroyed || !this.app) {
+          if (line.parent) {
+            this.app.stage.removeChild(line);
+          }
+          line.destroy();
+          resolve();
+          return;
+        }
+
+        const elapsed = currentTime - startTime;
+        const progress = Math.min(elapsed / duration, 1);
+
+        // Easing function (ease-out for more natural cast)
+        const eased = 1 - Math.pow(1 - progress, 3);
+
+        // Draw the curved line up to current progress
+        line.clear();
+
+        // Draw dotted/dashed line along the arc
+        const segments = 20;
+        const drawSegments = Math.floor(segments * eased);
+
+        for (let i = 0; i <= drawSegments; i++) {
+          const t = i / segments;
+
+          // Quadratic bezier curve calculation
+          const x =
+            Math.pow(1 - t, 2) * startX +
+            2 * (1 - t) * t * midX +
+            Math.pow(t, 2) * targetX;
+          const y =
+            Math.pow(1 - t, 2) * startY +
+            2 * (1 - t) * t * midY +
+            Math.pow(t, 2) * targetY;
+
+          // Draw small circles to create dotted line effect
+          if (i % 2 === 0) {
+            line.circle(x, y, 2).fill(0xffffff);
+          }
+        }
+
+        if (progress < 1) {
+          requestAnimationFrame(animate);
+        } else {
+          // Line animation complete, fade it out
+          let alpha = 1;
+          const fadeOut = () => {
+            if (this.isDestroyed || !this.app) {
+              if (line.parent) {
+                this.app.stage.removeChild(line);
+              }
+              line.destroy();
+              resolve();
+              return;
+            }
+
+            alpha -= 0.1;
+            line.alpha = alpha;
+
+            if (alpha <= 0) {
+              this.app.stage.removeChild(line);
+              line.destroy();
+              resolve();
+            } else {
+              requestAnimationFrame(fadeOut);
+            }
+          };
+          fadeOut();
+        }
+      };
+
+      requestAnimationFrame(animate);
+    });
+  }
+
   createRipple(x, y) {
     const ripple = new PIXI.Graphics()
       .circle(0, 0, 10)
@@ -365,6 +666,123 @@ export class PixiApp {
     animate();
   }
 
+  createBubbles(x, y, duration = 500) {
+    if (!this.app || this.isDestroyed) return;
+
+    const bubbleCount = 8;
+    const bubbles = [];
+
+    for (let i = 0; i < bubbleCount; i++) {
+      // Stagger bubble creation
+      setTimeout(
+        () => {
+          if (this.isDestroyed || !this.app) return;
+
+          const bubble = new PIXI.Graphics()
+            .circle(0, 0, 2 + Math.random() * 3)
+            .fill(0xadd8e6);
+
+          // Random horizontal offset from center
+          bubble.x = x + (Math.random() - 0.5) * 30;
+          bubble.y = y;
+          bubble.alpha = 0.6 + Math.random() * 0.4;
+
+          this.app.stage.addChild(bubble);
+          bubbles.push(bubble);
+
+          // Animate bubble rising
+          const riseSpeed = 1 + Math.random() * 2;
+          const drift = (Math.random() - 0.5) * 0.5;
+          let bubbleAlpha = bubble.alpha;
+
+          const animate = () => {
+            if (this.isDestroyed || !this.app) {
+              if (bubble.parent) {
+                this.app.stage.removeChild(bubble);
+              }
+              bubble.destroy();
+              return;
+            }
+
+            bubble.y -= riseSpeed;
+            bubble.x += drift;
+            bubbleAlpha -= 0.015;
+            bubble.alpha = bubbleAlpha;
+
+            // Remove when faded or reached surface (y < 80)
+            if (bubbleAlpha <= 0 || bubble.y < 80) {
+              if (bubble.parent) {
+                this.app.stage.removeChild(bubble);
+              }
+              bubble.destroy();
+            } else {
+              requestAnimationFrame(animate);
+            }
+          };
+          animate();
+        },
+        i * (duration / bubbleCount),
+      );
+    }
+  }
+
+  startDragBubbles() {
+    // Clear any existing interval
+    this.stopDragBubbles();
+
+    // Create bubbles every 800ms while dragging
+    this.dragBubbleInterval = setInterval(() => {
+      if (this.isDestroyed || !this.app || !this.sessionStore) {
+        this.stopDragBubbles();
+        return;
+      }
+
+      const dragState = this.sessionStore.getState().dragState;
+      const gamePhase = this.gameStore?.getState().gamePhase;
+
+      // Stop if no longer dragging
+      if (!dragState.active || gamePhase !== "dragging") {
+        this.stopDragBubbles();
+        return;
+      }
+
+      // Calculate current item position
+      const itemPos = this.getItemPosition();
+      if (itemPos) {
+        // Create a small burst of bubbles (fewer than initial cast)
+        this.createBubbles(itemPos.x, itemPos.y, 300);
+      }
+    }, 800);
+  }
+
+  stopDragBubbles() {
+    if (this.dragBubbleInterval) {
+      clearInterval(this.dragBubbleInterval);
+      this.dragBubbleInterval = null;
+    }
+  }
+
+  getItemPosition() {
+    if (!this.app || !this.sessionStore) return null;
+
+    const dragState = this.sessionStore.getState().dragState;
+    if (!dragState.active) return null;
+
+    const { castPosition, distance, totalDistance } = dragState;
+
+    // Interpolate between cast position and shore bottom
+    const shoreX = this.app.screen.width / 2;
+    const shoreY = 80; // Bottom of shore area
+
+    // Progress: 0 = at cast position, 1 = at shore
+    const progress = 1 - distance / totalDistance;
+
+    const currentX = castPosition.x + (shoreX - castPosition.x) * progress;
+    const currentY = castPosition.y + (shoreY - castPosition.y) * progress;
+
+    return { x: currentX, y: currentY };
+  }
+
   resize(width, height) {
     if (!this.app || this.isDestroyed) return;
 
@@ -380,12 +798,32 @@ export class PixiApp {
 
   destroy() {
     console.log("PixiApp.destroy() called");
+
+    if (this.isDestroyed) {
+      console.log("PixiApp already destroyed, skipping");
+      return;
+    }
+
     this.isDestroyed = true;
+
+    // Stop drag bubble animations
+    this.stopDragBubbles();
+
+    // Clean up event listeners
+    window.removeEventListener("keydown", this.handleKeyDown);
+    window.removeEventListener("keyup", this.handleKeyUp);
+    window.removeEventListener("blur", this.handleWindowBlur);
 
     if (this.app) {
       // Safely destroy - check if renderer exists
       try {
+        // Clear DevTools reference
+        if (import.meta.env.DEV && globalThis.__PIXI_APP__ === this.app) {
+          globalThis.__PIXI_APP__ = null;
+        }
+
         this.app.destroy(true, { children: true, texture: true });
+        console.log("PixiJS app destroyed successfully");
       } catch (err) {
         console.warn("Error during PixiJS destroy:", err);
       }

@@ -1,35 +1,41 @@
-import { useState, useEffect, useRef } from "react";
+import { useEffect, useRef } from "react";
 import useSessionStore from "../../game/state/sessionStore";
 import useGameStore from "../../game/state/gameStore";
 import useInventoryStore from "../../game/state/inventoryStore";
 import {
   calculateTensionBuildRate,
-  processTap,
   updateDragState,
 } from "../../game/mechanics/dragMechanics";
 import { getItem } from "../../game/data/itemDatabase";
 import "./tension-bar.css";
 
 function TensionBar() {
-  const [isHolding, setIsHolding] = useState(false);
   const lastUpdateTime = useRef(null);
+  const dragStartTime = useRef(null);
   const animationFrame = useRef(null);
-  const lastTapTime = useRef(0);
 
   // Zustand stores
-  const { dragState, updateDragTension, updateDragProgress, completeDrag } =
-    useSessionStore();
+  const {
+    dragState,
+    isDragging,
+    updateDragTension,
+    updateDragProgress,
+    completeDrag,
+  } = useSessionStore();
   const { gamePhase, currentCast, setGamePhase, completeCast } = useGameStore();
   const { addItem } = useInventoryStore();
 
   const MAX_TENSION = 100;
 
-  // Reset holding state when game phase changes away from dragging
+  // Reset drag state when leaving drag phase
   useEffect(() => {
     if (gamePhase !== "dragging") {
-      setIsHolding(false);
+      // Ensure drag state is cleared when not in drag phase
+      if (isDragging) {
+        useSessionStore.setState({ isDragging: false });
+      }
     }
-  }, [gamePhase]);
+  }, [gamePhase, isDragging]);
 
   // Main update loop - only active during drag phase
   useEffect(() => {
@@ -37,7 +43,8 @@ function TensionBar() {
       return;
     }
 
-    lastUpdateTime.current = performance.now();
+    dragStartTime.current = performance.now();
+    lastUpdateTime.current = dragStartTime.current;
 
     const updateLoop = (currentTime) => {
       const deltaTime = (currentTime - lastUpdateTime.current) / 1000;
@@ -55,7 +62,7 @@ function TensionBar() {
       const tensionChange = calculateTensionBuildRate(
         dragState.tension,
         item.weight,
-        isHolding,
+        isDragging,
       );
       const newTension = Math.max(
         0,
@@ -79,15 +86,34 @@ function TensionBar() {
 
       updateDragProgress(result.distance, result.magnetPosition);
 
+      // VERBOSE LOGGING FOR ANALYSIS (log ~2% of frames)
+      if (Math.random() < 0.02) {
+        const dragSpeed =
+          result.distance !== dragState.distance
+            ? (dragState.distance - result.distance) / deltaTime
+            : 0;
+        const magnetLeftEdge =
+          result.magnetPosition - dragState.magnetContactWidth / 2;
+        const magnetRightEdge =
+          result.magnetPosition + dragState.magnetContactWidth / 2;
+        console.log(
+          `[DRAG] T:${newTension.toFixed(0)}% | Speed:${dragSpeed.toFixed(2)}m/s | Dist:${result.distance.toFixed(1)}/${dragState.totalDistance.toFixed(1)}m | MagPos:${result.magnetPosition.toFixed(1)} [${magnetLeftEdge.toFixed(1)}-${magnetRightEdge.toFixed(1)}] | ${item.name}(${item.weight}kg)`,
+        );
+      }
+
       // Check for completion or failure
       if (result.complete) {
         const finalSlip = completeDrag();
+        const dragDuration = (performance.now() - dragStartTime.current) / 1000;
 
         // TODO: Implement lift phase UI - for now, auto-complete successfully
-        console.log("Drag complete! Slip accumulated:", finalSlip);
+        console.log(
+          `[DRAG COMPLETE] Duration:${dragDuration.toFixed(1)}s | Dist:${dragState.totalDistance.toFixed(1)}m | AvgSpeed:${(dragState.totalDistance / dragDuration).toFixed(2)}m/s | ${item.name} | Slip:${finalSlip.toFixed(1)}`,
+        );
 
         // Add item to inventory
         addItem(item);
+        console.log("Added item to inventory:", item.name);
 
         // Complete cast successfully
         completeCast(true);
@@ -98,6 +124,14 @@ function TensionBar() {
         completeDrag();
 
         console.log("Drag failed! Reason:", result.failReason);
+
+        // Store failure reason in current cast
+        useGameStore.setState((state) => ({
+          currentCast: {
+            ...state.currentCast,
+            failureReason: result.failReason,
+          },
+        }));
 
         // Complete cast as failure
         completeCast(false);
@@ -121,58 +155,12 @@ function TensionBar() {
   }, [
     gamePhase,
     dragState.active,
-    isHolding,
+    isDragging,
     dragState.tension,
     dragState.distance,
     dragState.slipAccumulated,
     currentCast,
   ]);
-
-  const handleMouseDown = () => {
-    if (gamePhase !== "dragging") return;
-
-    const now = performance.now();
-    const timeSinceLastTap = now - lastTapTime.current;
-
-    // Detect tap (quick press) vs hold
-    if (timeSinceLastTap < 200) {
-      // This is part of rapid tapping, don't set holding
-      return;
-    }
-
-    lastTapTime.current = now;
-    setIsHolding(true);
-  };
-
-  const handleMouseUp = () => {
-    if (gamePhase !== "dragging") return;
-
-    const now = performance.now();
-    const pressDuration = now - lastTapTime.current;
-
-    // If released within 200ms, treat as tap
-    if (pressDuration < 200) {
-      const item = currentCast.itemId ? getItem(currentCast.itemId) : null;
-      if (item) {
-        const newTension = processTap(dragState.tension);
-        updateDragTension(newTension);
-      }
-    }
-
-    setIsHolding(false);
-  };
-
-  // Handle mouse leaving button while holding
-  const handleMouseLeave = () => {
-    if (isHolding) {
-      setIsHolding(false);
-    }
-  };
-
-  // Prevent context menu
-  const handleContextMenu = (e) => {
-    e.preventDefault();
-  };
 
   // Don't render if not in drag phase
   if (gamePhase !== "dragging" || !dragState.active) {
@@ -215,17 +203,9 @@ function TensionBar() {
         />
       </div>
 
-      <button
-        className="pull-button"
-        onMouseDown={handleMouseDown}
-        onMouseUp={handleMouseUp}
-        onMouseLeave={handleMouseLeave}
-        onTouchStart={handleMouseDown}
-        onTouchEnd={handleMouseUp}
-        onContextMenu={handleContextMenu}
-      >
-        {isHolding ? "Pull" : "Hold"}
-      </button>
+      <div className="drag-instruction">
+        {isDragging ? "Pulling..." : "Click to pull"}
+      </div>
 
       <div className="tension-hint">
         {tension >= 85 && "⚠️ DANGER!"}

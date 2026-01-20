@@ -24,16 +24,18 @@ export function calculateTensionBuildRate(
 ) {
   if (!isHolding) {
     // Decay rate when not holding
-    return -10; // -10% per second (constant)
+    return -8; // -8% per second (slower decay = harder)
   }
 
   // Base build rate
-  const BASE_BUILD_RATE = 15; // % per second at 0% tension
+  const BASE_BUILD_RATE = 20; // % per second at 0% tension (faster build = harder)
 
   // Weight modifier (heavier = faster tension build)
   let weightMod = 1.0;
-  if (itemWeight >= 60) weightMod = 2.0;
-  else if (itemWeight >= 30) weightMod = 1.4;
+  if (itemWeight >= 60)
+    weightMod = 2.4; // Very heavy (increased from 2.0)
+  else if (itemWeight >= 30)
+    weightMod = 1.6; // Heavy (increased from 1.4)
   else if (itemWeight >= 10) weightMod = 1.0;
   else weightMod = 0.7;
 
@@ -73,17 +75,6 @@ export function updateDragState(currentState, item, deltaTime) {
     slipDirection,
   } = currentState;
 
-  // Check for instant fail at 100% tension
-  if (tension >= 100) {
-    return {
-      distance: distance,
-      magnetPosition: magnetPosition,
-      tension: 100,
-      failed: true,
-      failReason: "tension-overload",
-    };
-  }
-
   // Calculate slip rate in units per second
   const slipRate = calculateSlipRate(item, tension);
 
@@ -95,7 +86,7 @@ export function updateDragState(currentState, item, deltaTime) {
     deltaTime,
   );
 
-  // Check if magnet has slipped off
+  // Check if magnet has slipped off FIRST (more common failure)
   if (hasMagnetSlippedOff(newPosition, magnetContactWidth)) {
     return {
       distance: distance,
@@ -103,6 +94,17 @@ export function updateDragState(currentState, item, deltaTime) {
       tension: tension,
       failed: true,
       failReason: "slip-failure",
+    };
+  }
+
+  // Check for instant fail at or near 100% tension (rare, catastrophic failure)
+  if (tension >= 99.9) {
+    return {
+      distance: distance,
+      magnetPosition: newPosition,
+      tension: 100,
+      failed: true,
+      failReason: "tension-overload",
     };
   }
 

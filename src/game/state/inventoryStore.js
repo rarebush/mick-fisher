@@ -24,10 +24,17 @@ const useInventoryStore = create((set, get) => ({
       sessionId: Date.now(), // Simple session ID for now
     };
 
+    console.log("InventoryStore: Adding item", item.name, itemWithMetadata);
+
     set((state) => ({
       sessionItems: [...state.sessionItems, itemWithMetadata],
       sessionValue: state.sessionValue + item.value,
     }));
+
+    console.log(
+      "InventoryStore: Item added, new count:",
+      get().sessionItems.length,
+    );
 
     // Update catalog
     get().updateCatalog(item.id);

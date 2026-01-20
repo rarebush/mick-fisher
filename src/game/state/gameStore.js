@@ -15,7 +15,7 @@ const useGameStore = create((set, get) => ({
   // Equipment stats (MVP: basic equipment, no upgrades yet)
   equipment: {
     magnetStrength: 50, // kg capacity
-    lineLength: 8, // meters (allows Q0-Q3 only)
+    lineLength: 20, // meters (extended for debugging - allows all quadrants)
     lineTension: 100, // max tension before break
     hasWinch: false, // Phase 2 feature
   },
@@ -27,6 +27,9 @@ const useGameStore = create((set, get) => ({
     depth: 0, // meters underwater
     itemId: null, // ID of caught item (null if nothing)
   },
+
+  // Last completed cast (for notifications)
+  lastCompletedCast: null,
 
   // Session statistics
   sessionStats: {
@@ -65,8 +68,12 @@ const useGameStore = create((set, get) => ({
   completeCast: (success) => {
     const state = get();
 
+    // Store the completed cast for notifications (both success and failure)
+    const lastCompletedCast = { ...state.currentCast };
+
     set({
       gamePhase: "idle",
+      lastCompletedCast,
       sessionStats: {
         ...state.sessionStats,
         castsSuccessful: success
@@ -87,6 +94,10 @@ const useGameStore = create((set, get) => ({
         itemId: null,
       },
     });
+  },
+
+  clearLastCompletedCast: () => {
+    set({ lastCompletedCast: null });
   },
 
   reset: () =>

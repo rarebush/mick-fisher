@@ -9,6 +9,10 @@ const useSessionStore = create((set, get) => ({
   // Session timing
   sessionTimeRemaining: 600, // 10 minutes in seconds
   sessionActive: false,
+  isPaused: false,
+
+  // Drag hold state (managed by PixiApp)
+  isDragging: false,
 
   // Drag phase state
   dragState: {
@@ -17,9 +21,10 @@ const useSessionStore = create((set, get) => ({
     distance: 0, // meters from shore (decreases as item approaches)
     totalDistance: 0, // initial distance (for progress tracking)
     magnetPosition: 50, // 0-100 units on item surface (positional slip model)
-    magnetContactWidth: 10, // width of magnet contact area
+    magnetContactWidth: 6, // width of magnet contact area (reduced for more slip risk)
     slipDirection: 0, // -1 = left, 1 = right, 0 = not yet determined
     dragMemory: [], // Array of {timestamp, tension, distance} for pattern detection
+    castPosition: { x: 0, y: 0 }, // Where the cast landed (for visual effects)
   },
 
   // Lift phase state
@@ -47,9 +52,21 @@ const useSessionStore = create((set, get) => ({
     });
   },
 
+  pauseTimer: () => {
+    set({ isPaused: true });
+  },
+
+  resumeTimer: () => {
+    set({ isPaused: false });
+  },
+
   tickTimer: () => {
     const state = get();
-    if (state.sessionActive && state.sessionTimeRemaining > 0) {
+    if (
+      state.sessionActive &&
+      !state.isPaused &&
+      state.sessionTimeRemaining > 0
+    ) {
       set({ sessionTimeRemaining: state.sessionTimeRemaining - 1 });
 
       // Auto-end session when time runs out
@@ -60,7 +77,12 @@ const useSessionStore = create((set, get) => ({
   },
 
   // Actions - Drag Phase
-  startDrag: (distance, magnetPosition = 50, magnetContactWidth = 10) => {
+  startDrag: (
+    distance,
+    magnetPosition = 50,
+    magnetContactWidth = 6,
+    castPosition = { x: 0, y: 0 },
+  ) => {
     // Determine slip direction based on initial position
     const distanceToLeftEdge = magnetPosition;
     const distanceToRightEdge = 100 - magnetPosition;
@@ -76,6 +98,7 @@ const useSessionStore = create((set, get) => ({
         magnetContactWidth,
         slipDirection,
         dragMemory: [],
+        castPosition,
       },
     });
   },
@@ -106,7 +129,7 @@ const useSessionStore = create((set, get) => ({
       dragState: {
         ...state.dragState,
         distance: Math.max(0, distance),
-        magnetPosition: Math.max(0, Math.min(100, magnetPosition)),
+        magnetPosition: magnetPosition, // Allow position to go beyond 0-100 for slip-off detection
       },
     }));
   },
@@ -215,7 +238,7 @@ const useSessionStore = create((set, get) => ({
         distance: 0,
         totalDistance: 0,
         magnetPosition: 50,
-        magnetContactWidth: 10,
+        magnetContactWidth: 6,
         slipDirection: 0,
         dragMemory: [],
       },
