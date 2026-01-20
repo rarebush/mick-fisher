@@ -41,6 +41,28 @@ Locations are thematic fishing spots, each with unique spawn tables, visual aest
     curiosities: { weight: 25, items: ['pottery', 'decorative_items'] }
   },
 
+  // Spawn Timers (Phase 2+ Feature)
+  spawnTimers: [
+    {
+      chunksRequired: 2,  // 12 in-game hours
+      rollChance: 0.6,    // 60% chance
+      itemTable: 'common_medieval',
+      quantity: { min: 4, max: 7 }
+    },
+    {
+      chunksRequired: 4,  // 24 hours (1 day)
+      rollChance: 0.4,    // 40% chance
+      itemTable: 'rare_historical',
+      quantity: { min: 2, max: 4 }
+    },
+    {
+      chunksRequired: 8,  // 48 hours (2 days)
+      rollChance: 0.15,   // 15% chance
+      itemTable: 'legendary_artifacts',
+      quantity: { min: 1, max: 2 }
+    }
+  ],
+
   // Event Configuration
   eventTables: {
     snagRate: 0.12, // 12% per 5m (lower than industrial)
@@ -122,6 +144,58 @@ Locations are thematic fishing spots, each with unique spawn tables, visual aest
 - **Difficulty:** Moderate (restricted noise, time limits, careful play required)
 - **Purpose:** Unique curiosities, peaceful experience, ecological theme
 
+## Spawn Timer System (Phase 2+ Feature)
+
+**Chunk-Based Regeneration:**
+
+Locations regenerate their item spawns based on in-game time chunks (6 hours each):
+
+**Mechanics:**
+
+1. **Initial Spawn:** Location has full spawn table on first visit
+2. **Depletion:** Fishing session retrieves items from available pool
+3. **Timer Tracking:** Each chunk spent elsewhere increments location's respawn timer
+4. **Spawn Rolls:** When timer thresholds reached, game rolls for new item spawns
+5. **Multiple Timers:** Different rarity tiers respawn on different schedules
+
+**Location-Specific Timer Examples:**
+
+**Picturesque River (Easy, Common-focused):**
+
+- 2 chunks (12h): 70% chance for 5-8 common items
+- 4 chunks (24h): 40% chance for 2-4 uncommon items
+- 6 chunks (36h): 15% chance for 1-2 rare items
+
+**Industrial Canal (Heavy, Material-focused):**
+
+- 3 chunks (18h): 50% chance for 3-6 heavy tools/scrap
+- 6 chunks (36h): 30% chance for 1-3 machinery/engines
+- 10 chunks (60h): 10% chance for 1 legendary industrial item
+
+**Castle Moat (Historical, Narrative-focused):**
+
+- 2 chunks (12h): 60% chance for 4-7 historical common
+- 4 chunks (24h): 40% chance for 2-4 medieval artifacts
+- 8 chunks (48h): 15% chance for 1-2 legendary historical pieces
+
+**Strategic Implications:**
+
+- **Route Planning:** "Fish River today, Industrial tomorrow when heavy items respawn"
+- **Diminishing Returns:** Farming same location repeatedly = fewer finds
+- **Time Pressure:** Rare spawns might occur while you sleep/shop (FOMO)
+- **Location Diversity:** Encourages exploring all unlocked locations
+
+**Visual Feedback (Late Game Unlock):**
+
+"Detector" upgrade milestone shows spawn status:
+
+- **Cold:** Just fished, minimal spawns likely
+- **Warm:** Some time passed, common spawns likely
+- **Hot:** Timer thresholds reached, rare spawns possible
+- **Pulsing:** Legendary spawn window active
+
+**MVP:** Infinite spawns, no timers - focus on core mechanics
+
 ## Location-Specific Mechanics
 
 **Industrial Canal - Winch Advantage:**
@@ -185,7 +259,7 @@ Locations are thematic fishing spots, each with unique spawn tables, visual aest
 
 ## Open Questions
 
-- **Q20:** Should location depletion be global (affects all players) or per-save (individual progression)? Global creates FOMO, individual creates control.
+- **Q20:** Should spawn timers be global (affects all players, creates FOMO) or per-save (individual progression, more control)? Global = competitive, individual = relaxed.
 - **Q21:** Should locations have time-of-day restrictions (e.g., Castle Moat closes at night)? Adds realism but limits player freedom.
 - **Q22:** How many total locations for full game? MVP targets 6, but should we plan for 10-12 eventually?
 - **Q23:** Should we include "secret" locations unlocked by finding specific items (e.g., find ancient key → unlock crypt entrance)?

@@ -64,7 +64,7 @@
         RevealScreen.jsx         # Item showcase after successful retrieve
       /ui
         SessionTimer.jsx         # Countdown clock for fishing sessions
-        QuadrantOverlay.jsx      # Depletion indicators on casting view
+        QuadrantOverlay.jsx      # Quadrant grid overlay on casting view
         InventoryPanel.jsx       # Current session catch list
         CollectionCatalog.jsx    # Silhouette discovery tracker
       /shop

@@ -103,36 +103,267 @@ spawnTable: {
 ## Container System (Special Items)
 
 **Container Properties:**
-Containers are special items that hold other items inside. Their contents are unknown until opened.
+Containers are special items that hold other items inside. Their contents are **rolled at spawn time** (when container appears in quadrant), making the contents "real" before the player even discovers them.
+
+**Q17 Resolution: Contents Roll at Spawn**
+
+**When contents are determined:** The moment the container spawns in a quadrant (before player casts)
+
+**Why spawn-time rolling is best:**
+
+- Contents are "real" from the start - the safe genuinely contains something
+- Allows opening method to affect contents (damage/preserve items)
+- Allows drop mechanics to damage contents (container cracks, some items lost)
+- No save-scum issue - contents already exist, player just doesn't know them
+- Creates authentic risk/reward: "This safe HAS something valuable, but can I get it out intact?"
 
 ```javascript
+// When quadrant spawns a container
 {
-  id: 'rusted_safe_medium',
+  id: 'rusted_safe_medium_12345',
   name: 'Rusted Safe',
   category: 'containers',
   containerType: 'safe',
 
-  // Container-Specific
-  locked: true,
-  lockDifficulty: 'medium', // affects opening mini-game or tool requirement
-  contentsRoll: 'safe_medium_loot_table', // references loot table
-  openingMethods: [
-    { method: 'crowbar', time: 45, damageChance: 0.7 }, // 70% chance to damage contents
-    { method: 'lockpick', time: 120, damageChance: 0.1 }, // 10% chance
-    { method: 'professional', cost: 150, damageChance: 0 } // guaranteed safe open
-  ],
-
-  // Standard Properties
-  weight: 65, // heavy, requires good equipment
+  // Physical properties
+  weight: 65,
   surfaceCondition: 'heavy_rust',
+  locked: true,
   baseValue: 200, // safe itself has value (collectors)
   refurbValue: 500, // restored safe is decorative item
+
+  // Contents rolled NOW (at spawn, before discovery)
+  contentsRoll: 'safe_medium_loot_table',
+  contents: [
+    { item: 'cash_small', quantity: 150, damaged: false },
+    { item: 'jewelry_ring', quantity: 1, damaged: false },
+    { item: 'photos', quantity: 5, damaged: false }
+  ],
+  contentsIntact: true, // tracks if container has been compromised
+
+  // Opening state
+  opened: false,
+  openMethod: null, // 'crowbar', 'lockpick', 'professional'
+  damageEvents: [], // tracks what damaged the contents
 
   // Mystery Appeal
   description: 'A locked safe. What could be inside?',
   discoveryQuote: '"NO WAY. What are the odds? I need to get this open."'
 }
 ```
+
+**Opening Method Effects on Contents:**
+
+Opening method creates meaningful strategic choices - fast and risky vs slow and safe:
+
+**1. Crowbar (On-Site) - Fast but Risky**
+
+```javascript
+openMethod: 'crowbar',
+time: 45, // seconds
+damageChance: 0.7, // 70% chance to damage contents
+damageEffect: {
+  // Per-item damage probability
+  cash: 0.5,       // 50% of cash survives
+  jewelry: 0.3,    // 30% chance jewelry breaks
+  photos: 0.8,     // 80% destroyed (paper tears)
+  documents: 0.2   // mostly destroyed
+}
+```
+
+**Example result:**
+
+- Original contents: $150 cash, ring, 5 photos
+- After crowbar: $75 cash, ring (survived!), 1 photo
+- **Trade-off:** Fast (45s, minimal session time), but lost $75 + 4 photos
+
+**2. Lockpick (Careful) - Slow but Safe**
+
+```javascript
+openMethod: 'lockpick',
+time: 120, // seconds (burns significant session time)
+damageChance: 0.1, // 10% chance of damage
+damageEffect: {
+  // Minimal damage, mostly intact
+  cash: 0.9,
+  jewelry: 0.95,
+  photos: 0.9,
+  documents: 0.85
+}
+```
+
+**Example result:**
+
+- Original contents: $150 cash, ring, 5 photos
+- After lockpick: $150 cash, ring, 5 photos (all intact!)
+- **Trade-off:** Slow (120s burns precious session time), but preserves value
+
+**3. Professional Opening - Expensive but Perfect**
+
+```javascript
+openMethod: 'professional',
+cost: 150, // upfront fee
+time: 0, // instant (handled at shop)
+damageChance: 0 // guaranteed no damage
+```
+
+**Example result:**
+
+- Original contents: $150 cash, ring, 5 photos
+- After professional: $150 cash, ring, 5 photos (perfect)
+- Cost: $150 fee
+- **Trade-off:** Expensive upfront, but maximizes contents value
+
+**Strategic Decision Tree:**
+
+**Find safe at session end, 45 seconds remaining:**
+
+```
+Option 1: Crowbar on-site (45s)
+  - Fast, fits in session
+  - 70% damage risk
+  - Gamble: contents might be cash (survives 50%) or photos (80% destroyed)
+
+Option 2: Take to shop, lockpick later
+  - Burns refurb chunk (120 min chunk time)
+  - Only 10% damage risk
+  - Safe choice if you suspect valuables
+
+Option 3: Pay professional $150
+  - Instant, perfect reveal
+  - Worth it if contents > $150
+  - But you don't know contents value!
+```
+
+**Drop Mechanics Integration (Phase 2+):**
+
+When drop decision is implemented at surface break, containers can be damaged by gameplay events:
+
+**Scenario: Player Drops Container During Lift**
+
+```javascript
+// Container was at surface, player chose to drop
+onDrop(container, dropHeight) {
+  // Container falls back to water
+  const impactDamage = calculateImpactDamage(dropHeight, container.weight);
+
+  if (impactDamage > container.structuralIntegrity) {
+    container.contentsIntact = false;
+    container.damageEvents.push({
+      type: 'impact_damage',
+      height: dropHeight,
+      damagePercent: 0.3 // lost 30% of contents
+    });
+
+    // Randomly remove some items
+    container.contents.forEach(item => {
+      if (Math.random() < 0.3) {
+        item.damaged = true;
+        item.quantity = Math.floor(item.quantity * 0.5); // half destroyed
+      }
+    });
+  }
+}
+```
+
+**Scenario: Container Slips Off During Lift (Retry Mechanic)**
+
+```javascript
+// Multiple retries degrade container integrity
+onSlipOff(container, attemptNumber) {
+  const degradation = attemptNumber * 0.15; // 15% per retry
+
+  container.damageEvents.push({
+    type: 'slip_damage',
+    attempt: attemptNumber,
+    damagePercent: degradation
+  });
+
+  // Cumulative damage threshold
+  if (attemptNumber >= 3) {
+    // 3rd retry = container cracked badly
+    container.contentsIntact = false;
+
+    // Example: safe cracks, water gets in
+    container.contents.forEach(item => {
+      if (item.item === 'cash_small') {
+        item.damaged = true;
+        item.quantity = Math.floor(item.quantity * 0.3); // soggy, ruined
+      }
+      if (item.item === 'photos') {
+        item.quantity = 0; // completely destroyed by water
+      }
+    });
+  }
+}
+```
+
+**Strategic Implications:**
+
+**Find safe at surface, slip meter shows 85/90:**
+
+```
+Option 1: Continue lift
+  - High slip risk (only 5 margin)
+  - If succeed: intact contents
+  - If fail + retry: damage accumulates
+
+Option 2: Drop now
+  - Preserve some contents (30% loss from impact)
+  - Safer than risking slip-off + retries
+  - Can recast, try again later with better prep
+
+Option 3: Drop and abandon
+  - Save time, move on
+  - Accept total loss
+```
+
+**Damage Display UI:**
+
+When container is opened and damaged, show player consequences:
+
+```
+╔══════════════════════════════════════╗
+║   SAFE CONTENTS (DAMAGED)            ║
+╠══════════════════════════════════════╣
+║                                      ║
+║  💵 Cash: $75 / $150 (50% lost)     ║
+║     └─ Crowbar damage               ║
+║                                      ║
+║  💍 Ring: Intact ✓                  ║
+║                                      ║
+║  📷 Photos: 1 / 5 (80% destroyed)   ║
+║     └─ Crowbar damage               ║
+║                                      ║
+║  Total Value: $XXX                   ║
+║  Potential Value: $YYY (if intact)   ║
+║                                      ║
+╚══════════════════════════════════════╝
+```
+
+**Shows player:**
+
+- What they got
+- What they lost
+- Why it was damaged (crowbar, drop, water damage)
+- Teaches consequences for next time
+
+**Narrative Flavor:**
+
+**Crowbar damage:**
+
+- "The safe lid bent during forcing. Some contents were crushed."
+- Photos description: "Torn and crumpled from the crowbar."
+
+**Drop damage:**
+
+- "The impact cracked the safe. Water seeped in."
+- Cash description: "Soggy and waterlogged. Only half is salvageable."
+
+**Multiple retries:**
+
+- "The safe took multiple drops. The lock mechanism broke and contents spilled."
+- "You hear something rattling inside... that's not a good sign."
 
 **Loot Tables (Container Contents):**
 
@@ -154,40 +385,65 @@ lootTables.safe_medium: {
 
 **Container Opening Mechanics:**
 
-**Option 1: Crowbar (On-Site)**
+**Session-End Gacha Reveal:**
 
-- Available immediately if player has crowbar tool
-- Timed mini-game: tap rapidly to fill progress bar
-- Durability vs progress race (bar depletes vs fills)
-- Success: contents revealed, container destroyed
-- Failure: container damaged, some contents lost (RNG)
-- Time cost: ~45 seconds
+Containers function as a gacha-style reward system. When fishing session ends:
 
-**Option 2: Lockpick (On-Site or Shop)**
+**Phase 1: Automatic Opening (Session End)**
 
-- Requires lockpick tool (crafted or purchased)
-- Longer duration: ~2 minutes
-- Higher success rate, preserves container value
-- On-site: burns session time
-- At shop: burns refurb time chunk
-- Success: contents intact, container resellable
+1. Session timer expires or player ends session
+2. All retrieved containers are processed automatically
+3. **Unlocked/Basic containers:** Open instantly, contents revealed in sequence
+4. **Locked containers:** Remain closed, flagged for shop service
+5. Gacha-style reveal screen:
+   - Each container opens with animation
+   - Contents cascade out one by one
+   - Rarity flash effects (common = gray, rare = blue, epic = purple, legendary = gold)
+   - Running total of session value updates
+6. No player input required - pure reveal moment
+7. No time consumed - happens between fishing chunk and next chunk
 
-**Option 3: Professional Opening (Shop Service)**
+**Phase 2: Locked Container Service (Shop)**
 
-- Pay shop NPC flat fee (varies by container difficulty)
-- Instant reveal (no mini-game)
-- Guaranteed success, no damage
-- Expensive but safe choice
-- Strategic: worth it for epic/legendary containers
+Containers that couldn't auto-open require paid shop service:
+
+- Locked containers appear in inventory with "LOCKED" tag
+- Player must pay shop NPC to open them
+- Cost based on lock difficulty:
+  - Basic lock: $50
+  - Medium lock: $150
+  - Advanced lock: $300
+  - Master lock: $500
+- Opening happens instantly (no mini-game, no chunk time consumed)
+- Contents revealed immediately after payment
+- Strategic choice: pay to open OR sell locked container to collector (some containers valuable unopened)
+
+**MVP Scope:**
+
+- All containers auto-open at session end (no locked containers in MVP)
+- Gacha reveal screen shows contents
+- Phase 2+: Introduce locked containers requiring shop service
+
+**Container Types by Opening Method:**
+
+| Container Type | Opens Automatically? | Shop Service Cost | MVP Status |
+| -------------- | -------------------- | ----------------- | ---------- |
+| Wooden crate   | Yes                  | N/A               | ✓ MVP      |
+| Cardboard box  | Yes                  | N/A               | ✓ MVP      |
+| Plastic bin    | Yes                  | N/A               | ✓ MVP      |
+| Rusted safe    | No                   | $150              | Phase 2+   |
+| Lockbox        | No                   | $50-300           | Phase 2+   |
+| Antique chest  | No                   | $500              | Phase 2+   |
 
 **Strategic Container Decisions:**
 
-| Scenario                           | Best Choice          | Reasoning                        |
-| ---------------------------------- | -------------------- | -------------------------------- |
-| Common safe, session time low      | Crowbar on-site      | Fast, container value low anyway |
-| Rare chest, plenty of session time | Lockpick on-site     | Preserve value, no rush          |
-| Epic safe, unknown contents        | Take to professional | High stakes, minimize risk       |
-| Late in day, tired, valuable safe  | Professional         | Don't gamble when exhausted      |
+| Scenario                             | Decision                             | Reasoning                                  |
+| ------------------------------------ | ------------------------------------ | ------------------------------------------ |
+| Common crate retrieved               | Auto-opens at session end            | Free reveal, contents shown automatically  |
+| Locked safe retrieved                | Pay shop $150 to open                | Gamble on contents vs sell safe for $200   |
+| Antique chest (valuable unopened)    | Sell unopened to collector for $800  | Guaranteed profit vs risky $500 open cost  |
+| Multiple locked containers, low cash | Prioritize opening higher-tier locks | Better loot tables = higher expected value |
+| Locked container, already rich       | Open everything                      | Discovery > profit at this point           |
 
 ## Material Yield System
 
@@ -199,7 +455,7 @@ Items can be scrapped for materials used in crafting upgrades:
 | ------------------ | -------------------- | -------- | ----------------------------------------- |
 | Steel Scrap        | Bikes, tools, frames | Common   | Basic magnet upgrades, line reinforcement |
 | Copper Wire        | Electronics, motors  | Uncommon | Advanced magnets, detector circuits       |
-| Brass Components   | Locks, fixtures      | Uncommon | Lockpicking tools, precision parts        |
+| Brass Components   | Locks, fixtures      | Uncommon | Precision parts, decorative elements      |
 | Rare Earth Magnets | Industrial equipment | Rare     | High-tier magnet upgrades                 |
 | Synthetic Fibers   | Modern items, ropes  | Common   | Line coating, winch cable                 |
 | Wood (treated)     | Crates, furniture    | Common   | Winch frame, tool handles                 |
@@ -257,16 +513,72 @@ Rusty Wrench:
 
 **Catalog Structure:**
 
+**Single Entry with Condition Tracking:**
+
+Each unique item has ONE catalog entry that tracks the best condition found:
+
 ```javascript
 catalogEntry: {
-  itemId: 'rusty_bike_01',
+  itemId: 'bicycle',
+  name: 'Bicycle',
+  category: 'vehicle_parts',
+
+  // Discovery tracking
   discovered: true,
   discoveryDate: '2025-01-18T14:32:00Z',
-  timesFound: 3,
-  bestCondition: 'worn', // tracks best version found
-  variants: ['rusty_bike_01', 'rusty_bike_02'], // color/style variants
-  loreUnlocked: true
+  timesFound: 5,
+
+  // Condition tracking (replayability goal)
+  bestCondition: 'worn', // pristine > worn > corroded
+  conditionsFound: ['corroded', 'worn'], // collection progress
+  pristineFound: false, // still hunting for perfect specimen!
+
+  // Variants (cosmetic differences, same base item)
+  variants: ['blue_bike', 'red_bike'], // color/style variations
+
+  // Lore and narrative
+  loreUnlocked: true, // unlocks on first discovery regardless of condition
+  loreText: 'A child\'s bicycle, rusted from years underwater...'
 }
+```
+
+**Condition System Benefits:**
+
+**Replayability Goal:**
+
+- "I found the rusty bike, but can I find a pristine one?"
+- Creates reason to revisit locations
+- Collectors aim for 100% pristine catalog
+- Casual players satisfied with any condition discovery
+
+**Catalog Size Management:**
+
+- 135 unique items (manageable, not overwhelming)
+- NOT 400+ entries (135 items × 3 conditions)
+- Reduces art asset production (one sprite + condition overlays)
+- Clearer progression tracking
+
+**Condition Impact on Gameplay:**
+
+| Condition | Visual        | Refurb Value | Sale Value | Catalog Display   |
+| --------- | ------------- | ------------ | ---------- | ----------------- |
+| Pristine  | Clean, shiny  | +50%         | +30%       | Gold star badge   |
+| Worn      | Scratched     | Base         | Base       | Silver star badge |
+| Corroded  | Rusty, sludge | -30%         | -20%       | Bronze star badge |
+
+**Catalog UI Display:**
+
+- Item thumbnail shows BEST condition found
+- Condition badges: 🏆 (pristine) / ⭐ (worn) / 🟫 (corroded)
+- "Upgrade available!" indicator if better condition exists
+- Clicking entry shows all conditions discovered
+
+**Example Progression:**
+
+```
+Day 1: Find corroded bicycle → Catalog entry created, bronze badge
+Day 5: Find worn bicycle → Catalog updates, silver badge replaces bronze
+Day 12: Find pristine bicycle → Catalog updates, gold badge! Completionist satisfied
 ```
 
 **Catalog Categories:**
@@ -282,14 +594,14 @@ catalogEntry: {
 
 **Milestone Rewards:**
 
-| Milestone | Reward                | Mechanical Benefit             |
-| --------- | --------------------- | ------------------------------ |
-| 10 items  | Lockpick tool         | Can open basic containers      |
-| 25 items  | New location unlock   | Access to "Sewage Works"       |
-| 50 items  | Detector upgrade      | Shows "hot" quadrants          |
-| 75 items  | New location unlock   | Access to "Industrial Runoff"  |
-| 100 items | Professional contacts | Discounted container opening   |
-| All items | Legendary magnet      | Access to "deepest" depth zone |
+| Milestone | Reward                | Mechanical Benefit                     |
+| --------- | --------------------- | -------------------------------------- |
+| 10 items  | Line upgrade          | +5m casting range                      |
+| 25 items  | New location unlock   | Access to "Sewage Works"               |
+| 50 items  | Detector upgrade      | Shows "hot" quadrants                  |
+| 75 items  | New location unlock   | Access to "Industrial Runoff"          |
+| 100 items | Professional contacts | 25% discount on shop container opening |
+| All items | Legendary magnet      | Access to "deepest" depth zone         |
 
 ## Item Balance & Tuning
 
@@ -322,7 +634,5 @@ Per cast probability:
 
 ## Open Questions
 
-- **Q16:** Should items have condition variations (pristine/worn/corroded) as separate catalog entries or single entry with "best condition" tracker?
-- **Q17:** For containers: should contents be rolled at moment of discovery (fixed) or at moment of opening (player can save-scum)?
 - **Q18:** Should there be "cursed" or "haunted" items with special negative events (for narrative flavor/humor)?
 - **Q19:** How many total unique items for full game? MVP target is ~135, but should we plan for 200+ eventually?

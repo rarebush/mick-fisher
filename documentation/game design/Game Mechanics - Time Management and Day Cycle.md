@@ -23,13 +23,19 @@ Player owns a quirky pawn shop and must balance time between fishing (acquiring 
 
 ## Activity Breakdown
 
-**Fishing Session (1 chunk = 10 minutes real-time gameplay):**
+**Fishing Session (1 chunk):**
+
+**Target Duration:** 10 minutes real-time gameplay
+**Session Timer:** 10-minute countdown (what player sees on screen)
+**Actual Duration:** Can extend beyond 10 minutes if retrieval in progress (overtime mechanic)
 
 - Choose location
-- 10-minute timer (as discussed in mechanics)
+- Timer counts down from 10:00 to 0:00
 - Return with inventory of items
 - Items automatically transferred to shop storage
 - Can fish multiple chunks consecutively (different locations or same)
+
+**Important:** A chunk's target is 10 minutes, but actual duration may be longer if player is mid-retrieval when timer expires (see Session Timer Overflow below).
 
 **Shop Operation (1 chunk):**
 
@@ -64,16 +70,31 @@ Player owns a quirky pawn shop and must balance time between fishing (acquiring 
 
 ## Chunk Timing & Continuity
 
-**Session Timer Overflow:**
+**Session Timer Overflow (Overtime Mechanic):**
 As discussed in mechanics section:
 
-- Fishing session timer expires during retrieve
-- Player chooses to continue (overtime)
-- **Current chunk extends until retrieve completes**
-- Example:
-  - Chunk ends at 12:00
-  - Retrieve takes 3 more minutes
-  - Next chunk starts at 12:03 (real time: 06:03)
+**Trigger:** Session timer reaches 0:00 while player is mid-retrieval (casting, dragging, or lifting)
+
+**Player Options:**
+
+- Abandon current retrieval (lose item, chunk ends immediately)
+- Continue retrieval (overtime - chunk extends beyond target 10 minutes)
+
+**If player continues:**
+
+- **Current chunk extends until retrieve completes** (no time limit during overtime)
+- Chunk's actual duration = 10 minutes (target) + overtime duration
+- Next chunk starts after current retrieval finishes
+
+**Example:**
+
+- Session timer: 9:45 remaining
+- Player hooks heavy item, starts drag phase
+- Timer expires (0:00) while dragging (2 minutes left to shore)
+- Player continues → overtime begins
+- Completes drag + lift (3 more minutes)
+- **Chunk actual duration: 10 minutes (target) + 3 minutes (overtime) = 13 minutes total**
+- Next chunk starts at 12:03 in-game time (real-time: 06:03 gameplay)
 
 **Cascading Effects (Future Scope, note for later):**
 

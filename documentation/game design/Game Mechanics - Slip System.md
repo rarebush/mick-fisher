@@ -126,29 +126,69 @@ Remaining Margin: 5 (VERY dangerous!)
 
 ## Slip Meter Visualization (Phase 2b Only)
 
+**Core Design Philosophy: Hidden Limit Creates Tension**
+
+**What Player SEES:**
+
+- Current slip value accumulating (e.g., meter shows "45")
+- Magnet position indicator via UI bar/icon (center/edge/corner)
+- Surface condition on item sprite (clean/rusty/sludge)
+- Slip rate of increase (how fast the number climbs)
+
+**What Player DOES NOT SEE:**
+
+- Slip limit value (NOT shown as "45/90" - only "45")
+- Exact margin remaining (must infer from visual clues)
+- Numeric threshold for failure (hidden until failure occurs)
+
 **UI Design:**
 
-- Horizontal or vertical bar
-- Fill color shifts: Green (0-50%) → Yellow (51-80%) → Red (81-100%)
-- Current slip value shown numerically (optional, for clarity)
-- Limit NOT shown (player infers from magnet position visual)
+**Slip Meter Bar:**
 
-**Warning States:**
+- Horizontal bar that fills as slip accumulates
+- Fill color shifts: Green (low) → Yellow (medium) → Red (high)
+- Current slip value shown numerically: "45" (NOT "45/90")
+- No limit indicator, no max value displayed
+- Bar length is fixed (always full width), filling represents unknown percentage
 
-| Slip % of Limit   | Visual Feedback        | Audio Cue                 | Gameplay Effect                     |
-| ----------------- | ---------------------- | ------------------------- | ----------------------------------- |
-| 0-50% (Safe)      | Green bar, calm        | None                      | No warnings                         |
-| 51-80% (Caution)  | Yellow bar, slow pulse | Low tension hum (Tone.js) | Magnet wobbles slightly             |
-| 81-95% (Danger)   | Red bar, fast pulse    | Rising pitch alarm        | Magnet wobbles heavily, item shakes |
-| 96-99% (Critical) | Red bar, flashing      | Urgent beeping            | Visual "about to slip" animation    |
-| 100% (Failure)    | Bar full, flash white  | Loud pop/clunk            | Magnet detaches, item falls         |
+**Magnet Position Indicator (MVP: Bar/Icon Only):**
 
-**Player Response to Warnings:**
+- Separate UI element (not shown on item sprite)
+- Visual: Horizontal bar with magnet icon positioned along it
+  - Left side = Edge grip (poor, low limit)
+  - Center = Centered grip (good, high limit)
+  - Right side = Corner grip (very poor, very low limit)
+- Color-coded: Green (center) → Yellow (off-center) → Red (edge/corner)
+- No numeric values, purely visual indication
 
-- See yellow bar → ease off tapping slightly
-- See red bar → significantly reduce tapping (accept slower lift)
-- Hear audio alarm → immediate response (adrenaline trigger)
-- Experienced players preemptively slow when they see sludge coating
+**Player Inference Process:**
+
+1. See magnet position indicator shows edge grip (red zone)
+2. Infer: "Edge grip probably means limit around 40-60"
+3. See current slip: "45"
+4. Think: "I might be close to limit, better tap slowly!"
+5. Watch slip meter climb during tapping
+6. Make real-time decision based on rate + inference
+
+**Warning States (Based on Slip Behavior, NOT Known Limit):**
+
+| Slip Value Range | Visual Feedback        | Audio Cue                 | Gameplay Effect                     |
+| ---------------- | ---------------------- | ------------------------- | ----------------------------------- |
+| 0-30             | Green bar, calm        | None                      | No warnings                         |
+| 31-50            | Yellow bar, slow pulse | Low tension hum (Tone.js) | Magnet wobbles slightly             |
+| 51-70            | Orange bar, pulse      | Rising pitch tone         | Magnet wobbles more                 |
+| 71-90            | Red bar, fast pulse    | Rising pitch alarm        | Magnet wobbles heavily, item shakes |
+| 91+              | Red bar, flashing      | Urgent beeping            | Visual "about to slip" animation    |
+| Limit Reached    | Bar full, flash white  | Loud pop/clunk            | Magnet detaches, item falls         |
+
+**Note:** These ranges are illustrative - player doesn't know if "71" means danger (limit is 75) or safe (limit is 100). Uncertainty is intentional!
+
+**Expert Player Skill Development:**
+
+- Beginners: Blind guessing, often fail
+- Intermediate: Learn to read position indicator, estimate conservatively
+- Advanced: Recognize patterns ("Edge grip on sludge item = ~50 limit")
+- Expert: Push boundaries precisely, maximize slip budget usage
 
 ## Slip Recovery & Mitigation
 
@@ -221,11 +261,13 @@ Potential slip mitigation via gear:
 
 **Hard Failure: Line Snap**
 
-- Only occurs if slip at 100% AND tension in danger zone simultaneously
-- Rare (requires both conditions)
+- Only occurs during tug mini-game when hitting red zone (NOT during normal drag)
+- 30% chance when red zone hit in tug mini-game
+- Separate from 100% tension instant rip-off (which is a soft fail)
 - Line breaks, magnet + item lost
 - Must buy replacement line segment
 - Session can continue with remaining line length (if any)
+- Rare but punishing - rewards careful play during snag events
 
 **Degradation Failure:**
 
@@ -237,7 +279,6 @@ Potential slip mitigation via gear:
 
 ## Open Questions
 
-- **Q12:** Should slip limit be partially visible (e.g., bar shows estimated range based on visual placement) or completely hidden until failure?
 - **Q13:** Should there be a "slip forgiveness" mechanic for new players (e.g., first 5 retrieves have +20% slip limit bonus)?
 - **Q14:** How much should slip reset on retry? Currently 50% - too forgiving or too punishing?
 - **Q15:** Should certain items have "slip resistance" property independent of surface condition (e.g., ribbed surfaces grip magnet better)?

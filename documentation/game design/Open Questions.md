@@ -4,21 +4,7 @@
 
 #### Mechanics & Systems:
 
-**Q1:** How quickly should quadrant freshness regenerate? Real-time (minutes) or fixed respawn on session start?
-
-**Q2:** Should we show "no item present" immediately or after a brief suspense delay?
-
-**Q3:** Do we want visual hints (ripples, shadows) indicating items are present in certain quadrants, or keep it fully blind?
-
-**Q4:** Should we show accumulated slip value to player after drag completes (during lift phase), or only show rate of increase?
-
-**Q5:** For the tug mini-game: should there be a limit to retry attempts (e.g., 3 tries then auto-fail), or unlimited?
-
-**Q6:** How punishing should line snap be? Immediate session end, or just cost + continue?
-
 **Q7:** Should current surge events be completely random or telegraphed slightly (ripple pattern changes 2s before)?
-
-**Q8:** Should the "drop decision" window be timed (auto-commit after 3s) or wait indefinitely for player input (pausing timer)?
 
 **Q9:** How many retry attempts should be allowed after magnet slip-off before item is lost? (Current: 3 retries)
 
@@ -26,17 +12,11 @@
 
 **Q11:** For container drainage: should weight reduction be instant at surface break, or gradual as lift continues?
 
-**Q12:** Should slip limit be partially visible (e.g., bar shows estimated range based on visual placement) or completely hidden until failure?
-
 **Q13:** Should there be a "slip forgiveness" mechanic for new players (e.g., first 5 retrieves have +20% slip limit bonus)?
 
 **Q14:** How much should slip reset on retry? Currently 50% - too forgiving or too punishing?
 
 **Q15:** Should certain items have "slip resistance" property independent of surface condition (e.g., ribbed surfaces grip magnet better)?
-
-**Q16:** Should items have condition variations (pristine/worn/corroded) as separate catalog entries or single entry with "best condition" tracker?
-
-**Q17:** For containers: should contents be rolled at moment of discovery (fixed) or at moment of opening (player can save-scum)?
 
 **Q18:** Should there be "cursed" or "haunted" items with special negative events (for narrative flavor/humor)?
 
@@ -75,8 +55,6 @@
 **Q34:** Should rare item reveal chimes be unique melodies (composable, memorable) or just pitch variations (simpler)?
 
 **Q35:** Should audio design include haptic feedback on mobile (vibration for tension, slip, events)?
-
-**Q36:** For visual style: should we create a few test items in both pixel and vector styles to compare feel before committing?
 
 **Q37:** Should the casting view show decorative background layers (castle walls, trees, buildings) or keep it minimal/abstract for performance?
 

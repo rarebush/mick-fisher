@@ -34,44 +34,153 @@ Consistent experience across device sizes (iPad, desktop, phones). Visual style 
 - Touch targets: Minimum 44x44pt (iOS guidelines)
 - Font size: Adjust base size per device class, keep ratios
 
-## Visual Style (To Be Determined)
+## Visual Style: Pixel Art
 
-**Criteria for Style Choice:**
+**Decision:** Chunky pixel art with phased production approach - icon library placeholders → real pixel art as development progresses.
 
-1. Must support clear item identification at multiple scales
-2. Silhouettes must be recognizable (catalog system)
-3. Must convey item condition (clean vs rusty vs sludge)
-4. Achievable within your skill level (solo dev)
-5. Performs well (lots of sprites on screen)
+### MVP Art Strategy: Speed Over Polish
 
-**Option A: Vector Illustration (Recommended)**
+**Phase 1: Testing Game Feel (Weeks 1-4)**
 
-- **Tools:** Figma/Illustrator (your existing workflow)
-- **Style:** High-contrast, bold outlines, limited palette
-- **Reference:** Risk of Rain 2 item art, Hades boon icons
-- **Pros:**
-  - Scales infinitely (no pixelation)
-  - Clear silhouettes
-  - Overlay system for wear/rust (multiply blend modes)
-  - Familiar tools
-- **Cons:**
-  - Requires illustration skill
-  - More time per item than pixel art (maybe)
+- Use geometric shapes (circles, rectangles for items)
+- Icon libraries for placeholders (Material Icons, Font Awesome, Game Icons)
+- Single color fills with simple outlines
+- **Goal:** Test mechanics, not aesthetics
 
-**Option B: Chunky Pixel Art**
+**Phase 2: First Playable (Weeks 5-6)**
 
-- **Tools:** Aseprite, Pixaki
-- **Style:** Large pixels (8x8 or 16x16 base), limited palette
-- **Reference:** Dead Cells, Celeste, Stardew Valley
-- **Pros:**
-  - Scales cleanly (nearest-neighbor)
-  - Faster to produce (grids constrain decisions)
-  - Nostalgic aesthetic appeal
-- **Cons:**
-  - Limited detail (may not convey condition well)
-  - Learning curve if you're not experienced
+- Create 5-8 "real" pixel art items at target resolution
+- Test production pipeline (speed benchmarking: how fast can you make one item?)
+- Establish style rules (color palette, outline weight, pixel grid size)
+- **Goal:** Validate art direction before full production
 
-**Recommendation:** Prototype with vector illustration (Figma mockups) → see if it feels right → commit to full style guide
+**Phase 3: Full Production (Weeks 7+)**
+
+- Replace remaining placeholder items with real pixel art
+- Create condition overlays (rust, sludge)
+- Optional: Ship MVP with mix of real sprites + placeholders, complete post-launch
+
+### Pixel Art Technical Specifications
+
+**Item Sprite Specifications:**
+
+- **Resolution:** 64x64px or 128x128px base canvas
+- **Pixel grid:** 2x2 or 4x4 (chunky, clear at distance)
+- **Color palette:** 16-32 colors (enough for variety, limited for consistency)
+- **Outline:** 2px black outline (ensures visibility against water background)
+- **Scaling:** Nearest-neighbor (keeps pixels sharp when scaled)
+- **Condition overlays:** Separate layer for rust/sludge (multiply blend mode)
+
+**Why These Specs Work:**
+
+- 64x64 is large enough for detail but small enough for fast production
+- 2x2 pixel blocks scale well (32x32 → 128x128 stays crisp)
+- Black outlines ensure items pop against water background
+- Condition overlays = reuse base sprite with different coatings (1 sprite + 3 overlays = 4 visual variations)
+
+### Production Pipeline
+
+**Tools:**
+
+- **Aseprite** (paid, ~$20, best for pixel art) - has onion skinning, palette management, animation
+- **Pixaki** (iPad, great for touch) - if you want to draw on tablet
+- **Piskel** (free, browser-based) - good for quick mockups
+
+**Workflow (Target: 20-30 minutes per item):**
+
+1. Create 64x64 canvas with 2px black outline guides (1 min)
+2. Block out basic shape (5 min)
+3. Add detail within blocks (10 min)
+4. Add shading/highlights (5 min)
+5. Export as PNG (1 min)
+6. Create condition variants (rust overlay, sludge overlay) (5 min each)
+
+**Production Test (Pre-Development):**
+Before Week 1, spend 2-4 hours creating these test items:
+
+- **Safe** (large, rectangular, mechanical details)
+- **Bicycle** (complex organic shape)
+- **Wrench** (small, simple tool)
+
+For each item, create:
+
+- Base sprite (clean)
+- Rust overlay
+- Sludge overlay
+
+Test in context:
+
+- Scale to 200% (item approaching camera)
+- Scale to 50% (catalog silhouette)
+- Render on blue water background
+- Check if sludge overlay is distinguishable from clean
+
+**Decision Gate:**
+
+- If this takes >30 min per item: Simplify your style (bigger pixels, less detail)
+- If you enjoy the process: You've found your art style
+- If you hate it: Reconsider vector or find an artist
+
+### Icon Library Placeholder Strategy
+
+**For MVP Testing (Weeks 1-4, before real sprites):**
+
+**Source:** Game Icons (game-icons.net)
+
+- Huge library of SVG game-related icons
+- Can export as PNG at any size
+- Free for use with attribution
+- Examples: bicycle, safe, wrench, treasure chest
+
+**Implementation:**
+
+```javascript
+// Temporary item data structure
+items: [
+  {
+    id: "bike_01",
+    spritePath: "/icons/bicycle.png", // placeholder icon
+    // Later: spritePath: '/sprites/bike_rusty.png'
+  },
+];
+```
+
+**Conversion Plan:**
+
+- Week 1-4: All icons (no custom art)
+- Week 5-6: Replace 5-8 key items with real pixel art
+- Week 7-8: Replace remaining items as time allows, or ship MVP with mix
+
+### Condition Overlay System
+
+**Strategy:** Use multiply blend layers to create condition variations without duplicating base sprites.
+
+**Asset Structure:**
+
+- **Base sprite:** Clean item (one sprite per item type)
+- **Overlay options:**
+  - `rust_light.png` - orange-brown splotches, 50% opacity
+  - `rust_heavy.png` - thick corrosion, 70% opacity
+  - `sludge.png` - brown-green coating, 80% opacity
+
+**Runtime Compositing:**
+
+```javascript
+// Composite on canvas or use CSS
+<div class="item-sprite">
+  <img src="bike_base.png" />
+  <img src="sludge.png" class="multiply" />
+</div>
+```
+
+**Benefit:** 1 base sprite + 3 overlays = 4 visual variations with minimal art work
+
+**Production Efficiency:**
+
+- Create base sprite once
+- Create 3 generic overlay textures (reuse across all items)
+- Mix and match for pristine/worn/corroded conditions
+- If overlay doesn't work for specific item, create item-specific variant
 
 ## Core UI Screens
 
@@ -286,7 +395,6 @@ Consistent experience across device sizes (iPad, desktop, phones). Visual style 
 
 ## Open Questions
 
-- **Q36:** For visual style: should we create a few test items in both pixel and vector styles to compare feel before committing?
 - **Q37:** Should the casting view show decorative background layers (castle walls, trees, buildings) or keep it minimal/abstract for performance?
 - **Q38:** For item scaling during lift: should it be smooth/gradual (lerp) or stepped/sudden (pop at breakpoints)?
 - **Q39:** Should there be animated weather effects (rain, fog, snow) or keep environmental variation to static color palettes?

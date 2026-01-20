@@ -77,14 +77,18 @@ Player pulls item horizontally through water toward shore/bank. Tension controls
 
 **Base build rate: 15%/second at 0% tension** (modified by weight and diminishing returns)
 
-**Weight Modifiers (INVERTED - heavier = faster build):**
+**Physics Model - Weight Creates Resistance:**
 
-| Item Weight        | Weight Modifier | Tension Feel         | 0→50% Time (Hold) |
-| ------------------ | --------------- | -------------------- | ----------------- |
-| Light (0-10kg)     | 0.7x            | Easy, gentle pull    | ~5.5 seconds      |
-| Medium (10-30kg)   | 1.0x            | Standard resistance  | ~4.0 seconds      |
-| Heavy (30-60kg)    | 1.4x            | Strong resistance    | ~2.8 seconds      |
-| Very Heavy (60kg+) | 2.0x            | Immediate heavy feel | ~2.0 seconds      |
+When you pull on a heavy object (like an elephant tied to a rope), tension builds FAST because the object resists movement - the force accumulates in the rope before the object gives ground. When you pull on a light object (like a plant pot), tension builds SLOWLY because your force immediately converts to motion - the pot moves before much tension can accumulate.
+
+**Weight Modifiers (Higher Multiplier = Faster Tension Build):**
+
+| Item Weight        | Tension Build Multiplier | Tension Feel                          | 0→50% Time (Hold) |
+| ------------------ | ------------------------ | ------------------------------------- | ----------------- |
+| Light (0-10kg)     | 0.7x (SLOW BUILD)        | Easy, gentle pull - force → motion    | ~5.5 seconds      |
+| Medium (10-30kg)   | 1.0x (NORMAL BUILD)      | Standard resistance                   | ~4.0 seconds      |
+| Heavy (30-60kg)    | 1.4x (FAST BUILD)        | Strong resistance - object fights you | ~2.8 seconds      |
+| Very Heavy (60kg+) | 2.0x (VERY FAST BUILD)   | Immediate heavy feel - rapid tension  | ~2.0 seconds      |
 
 **Diminishing Returns Curve (Realistic Tension Physics):**
 
@@ -98,17 +102,23 @@ Player pulls item horizontally through water toward shore/bank. Tension controls
 **Combined Formula:**
 
 ```
-Tension Build Rate (Hold) = Base Rate (15%/s) × Weight Modifier × Diminishing Returns
+Tension Build Rate (Hold) = Base Rate (15%/s) × Tension Build Multiplier × Diminishing Returns
+
+Example:
+Light item (5kg) at 0% tension: 15%/s × 0.7 × 1.0 = 10.5%/s (SLOW - easy to control)
+Heavy item (65kg) at 0% tension: 15%/s × 2.0 × 1.0 = 30%/s (FAST - dangerous!)
+
+Key: Higher multiplier = Faster tension = Heavier feel = More dangerous
 ```
 
 **Event Modifiers (Applied on top of base formula):**
 
-| Condition             | Build Rate Modifier | Effect                                                    |
-| --------------------- | ------------------- | --------------------------------------------------------- |
-| Normal drag           | 1.0x                | Standard calculated rate                                  |
-| **Snagged (stopped)** | **8.0x-10.0x**      | **Extremely rapid (120-150%/s base, hits 100% in ~0.8s)** |
-| Current surge         | 2.0x-3.0x           | Temporary spike (3-5 seconds)                             |
-| Debris drag           | 1.3x                | Slightly faster build                                     |
+| Condition             | Build Rate Modifier | Effect                                                                     |
+| --------------------- | ------------------- | -------------------------------------------------------------------------- |
+| Normal drag           | 1.0x                | Standard calculated rate                                                   |
+| **Snagged (stopped)** | **8.0x-10.0x**      | **Extremely rapid (120-150%/s base) - reaches 100% in 0.3-0.8s from snag** |
+| Current surge         | 2.0x-3.0x           | Temporary spike (3-5 seconds)                                              |
+| Debris drag           | 1.3x                | Slightly faster build                                                      |
 
 **Tap Mechanic (Bypasses All Modifiers):**
 
@@ -118,6 +128,11 @@ Tension Build Rate (Hold) = Base Rate (15%/s) × Weight Modifier × Diminishing 
 - Detection: Press-release within 200ms
 - Can tap 3-4 times per second (human limit)
 - Strategic use: Overcome slow build on light items, precise tension control
+
+**Weight Strategy Summary:**
+
+- **Light items:** Slow tension build from hold (safe but tedious) → Use TAPS to speed up
+- **Heavy items:** Fast tension build from hold (dangerous) → Use hold SPARINGLY, release often
 
 ---
 
@@ -181,9 +196,9 @@ Tap → 70% (+10%)
 
 **3. Light Item Optimization:**
 
-- Light item (5kg wrench): Hold builds slowly (10.5%/s at 0% tension)
-- Hold for 6 seconds → only 45% tension
-- Tap 3 times → 75% tension instantly
+- Light item (5kg wrench): Hold builds slowly (0.7x multiplier = 10.5%/s at 0% tension)
+- Hold for 6 seconds → only 45% tension (slow because force converts to motion)
+- Tap 3 times → 75% tension instantly (bypasses slow build)
 - Now can drag light item at high speed (normally impossible with hold alone)
 
 **4. Snag Recovery:**
@@ -205,10 +220,11 @@ Tap → 70% (+10%)
 
 **Strategic Insight:**
 
-- **Heavy items:** Hold alone can easily reach 80-90% (fast build), use sparingly
-- **Light items:** Hold alone struggles to reach 70% (slow build), tap to compensate
+- **Heavy items:** Hold alone can easily reach 80-90% (2.0x multiplier = fast build from resistance), use sparingly
+- **Light items:** Hold alone struggles to reach 70% (0.7x multiplier = slow build, force → motion), tap to compensate
 - **Best practice:** Combine both - hold for baseline, tap for bursts
 - **Expert play:** Pre-tap before drag starts (build to 60% instantly), then maintain with hold
+- **Weight recognition:** If tension jumps quickly when you start holding = heavy item = DANGER
 
 ---
 
@@ -254,10 +270,11 @@ Distance: 15m
 Session time: Not a concern
 
 Strategy: Hold with poor management
-- Heavy item: Hold for 3 seconds → Tension at 80% already! (fast heavy build)
-- Current surge triggers → Tension jumps to 92%!
+- Heavy item (2.0x multiplier): Hold for 3 seconds → Tension at 80% already! (30%/s build rate = fast!)
+- Current surge triggers → Tension jumps to 92%! (surge multiplies already-fast build)
 - Player doesn't release → tension hits 100%
 - Result: INSTANT RIP-OFF - Magnet detaches, item lost
+- Lesson: Heavy weight = high resistance = rapid tension = must be careful with hold!
 ```
 
 **Example 4: Heavy Item, Cautious Recovery**
@@ -268,7 +285,8 @@ Distance: 15m
 Same scenario but better response:
 
 Strategy: Release during surge, tap recovery
-- Hold for 2.5 seconds → Tension at 70% (recognizes fast build = heavy item)
+- Hold for 2.5 seconds → Tension at 70% (recognizes FAST BUILD = heavy item signature!)
+- Player thinks: "Whoa, tension building too fast, this is heavy - be careful!"
 - Current surge triggers → Tension jumping toward 90%
 - Player releases immediately → tension decays
 - Waits for surge to end (tension at 60%)
@@ -499,11 +517,29 @@ Higher tension when you hit snag = harder mini-game to clear it. Punishes reckle
   - Keep line and magnet (no equipment loss)
   - Can cast again immediately
   - Session continues
-- **30% chance:** Line snaps (hard fail)
-  - Magnet + item lost
-  - Line breaks (must buy replacement)
-  - Lose line length (e.g., 20m → 15m until repaired)
-  - Session continues with reduced casting range
+- **30% chance:** Line snaps (hard fail - equipment damage)
+  - **Immediate consequences:**
+    - Magnet + item both lost (fall into water)
+    - Line breaks at stress point
+    - Lose 5m of line length (e.g., 20m → 15m, 25m → 20m)
+    - Audio: Loud snap sound, line whip effect
+    - Visual: Broken line animation, player reels in stub
+  - **Ongoing handicap:**
+    - Reduced casting range for remainder of session
+    - Far quadrants become inaccessible (Q7-Q9 locked if range < 15m)
+    - Mid quadrants locked if range < 8m
+    - Forces fishing in near/edge quadrants only
+    - Session continues with handicap
+  - **Repair required:**
+    - Must visit shop between sessions to repair
+    - Repair cost: $100-200 (based on line quality)
+    - Instant repair (no chunk time consumed)
+    - Restored to previous length after payment
+  - **Strategic lesson:**
+    - "Don't hit red zone in tug mini-game"
+    - Economic pressure without "game over"
+    - Can still complete session, just less efficiently
+    - Risk/reward: continue session with handicap vs end early
 
 **Difficulty Scaling:**
 
@@ -516,10 +552,52 @@ Higher tension when you hit snag = harder mini-game to clear it. Punishes reckle
 
 **Retry Mechanism:**
 
-- Unlimited retries for MVP
-- Each missed attempt: tension continues building (pressure increases)
-- After 2-3 missed attempts, tension likely near 100% → must succeed or rip-off
-- Player can choose to release tension and abandon item instead
+**Unlimited Retries - Natural Pressure System:**
+
+- No arbitrary retry limit (no "3 strikes" rule)
+- Tension continues building during ALL retry attempts
+- Creates organic pressure without artificial gates
+
+**Pressure Escalation:**
+
+- **1st miss:** Tension continues climbing (e.g., 70% → 80%)
+- **2nd miss:** Tension near danger zone (e.g., 80% → 92%)
+- **3rd miss:** Tension at critical level (e.g., 92% → 99%)
+- **Next attempt:** Must succeed or tension hits 100% = instant rip-off
+
+**Skill Expression:**
+
+- Skilled players: Clear snag in 1-2 attempts, low tension cost
+- Learning players: Get multiple chances, face mounting stakes
+- Panicked players: Tension builds faster if they were holding when snagged
+- Strategic players: Release tension immediately on snag, buy more retry time
+
+**Player Options During Retries:**
+
+- **Continue attempts:** Try to hit green zone before tension reaches 100%
+- **Release and abandon:** Drop tension by releasing hold, give up on item
+- **Accept failure:** Do nothing, let tension hit 100%, lose item
+
+**Example Scenario:**
+
+```
+Player snagged at 60% tension
+Tension building at 120%/s (8x rate)
+
+Attempt 1: Miss (grey zone) → Tension now 75%
+Attempt 2: Miss (grey zone) → Tension now 88%
+Attempt 3: Miss (grey zone) → Tension now 97%
+Attempt 4: Player has ~0.2 seconds before 100%
+  → Must hit green zone NOW or instant rip-off
+  → High stakes moment: "One more chance!"
+```
+
+**Design Philosophy:**
+
+- No artificial "game over" after X attempts
+- Tension IS the retry limit (physics-based consequence)
+- Player always has agency until tension hits 100%
+- Creates memorable clutch moments ("I cleared it on the 4th try at 99% tension!")
 
 **Strategic Element:**
 
@@ -566,22 +644,65 @@ Higher tension when you hit snag = harder mini-game to clear it. Punishes reckle
 
 **Hard failure (line snap):**
 
-- Only occurs in tug mini-game red zone
-- 30% chance when hitting red
-- Lose line segment (equipment damage)
-- More punishing, encourages careful play
+**Occurrence:** Only in tug mini-game red zone (30% chance)
+
+**Immediate Impact:**
+
+- Line breaks, magnet + item lost
+- Lose 5m of line length instantly
+- Example: 20m line → 15m line for rest of session
+
+**Session Consequences:**
+
+- Quadrant accessibility reduced:
+  - 15m line: Can't reach Q7-Q9 (far quadrants locked)
+  - 10m line: Can't reach Q4-Q9 (mid + far locked)
+  - 5m line: Only Q0-Q3 accessible (edge + near only)
+- Must adapt strategy to remaining quadrants
+- Session timer continues (can keep fishing)
+- Valuable teaching moment: "Red zone = bad"
+
+**Repair System:**
+
+- Visit shop after session ends
+- Pay repair cost:
+  - Basic line: $100
+  - Reinforced line: $150
+  - Premium line: $200
+- Repair is instant (no chunk time consumed)
+- Line restored to full length
+- Can upgrade during repair (pay difference)
+
+**Strategic Considerations:**
+
+- **Continue session?** Depends on remaining time and accessible quadrants
+- **Cut losses?** End session early, minimize wasted time in limited zones
+- **Economic pressure:** Repair cost + reduced efficiency = real punishment
+- **Not "game over":** Harsh consequence but recoverable
+
+**Player Learning:**
+
+- First line snap: Shocking, teaches importance of green zone
+- Subsequent snaps: Reinforces careful play during snags
+- Late-game: Rare (players skilled at tug mini-game)
 
 ---
 
 ## Weight Feedback During Drag
 
-**Tension Build Resistance (INVERTED - Heavy Feels Heavy):**
-Heavy items make tension build FASTER (realistic resistance feel):
+**Tension Build Physics (Heavy = Fast Tension Build):**
 
-- **Light items (5kg):** Tension reaches 50% slowly (~5-6 seconds) - Gentle, easy pull
-- **Medium items (20kg):** Tension reaches 50% moderately (~4 seconds) - Standard feel
-- **Heavy items (45kg):** Tension reaches 50% quickly (~2.8 seconds) - Strong resistance
-- **Very heavy items (80kg):** Tension reaches 50% very quickly (~2 seconds) - Immediate heavy feel
+**REALISTIC PHYSICS MODEL:**
+Heavy objects resist movement, so when you pull, force accumulates as tension in the rope BEFORE the object moves. Light objects move easily, so force converts to motion instead of building tension.
+
+**Result:** Heavy items make tension build FASTER than light items.
+
+**Tension Build Speed by Weight:**
+
+- **Light items (5kg, 0.7x):** Tension reaches 50% slowly (~5-6 seconds) - Gentle, easy pull, force → motion
+- **Medium items (20kg, 1.0x):** Tension reaches 50% moderately (~4 seconds) - Standard feel
+- **Heavy items (45kg, 1.4x):** Tension reaches 50% quickly (~2.8 seconds) - Object resists, tension accumulates
+- **Very heavy items (80kg, 2.0x):** Tension reaches 50% very quickly (~2 seconds) - Massive resistance, rapid tension spike
 - Player feels "weight" through faster tension bar fill
 - **Key insight:** If tension builds fast when you start pulling, it's heavy - be careful!
 
@@ -713,9 +834,12 @@ Tension Modifier (based on current tension %):
 3. **Snag triggers:** Forward progress = 0 m/s
 4. Audio: Metal scrape/clunk sound
 5. Visual: Ripple stops moving, tension bar flashes red
-6. Tension build rate changes: 25%/sec → 200%/sec
+6. **Tension build rate spikes:** Normal rate × 8-10x modifier
+   - Example at 30% tension: 15%/s × 8 = 120%/s → hits 100% in 0.58s (70 tension points / 120)
+   - Example at 60% tension: 15%/s × 10 = 150%/s → hits 100% in 0.27s (40 tension points / 150)
+   - Example at 85% tension: 15%/s × 10 = 150%/s → hits 100% in 0.10s (15 tension points / 150)
 
-**Crisis Window (~0.5-1 second):**
+**Crisis Window (0.3-0.8 seconds depending on current tension):**
 Player must choose:
 
 **Option A: Release Tension (Safe)**
@@ -735,9 +859,12 @@ Player must choose:
 
 **Option C: Do Nothing (Failure)**
 
-- Tension continues building at 200%/sec
-- Hits 100% in ~0.2-0.5 seconds
-- Instant magnet rip-off
+- Tension continues building at 8-10x rate (120-150%/s)
+- Time to 100% depends on current tension when snagged:
+  - Low tension (30%): ~0.5-0.6 seconds to failure
+  - Medium tension (60%): ~0.3 seconds to failure
+  - High tension (85%): ~0.1 seconds to failure
+- Instant magnet rip-off when 100% reached
 - Item lost, restart cast
 
 **Snag Clearing Success:**
@@ -925,18 +1052,6 @@ Item distance reaches 0m (arrived at shore/bank)
 ---
 
 ## Open Questions
-
-**Q4:** Should we show accumulated slip value to player after drag completes (at lift phase start), or keep it hidden until surface break for maximum "oh shit" reveal?
-
-- **Recommendation:** Keep hidden until surface break - better dramatic reveal
-
-**Q5:** For the tug mini-game: should there be a limit to retry attempts (e.g., 3 tries then auto-fail), or unlimited?
-
-- **Recommendation:** Unlimited for MVP, but tension building during retries creates natural pressure
-
-**Q6:** How punishing should line snap be? Does it end session immediately, or just reduce casting range until repaired?
-
-- **Recommendation:** Reduce range, session continues - less frustrating, maintains economic pressure (repair costs)
 
 **Q7:** Should current surge events be completely random or telegraphed slightly (ripple pattern changes 2s before)?
 

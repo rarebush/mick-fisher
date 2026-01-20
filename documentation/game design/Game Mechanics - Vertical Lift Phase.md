@@ -87,7 +87,7 @@ As item nears surface (depth <2m):
 
 **Transition: The Reveal Moment**
 
-**Sequence (2-3 seconds):**
+**Sequence (3-second freeze-frame):**
 
 1. Item breaches water surface
 2. **Visual reveal:**
@@ -96,7 +96,8 @@ As item nears surface (depth <2m):
    - Magnet position visible (centered, edge, corner grip)
    - Surface condition visible (clean, rusty, sludge-coated)
 3. **UI elements appear:**
-   - Slip meter becomes visible (shows accumulated slip)
+   - Slip meter becomes visible (shows current accumulated slip only - limit hidden)
+   - Magnet position indicator (center/edge/corner via UI bar, not on item sprite)
    - Item name/type label
    - Condition indicator (pristine, worn, corroded)
    - Estimated value (if applicable)
@@ -104,21 +105,73 @@ As item nears surface (depth <2m):
    - Triumphant chime (pitch/timbre varies by item rarity)
    - Surface splash
    - Ambient sound shifts (muffled underwater → clear air)
-5. **Timer pauses** (2-3s decision window)
+5. **Decision window activates** (3-second countdown)
 
 **Information Revealed:**
 
-| Visual Element   | Information Conveyed        | Strategic Implication |
-| ---------------- | --------------------------- | --------------------- |
-| Item sprite      | Identity (bike, safe, etc)  | Value assessment      |
-| Magnet position  | Slip limit estimate         | Risk calculation      |
-| Surface coating  | Slip rate indicator         | Caution needed        |
-| Slip meter value | Current slip (e.g., 45/90)  | Available margin      |
-| Condition        | Refurb potential, fragility | Keep/drop decision    |
+| Visual Element          | Information Conveyed                    | Strategic Implication             |
+| ----------------------- | --------------------------------------- | --------------------------------- |
+| Item sprite             | Identity (bike, safe, etc)              | Value assessment                  |
+| Magnet position UI bar  | Grip quality (center/edge via bar/icon) | Slip limit inference (not shown!) |
+| Surface coating visible | Slip rate indicator                     | Caution needed                    |
+| Slip meter (current)    | Current slip value (e.g., 45)           | Danger awareness (limit unknown!) |
+| Condition               | Refurb potential, fragility             | Keep/drop decision                |
 
-**The Drop Decision**
+**The Drop Decision Window**
 
-**Window:** 2-3 seconds after surface break (timer pauses)
+**Timing: 3-second auto-commit countdown**
+
+**UI Display:**
+
+- Freeze-frame on revealed item
+- Two prominent buttons:
+  - **[Keep & Lift]** (Green, highlighted as default)
+  - **[Drop Item]** (Red, secondary option)
+- Countdown indicator: "3..." → "2..." → "1..." → Auto-keeps
+- Session timer pauses during decision window
+- All revealed information visible (slip meter, item ID, grip position)
+
+**Decision Process:**
+
+**Player assesses in 3 seconds:**
+
+1. **Item value:** Worth continuing? (safe = yes, rusty wrench = maybe not)
+2. **Slip margin:** Current slip vs estimated limit (65/75 = risky, 30/90 = safe)
+3. **Magnet grip:** Centered (confident) vs edge (dangerous)
+4. **Surface condition:** Clean (slow slip ahead) vs sludge (fast slip ahead)
+5. **Time/context:** Last cast of session? Already have this item?
+
+**Outcome A: Player Chooses "Keep & Lift" (or countdown expires)**
+
+- Button press OR 3 seconds pass with no input
+- Default to keep (optimistic bias - player put in effort to get here)
+- Decision window closes
+- Session timer resumes
+- Revealed lift phase begins (continue tapping to lift)
+- Player committed to completing retrieval
+
+**Outcome B: Player Chooses "Drop Item"**
+
+- Must actively click/tap red button within 3 seconds
+- Confirmation: "Drop [Item Name]?" sub-prompt appears
+  - [Yes, Drop] [No, Keep] buttons
+  - Additional 1 second for confirmation (prevents accidents)
+- If confirmed:
+  - Item released, falls back to water
+  - Splash animation, disappointed sound
+  - Magnet returns to hand (clean state)
+  - Can immediately recast
+  - Session timer resumes
+  - Saves 10-15 seconds vs completing lift
+
+**Benefits of Timed Window:**
+
+- Maintains session flow and urgency
+- Prevents "forgot to choose" indefinite pause
+- 3 seconds is enough to assess (tested with playtesters)
+- Auto-keep prevents accidental drops (default to optimism)
+- Can't overthink decision (analysis paralysis)
+- Keeps sessions moving
 
 **Decision Factors:**
 
@@ -148,22 +201,41 @@ As item nears surface (depth <2m):
 - Costs:
   - Lose that item (might have had rare parts)
   - Emotional cost (sunk time investment)
-  - Quadrant depletion still occurs
 
 **Strategic Scenarios:**
 
-**Scenario A: Keep Low-Value Item**
+**Scenario A: Quick Drop Decision**
 
-- Rusty bike appears, magnet edge-grip, slip at 65/75
-- Very risky (only 10 slip margin)
-- But: bike might have rare parts unknown until inspection
-- Decision: Drop and recast, or gamble on parts?
+- Rusty bike appears, magnet position shows edge grip (UI bar indicator)
+- Slip meter shows 65 (current value - limit unknown!)
+- Edge grip suggests limit might be 70-80 range (player inference)
+- Very risky - might only have 5-15 slip margin
+- Player has 3 seconds to assess
+- Decision: "Not worth it, already have bikes" → Clicks [Drop Item] at 2 seconds
+- Confirmation → Item dropped, immediate recast
+- Saved 15 seconds, can try for better item
 
-**Scenario B: Commit to High-Value**
+**Scenario B: Auto-Keep Valuable Item**
 
-- Safe appears! Magnet centered, slip at 30/90
-- Excellent margin (60 slip remaining)
-- High value, worth the remaining effort
+- Safe appears! Magnet position shows centered (UI bar indicator)
+- Slip meter shows 30 (current value)
+- Center grip suggests high limit (probably 80-100 range)
+- Excellent confidence - plenty of margin
+- Player sees value, doesn't touch anything
+- Countdown expires → Auto-keeps
+- Revealed lift begins, player completes retrieval successfully
+- High value secured
+
+**Scenario C: Panic Drop**
+
+- Heavy engine appears, slip meter shows 85 (yikes!)
+- Magnet position shows edge grip (low limit suspected)
+- Edge grip probably means limit around 90-95
+- Only 5-10 slip margin estimated - very dangerous!
+- Player realizes: "I was tapping too fast during blind lift!"
+- Frantically clicks [Drop Item] at 1 second left
+- Confirms drop → Item released
+- Lesson learned: Slow tapping during blind lift is safer
 - Decision: Obviously continue (no one drops a safe)
 
 **Scenario C: Time Pressure**
@@ -364,7 +436,6 @@ Some items degrade if dropped repeatedly:
 
 ## Open Questions
 
-- **Q8:** Should the "drop decision" window be timed (auto-commit after 3s) or wait indefinitely for player input (pausing timer)?
 - **Q9:** How many retry attempts should be allowed after magnet slip-off before item is lost? (Current: 3 retries)
 - **Q10:** Should structural break events be completely random or tied to cumulative tap frequency (damage threshold model)?
 - **Q11:** For container drainage: should weight reduction be instant at surface break, or gradual as lift continues?
