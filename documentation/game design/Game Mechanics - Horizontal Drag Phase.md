@@ -19,7 +19,7 @@ Player pulls item horizontally through water toward shore/bank. Tension controls
 **2. Tap (Quick Jerk)**
 
 - Quick press-release (down/up within 200ms)
-- Immediately adds 10% tension (fixed chunk)
+- Immediately adds 10% tension (fixed increment)
 - Can tap repeatedly in quick succession
 - Used to rapidly build tension when needed
 
@@ -178,11 +178,11 @@ If hold duration ≤ 200ms: Treated as tap (jerk)
 
 **Tap Effect:**
 
-- **Instant tension increase: +10%** (fixed amount)
+- **Instant tension increase: +10%** (fixed increment)
 - No diminishing returns (always +10%, even at high tension)
 - No weight modifiers (same effect on all items)
 - Can tap repeatedly with no cooldown
-- Visual: Tension bar "jumps" up in discrete chunk
+- Visual: Tension bar "jumps" up in discrete increment
 - Audio: Sharp "tug" sound per tap
 - Haptic: Quick pulse on mobile
 
