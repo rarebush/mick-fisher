@@ -1,0 +1,19 @@
+.sidebar {
+  background: #2a2a2a;
+  border-radius: 8px;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+}
+
+@media (orientation: portrait) {
+  .sidebar {
+    flex-direction: row;
+    justify-content: space-between;
+    overflow-x: auto;
+    overflow-y: hidden;
+    border-radius: 0;
+  }
+}

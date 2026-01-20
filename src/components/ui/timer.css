@@ -1,0 +1,40 @@
+.timer {
+  background: rgba(0, 0, 0, 0.3);
+  padding: 16px;
+  border-radius: 8px;
+  min-width: 200px;
+}
+
+.timer h3 {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 8px;
+  opacity: 0.6;
+  font-weight: 500;
+}
+
+.time-display {
+  font-size: 48px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: #4ade80;
+}
+
+.time-display.warning {
+  color: #fbbf24;
+}
+
+.time-display.danger {
+  color: #ef4444;
+}
+
+@media (orientation: portrait) {
+  .timer {
+    flex: 0 0 auto;
+  }
+
+  .time-display {
+    font-size: 36px;
+  }
+}
