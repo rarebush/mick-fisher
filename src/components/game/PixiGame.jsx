@@ -4,47 +4,56 @@ import "./pixi-game.css";
 
 function PixiGame() {
   const canvasRef = useRef(null);
-  const appRef = useRef(null);
+  const pixiAppRef = useRef(null);
   const containerRef = useRef(null);
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
     if (!canvasRef.current || !containerRef.current) return;
 
+    let cancelled = false;
     const { clientWidth, clientHeight } = containerRef.current;
 
-    // Create and initialize
+    // Create PixiApp instance
     const pixiApp = new PixiApp(canvasRef.current, clientWidth, clientHeight);
-    appRef.current = pixiApp;
+    pixiAppRef.current = pixiApp;
 
-    pixiApp.initialize().then(() => {
-      if (!pixiApp.isDestroyed) {
-        setReady(true);
-      }
-    });
+    // Initialize asynchronously
+    pixiApp
+      .initialize()
+      .then(() => {
+        // Check if component unmounted during initialization
+        if (!cancelled && !pixiApp.isDestroyed) {
+          setReady(true);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.error("PixiJS init failed:", err);
+        }
+      });
 
     // Resize handler
     const handleResize = () => {
-      if (
-        containerRef.current &&
-        appRef.current &&
-        !appRef.current.isDestroyed
-      ) {
+      if (pixiAppRef.current && !pixiAppRef.current.isDestroyed) {
         const { clientWidth, clientHeight } = containerRef.current;
-        appRef.current.resize(clientWidth, clientHeight);
+        pixiAppRef.current.resize(clientWidth, clientHeight);
       }
     };
 
     window.addEventListener("resize", handleResize);
 
-    // Cleanup
+    // Cleanup function
     return () => {
+      cancelled = true; // Mark this effect as cancelled
       window.removeEventListener("resize", handleResize);
-      if (appRef.current) {
-        appRef.current.destroy();
+
+      if (pixiAppRef.current) {
+        pixiAppRef.current.destroy();
+        pixiAppRef.current = null;
       }
     };
-  }, []);
+  }, []); // Empty deps - only run once
 
   return (
     <div ref={containerRef} className="pixi-container">

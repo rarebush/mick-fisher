@@ -155,8 +155,14 @@ export class PixiApp {
   destroy() {
     console.log("PixiApp.destroy() called");
     this.isDestroyed = true;
+
     if (this.app) {
-      this.app.destroy(true, { children: true, texture: true });
+      // Safely destroy - check if renderer exists
+      try {
+        this.app.destroy(true, { children: true, texture: true });
+      } catch (err) {
+        console.warn("Error during PixiJS destroy:", err);
+      }
       this.app = null;
     }
   }
