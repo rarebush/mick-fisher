@@ -47,6 +47,7 @@ export function updateDragMechanics(
   lastDragUpdateTime,
   dragStartTime,
   onDragFailure,
+  onDragSuccess,
 ) {
   if (!app || !gameStore || !sessionStore) {
     return { lastDragUpdateTime: null, dragStartTime: null };
@@ -93,6 +94,8 @@ export function updateDragMechanics(
       magnetPosition: dragState.magnetPosition,
       magnetContactWidth: dragState.magnetContactWidth,
       slipDirection: dragState.slipDirection,
+      velocity: dragState.velocity,
+      accelerationTime: dragState.accelerationTime,
     },
     item,
     deltaTime,
@@ -103,7 +106,12 @@ export function updateDragMechanics(
     sessionStore.getState().updateDragTension(newTension);
     sessionStore
       .getState()
-      .updateDragProgress(result.distance, result.magnetPosition);
+      .updateDragProgress(
+        result.distance,
+        result.magnetPosition,
+        result.velocity,
+        result.accelerationTime,
+      );
   }
 
   // Verbose logging (~2% of frames)
@@ -148,6 +156,11 @@ export function updateDragMechanics(
 
       // Update debug overlay to remove marker
       debugOverlay?.updateEngagedItems(currentLocation);
+    }
+
+    // Clean up rope on success
+    if (onDragSuccess) {
+      onDragSuccess();
     }
 
     // Complete cast

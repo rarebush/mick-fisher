@@ -4,6 +4,20 @@
 
 #### Mechanics & Systems:
 
+**Q40 (NEW - MVP FEATURE):** Dual-plane coordinate system for water surface vs river bed depth simulation
+
+- **Background:** Currently, cast animations have a placeholder "sinking" wait period that creates physics discontinuities. Need proper depth model.
+- **Proposed Solution:** Implement dual-plane coordinate system:
+  - **Surface Plane (Y=80):** Where player casts, sees bubbles, rope endpoints visible
+  - **River Bed Plane (Y=80+depth):** Where items actually exist, depth varies by location
+  - **Translation:** Cast click at surface → item spawns at bed (Y + depth offset)
+  - **Rope Physics:** Naturally represents depth (longer rope = deeper water)
+  - **Visual Feedback:** Bubbles animate from bed → surface, only visible at surface
+  - **Engaged Items:** Store bed coordinates, translate to surface for UI elements
+  - **Lift Phases:** Use depth for mechanics (Phase A/B timing, player height above surface)
+- **Status:** Planned for MVP implementation after core rope physics complete
+- **Impact:** Eliminates arbitrary wait periods, enables realistic depth variation, sets foundation for lift mechanics
+
 **Q7:** Should current surge events be completely random or telegraphed slightly (ripple pattern changes 2s before)?
 
 **Q9:** How many retry attempts should be allowed after magnet slip-off before item is lost? (Current: 3 retries)

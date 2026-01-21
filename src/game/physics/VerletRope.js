@@ -27,8 +27,49 @@ export class VerletRope {
 
   /**
    * Update physics simulation (call once per frame)
+   * @param {number} tension - Current tension (0-100), reduces gravity at high values
    */
-  update() {
+  update(tension = 0) {
+    // Calculate gravity direction perpendicular to rope line
+    // Scaled by how horizontal the rope is (for top-down view perspective)
+    let gravityX = 0;
+    let gravityY = 0;
+
+    if (this.pinStart && this.pinEnd) {
+      // Vector from player to magnet
+      const dx = this.pinStart.x - this.pinEnd.x;
+      const dy = this.pinStart.y - this.pinEnd.y;
+      const length = Math.sqrt(dx * dx + dy * dy);
+
+      if (length > 0.01) {
+        // Calculate how "horizontal" the rope is (0 = vertical, 1 = horizontal)
+        // More horizontal = more visible sag
+        const horizontalness = Math.abs(dx) / length;
+
+        // Scale gravity by horizontalness (vertical ropes have minimal visible sag)
+        let effectiveGravity = this.gravity * horizontalness;
+
+        // Reduce gravity at high tension (tight rope should be straight)
+        // At 0% tension: full gravity sag
+        // At 100% tension: no gravity (perfectly straight)
+        const tensionRatio = tension / 100;
+        effectiveGravity *= 1 - tensionRatio * 0.9; // Reduce up to 90% at max tension
+
+        // Perpendicular vector (rotated 90 degrees)
+        const perpX = -dy / length;
+        const perpY = dx / length;
+
+        // Choose the perpendicular direction that has a positive Y component (points down)
+        if (perpY < 0) {
+          gravityX = -perpX * effectiveGravity;
+          gravityY = -perpY * effectiveGravity;
+        } else {
+          gravityX = perpX * effectiveGravity;
+          gravityY = perpY * effectiveGravity;
+        }
+      }
+    }
+
     // Verlet integration - calculate new positions based on velocity and gravity
     for (let i = 0; i < this.numSegments; i++) {
       const point = this.points[i];
@@ -42,13 +83,13 @@ export class VerletRope {
       prev.x = point.x;
       prev.y = point.y;
 
-      // Update position: new = current + velocity + acceleration
-      point.x += vx;
-      point.y += vy + this.gravity;
+      // Update position: new = current + velocity + acceleration (perpendicular gravity)
+      point.x += vx + gravityX;
+      point.y += vy + gravityY;
     }
 
     // Apply constraints multiple times for stability (relaxation iterations)
-    for (let iteration = 0; iteration < 3; iteration++) {
+    for (let iteration = 0; iteration < 10; iteration++) {
       this.applyConstraints();
     }
   }
@@ -168,5 +209,53 @@ export class VerletRope {
 
     this.pinStart = { x: startX, y: startY };
     this.pinEnd = { x: endX, y: endY };
+  }
+
+  /**
+   * Adjust segment length based on actual distance between endpoints
+   * Keeps rope taut as item gets closer during drag
+   */
+  adjustLengthToDistance(startX, startY, endX, endY, tension = 0) {
+    const actualDistance = Math.sqrt(
+      (endX - startX) ** 2 + (endY - startY) ** 2,
+    );
+
+    // Calculate slack based on tension (0-100)
+    // At 0% tension: rope is 1.5% longer (very minimal slack)
+    // At 100% tension: rope matches actual distance (perfectly taut)
+    const tensionRatio = tension / 100;
+    const slackMultiplier = 1.015 - 0.015 * tensionRatio; // 1.015 at 0%, 1.0 at 100%
+
+    const ropeLength = actualDistance * slackMultiplier;
+
+    // Divide rope length by number of segments to get segment length
+    this.segmentLength = Math.max(1, ropeLength / (this.numSegments - 1));
+
+    // Debug logging
+    if (!this.lastDistanceLog || Date.now() - this.lastDistanceLog > 500) {
+      const totalRopeLength = this.segmentLength * (this.numSegments - 1);
+      console.log(
+        "[ROPE] Straight distance:",
+        actualDistance.toFixed(1),
+        "| Rope length:",
+        totalRopeLength.toFixed(1),
+        "| Slack:",
+        ((totalRopeLength / actualDistance - 1) * 100).toFixed(1) + "%",
+        "| Tension:",
+        tension.toFixed(0) + "%",
+      );
+      this.lastDistanceLog = Date.now();
+    }
+  }
+
+  /**
+   * Clean up rope resources
+   */
+  destroy() {
+    // Clear all point arrays
+    this.points = [];
+    this.prevPoints = [];
+    this.pinStart = null;
+    this.pinEnd = null;
   }
 }

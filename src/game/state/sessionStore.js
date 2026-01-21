@@ -26,6 +26,8 @@ const useSessionStore = create((set, get) => ({
     dragMemory: [], // Array of {timestamp, tension, distance} for pattern detection
     castPosition: { x: 0, y: 0 }, // Where the cast landed (for visual effects)
     quadrant: 0, // Which quadrant was cast into
+    velocity: 0, // Current drag velocity (m/s) - for easing acceleration
+    accelerationTime: 0, // Time since last speed change (for easing)
   },
 
   // Lift phase state
@@ -84,6 +86,7 @@ const useSessionStore = create((set, get) => ({
     magnetContactWidth = 6,
     castPosition = { x: 0, y: 0 },
     quadrant = 0,
+    initialTension = 10, // Tension from end of cast animation
   ) => {
     // Determine slip direction based on initial position
     const distanceToLeftEdge = magnetPosition;
@@ -94,7 +97,7 @@ const useSessionStore = create((set, get) => ({
       isDragging: false, // Reset to ensure no auto-dragging
       dragState: {
         active: true,
-        tension: 0,
+        tension: initialTension, // Use tension from cast animation
         distance,
         totalDistance: distance,
         magnetPosition,
@@ -128,12 +131,19 @@ const useSessionStore = create((set, get) => ({
     });
   },
 
-  updateDragProgress: (distance, magnetPosition) => {
+  updateDragProgress: (
+    distance,
+    magnetPosition,
+    velocity,
+    accelerationTime,
+  ) => {
     set((state) => ({
       dragState: {
         ...state.dragState,
         distance: Math.max(0, distance),
         magnetPosition: magnetPosition, // Allow position to go beyond 0-100 for slip-off detection
+        velocity: velocity || 0,
+        accelerationTime: accelerationTime || 0,
       },
     }));
   },

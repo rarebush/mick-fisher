@@ -116,13 +116,16 @@ export function calculateDragSpeed(tension, itemWeight = 10) {
   else if (tension >= 71) speedMultiplier = 1.6;
   else if (tension >= 51) speedMultiplier = 1.2;
   else if (tension >= 31) speedMultiplier = 0.8;
-  else if (tension >= 1) speedMultiplier = 0.45;
+  else if (tension >= 10) speedMultiplier = 0.45;
+  else if (tension > 0) speedMultiplier = 0.45 * (tension / 10); // Linear scale from 0-10%
 
-  // Weight resistance (heavier = slower)
-  const weightModifier = Math.max(0.5, Math.min(1.5, 10 / itemWeight));
+  // Weight resistance (heavier = slower, but less punishing)
+  // Design doc shows 1.0x for medium items (10-30kg)
+  const weightModifier = Math.max(0.7, Math.min(1.3, 12 / itemWeight));
 
-  // Base drag speed (meters per second at optimal conditions)
-  const BASE_DRAG_SPEED = 0.6; // Reduced from 2.0 for balanced gameplay
+  // Base drag speed (meters per second at 1.0x multiplier)
+  // Design doc shows speed ranges: 0.3-0.6 (low), 0.6-1.0 (med), 1.0-1.4 (high), 1.4-1.8 (danger), 1.8-2.0 (extreme)
+  const BASE_DRAG_SPEED = 1.3; // Tuned to match design doc ranges now that velocity persistence works
 
   return speedMultiplier * weightModifier * BASE_DRAG_SPEED;
 }

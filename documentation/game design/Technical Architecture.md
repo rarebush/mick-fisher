@@ -389,3 +389,146 @@ this.holdDetectionTimeout = setTimeout(() => {
 - Cleaner separation of concerns
 
 **For full input system documentation, see:** [Technical Architecture - Input System](Technical%20Architecture%20-%20Input%20System.md)
+
+---
+
+## Coordinate System & Depth Model
+
+### Dual-Plane Architecture (MVP Feature - Planned)
+
+**Problem Statement:**
+
+The game world conceptually operates in two distinct spatial planes:
+
+1. **Water Surface:** Where player sees ripples, bubbles, rope endpoint
+2. **River Bed:** Where items actually rest, depth varies by location
+
+Currently, casting animations use placeholder wait periods that create physics discontinuities. A proper depth model is needed to:
+
+- Eliminate arbitrary animation delays
+- Enable realistic depth variation between locations
+- Support future lift phase mechanics (Phase A/B timing based on depth)
+- Allow rope physics to naturally represent depth
+
+**Proposed Coordinate System:**
+
+```
+Screen Space (PixiJS Canvas):
+┌─────────────────────────────────────────┐
+│  Player/Shore (0, 80)                    │ ← Surface Plane Y=80
+│              ╲                           │
+│               ╲ Rope                     │
+│                ╲                         │
+│                 ╲                        │
+│  Water Surface   ● ← Cast Click         │ ← Y=80 (visual)
+│  (ripples here)  │                       │
+│                  │ Depth Offset          │
+│                  ↓ (varies by location)  │
+│                  ● Item Location         │ ← Y=80+depth (actual)
+│             River Bed                    │
+└─────────────────────────────────────────┘
+
+Plane Translation:
+- Cast at (x, 80) → Item spawns at (x, 80+depth)
+- Depth varies: Shallow Creek (depth=50px), Deep River (depth=200px)
+- Rope length naturally shows depth: longer = deeper
+```
+
+**Coordinate Translation:**
+
+```javascript
+// When player casts at surface coordinates
+function handleCastClick(surfaceX, surfaceY) {
+  const currentLocation = locationStore.getCurrentLocation();
+  const depth = currentLocation.depth; // e.g., 150px
+
+  // Translate to river bed coordinates
+  const bedX = surfaceX;
+  const bedY = surfaceY + depth; // Item spawns below surface
+
+  // Spawn item at bed
+  spawnItem(bedX, bedY);
+
+  // Rope naturally connects surface (player) to bed (item)
+  // Rope length = distance from (playerX, 80) to (bedX, bedY)
+}
+
+// When saving engaged item position
+function saveEngagedItem(bedX, bedY) {
+  // Store actual bed coordinates
+  engagedItems.push({ x: bedX, y: bedY });
+}
+
+// When rendering bubbles (visual feedback only)
+function renderBubbles(bedX, bedY, surfaceY) {
+  // Animate bubbles from bed → surface
+  animateBubbleRise(bedX, bedY, bedX, surfaceY);
+
+  // Only show bubble sprite at surface (not during rise)
+  showBubbleSprite(bedX, surfaceY);
+}
+```
+
+**Depth Variation by Location:**
+
+| Location Type  | Depth (px) | Rope Length @ 5m Distance | Visual Impact             |
+| -------------- | ---------- | ------------------------- | ------------------------- |
+| Shallow Creek  | 50px       | ~180px                    | Rope barely visible       |
+| Urban Canal    | 100px      | ~200px                    | Moderate slack            |
+| Deep River     | 200px      | ~280px                    | Significant depth visible |
+| Flooded Quarry | 300px      | ~360px                    | Very long rope            |
+
+**Rope Physics Integration:**
+
+```javascript
+// Cast animation sets rope endpoints
+const playerPos = { x: 200, y: 80 }; // Surface
+const itemPos = { x: 350, y: 80 + 150 }; // Bed (depth=150)
+
+// Rope physics naturally represents depth
+rope.setPlayerPosition(playerPos.x, playerPos.y);
+rope.setMagnetPosition(itemPos.x, itemPos.y);
+rope.update(); // Slack/sag based on actual distance
+
+// No artificial "sinking" delay needed - rope just draws from surface to bed
+```
+
+**Lift Phase Integration (Future):**
+
+During lift phases, depth affects mechanics:
+
+```javascript
+// Phase A (Hidden Lift): Item moves from bed toward surface
+const liftProgress = (depth - currentDepth) / depth; // 0-100%
+const phaseADuration = depth / 20; // Deeper = longer Phase A
+
+// Phase B (Revealed Lift): Item breaks surface, skill phase begins
+if (currentDepth <= 0) {
+  transitionToPhaseB(); // Item visible, slip mechanics active
+}
+
+// Player plane (future): Above water surface for retrieval
+const playerHeight = -50; // 50px above water
+// Creates 3 planes: Player (-50) → Surface (80) → Bed (80+depth)
+```
+
+**Implementation Status:**
+
+- **Current:** Placeholder 500ms wait removed; cast → drag transition is immediate
+- **Rope Physics:** Complete - supports arbitrary endpoint distances
+- **Next Steps:**
+  1. Add `depth` property to location data
+  2. Implement coordinate translation in cast mechanics
+  3. Update engaged item storage to use bed coordinates
+  4. Add bubble rise animations (bed → surface)
+  5. Integrate depth into lift phase timing
+
+**Benefits:**
+
+- ✅ Eliminates animation discontinuities (no more freeze during transition)
+- ✅ Realistic depth variation between locations
+- ✅ Rope physics naturally show depth (no special cases)
+- ✅ Foundation for lift phase mechanics
+- ✅ Supports future 3-plane system (player/surface/bed)
+
+---

@@ -30,6 +30,7 @@ export async function executeCastSequence(
   y,
   quadrant,
   getItemPosition,
+  pixiApp = null, // PixiApp instance for immediate rope storage
 ) {
   // Show spawn table for this quadrant in debug overlay
   const currentLocation =
@@ -53,7 +54,20 @@ export async function executeCastSequence(
   }
 
   // Animate casting line and get rope for continued rendering
-  const { rope, line, playerX, playerY } = await animateCastLine(app, x, y);
+  const { rope, line, playerX, playerY, finalTension } = await animateCastLine(
+    app,
+    x,
+    y,
+    gameStore,
+  );
+
+  // Store rope on PixiApp instance immediately for ticker updates
+  if (pixiApp) {
+    pixiApp.dragRope = rope;
+    pixiApp.dragLine = line;
+    pixiApp.dragPlayerX = playerX;
+    pixiApp.dragPlayerY = playerY;
+  }
 
   // Visual feedback - ripple at landing point
   createRipple(app, x, y);
@@ -86,9 +100,6 @@ export async function executeCastSequence(
   if (gameStore) {
     const { startCast, setCaughtItem, setGamePhase } = gameStore.getState();
     startCast(quadrant, castResult.distance, castResult.depth);
-
-    // Simulate cast/sink animation
-    await new Promise((resolve) => setTimeout(resolve, 500));
 
     if (castResult.success) {
       // Item found!
@@ -135,7 +146,7 @@ export async function executeCastSequence(
         ? castResult.itemPosition
         : { x, y };
 
-      // Start drag phase with magnet position
+      // Start drag phase with magnet position and final cast tension
       const { startDrag } = sessionStore.getState();
       startDrag(
         castResult.distance,
@@ -143,6 +154,7 @@ export async function executeCastSequence(
         castResult.magnetContactWidth,
         initialPosition,
         quadrant,
+        finalTension || 10, // Use final cast tension or default to 10
       );
       setGamePhase("dragging");
 

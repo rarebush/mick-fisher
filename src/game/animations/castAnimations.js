@@ -10,7 +10,7 @@ import { VerletRope } from "../physics/VerletRope.js";
  * Animate casting line from shore to target position with rope physics
  * Returns the rope and graphics object to keep visible during drag
  */
-export function animateCastLine(app, targetX, targetY) {
+export function animateCastLine(app, targetX, targetY, gameStore) {
   return new Promise((resolve) => {
     if (!app) {
       resolve({ rope: null, line: null });
@@ -22,7 +22,8 @@ export function animateCastLine(app, targetX, targetY) {
     const startY = 40; // Middle of shore area
 
     // Create Verlet rope (starts at player position)
-    const rope = new VerletRope(startX, startY, 15, 20);
+    // 30 segments of 10px each = twice as dense as 15 segments of 20px
+    const rope = new VerletRope(startX, startY, 30, 10);
 
     // Create graphics object for the line
     const line = new PIXI.Graphics();
@@ -47,6 +48,9 @@ export function animateCastLine(app, targetX, targetY) {
     let phase = "throwing"; // 'throwing' -> 'sinking' -> 'done'
     let sinkStartTime = 0;
 
+    // Tension animation: 40 (throw) -> 20 (extending) -> 10 (settled)
+    let currentTension = 40;
+
     const animate = (currentTime) => {
       if (!app) {
         if (line.parent) {
@@ -63,6 +67,12 @@ export function animateCastLine(app, targetX, targetY) {
         const progress = Math.min(elapsed / throwDuration, 1);
         const eased = 1 - Math.pow(1 - progress, 3); // Ease-out
 
+        // Animate tension: 40 -> 20 as rope extends
+        currentTension = 40 - 20 * progress;
+        if (gameStore) {
+          gameStore.getState().updateCastTension(currentTension);
+        }
+
         // Calculate magnet position along parabolic arc
         const magnetX = startX + (targetX - startX) * eased;
         const magnetY =
@@ -70,10 +80,19 @@ export function animateCastLine(app, targetX, targetY) {
           (targetY - startY) * eased -
           Math.sin(progress * Math.PI) * 50; // Arc height
 
+        // Adjust rope slack based on current tension
+        rope.adjustLengthToDistance(
+          startX,
+          startY,
+          magnetX,
+          magnetY,
+          currentTension,
+        );
+
         // Update rope physics
         rope.setMagnetPosition(magnetX, magnetY);
         rope.setPlayerPosition(startX, startY);
-        rope.update();
+        rope.update(currentTension);
 
         // Render rope
         renderRope(line, rope, 80); // 80 = water surface Y
@@ -89,19 +108,41 @@ export function animateCastLine(app, targetX, targetY) {
         const sinkElapsed = currentTime - sinkStartTime;
         const sinkProgress = Math.min(sinkElapsed / sinkDuration, 1);
 
+        // Animate tension: 20 -> 10 as rope settles with overshoot
+        currentTension = 20 - 10 * sinkProgress;
+        if (gameStore) {
+          gameStore.getState().updateCastTension(currentTension);
+        }
+
         // Keep magnet pinned at target, keep player pinned
         rope.setMagnetPosition(targetX, targetY);
         rope.setPlayerPosition(startX, startY);
 
+        // Adjust rope slack based on current tension
+        rope.adjustLengthToDistance(
+          startX,
+          startY,
+          targetX,
+          targetY,
+          currentTension,
+        );
+
         // Continue physics simulation as rope settles underwater
-        rope.update();
+        rope.update(currentTension);
 
         // Render rope with underwater opacity
         renderRope(line, rope, 80);
 
         if (sinkProgress >= 1) {
           // Done - return rope and line to keep visible during drag
-          resolve({ rope, line, playerX: startX, playerY: startY });
+          // Tension ends at ~10, which will be used to initialize drag
+          resolve({
+            rope,
+            line,
+            playerX: startX,
+            playerY: startY,
+            finalTension: currentTension,
+          });
           return; // Don't call requestAnimationFrame again
         }
       }
@@ -156,7 +197,7 @@ export function animateReelIn(
 
       rope.setMagnetPosition(magnetX, magnetY);
       rope.setPlayerPosition(playerX, playerY);
-      rope.update();
+      rope.update(0); // No tension during reel-in (slack rope)
 
       renderRope(line, rope, 80);
 
@@ -181,6 +222,9 @@ export function animateReelIn(
  * Exported for use during drag phase
  */
 export function renderRope(graphics, rope, waterSurfaceY) {
+  // Guard against destroyed or null graphics during async cleanup
+  if (!graphics || graphics.destroyed) return;
+
   graphics.clear();
 
   const points = rope.getPoints();

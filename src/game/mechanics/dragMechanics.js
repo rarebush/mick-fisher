@@ -74,6 +74,8 @@ export function updateDragState(currentState, item, deltaTime) {
     magnetPosition,
     magnetContactWidth,
     slipDirection,
+    velocity = 0,
+    accelerationTime = 0,
   } = currentState;
 
   // Calculate slip rate in units per second
@@ -93,6 +95,8 @@ export function updateDragState(currentState, item, deltaTime) {
       distance: distance,
       magnetPosition: newPosition,
       tension: tension,
+      velocity: velocity,
+      accelerationTime: accelerationTime,
       failed: true,
       failReason: "slip-failure",
     };
@@ -104,14 +108,37 @@ export function updateDragState(currentState, item, deltaTime) {
       distance: distance,
       magnetPosition: newPosition,
       tension: 100,
+      velocity: velocity,
+      accelerationTime: accelerationTime,
       failed: true,
       failReason: "tension-overload",
     };
   }
 
-  // Calculate distance progress
-  const dragSpeed = calculateDragSpeed(tension, item.weight);
-  const newDistance = Math.max(0, distance - dragSpeed * deltaTime);
+  // Calculate target speed based on tension
+  const targetSpeed = calculateDragSpeed(tension, item.weight);
+
+  // Ease velocity toward target speed with acceleration
+  const ACCELERATION_RATE = 25.0; // m/s² - how quickly speed changes (very fast for responsive feel)
+
+  let newVelocity = velocity;
+  let newAccelerationTime = accelerationTime + deltaTime;
+
+  if (Math.abs(targetSpeed - velocity) > 0.01) {
+    // Still accelerating/decelerating
+    const speedDiff = targetSpeed - velocity;
+    const maxChange = ACCELERATION_RATE * deltaTime;
+    const change =
+      Math.sign(speedDiff) * Math.min(Math.abs(speedDiff), maxChange);
+    newVelocity = velocity + change;
+  } else {
+    // At target speed
+    newVelocity = targetSpeed;
+    newAccelerationTime = 0;
+  }
+
+  // Calculate distance progress using current velocity (with easing)
+  const newDistance = Math.max(0, distance - newVelocity * deltaTime);
 
   // Check if drag complete (reached shore)
   if (newDistance <= 0) {
@@ -119,6 +146,8 @@ export function updateDragState(currentState, item, deltaTime) {
       distance: 0,
       magnetPosition: newPosition,
       tension: tension,
+      velocity: newVelocity,
+      accelerationTime: newAccelerationTime,
       complete: true,
     };
   }
@@ -127,6 +156,8 @@ export function updateDragState(currentState, item, deltaTime) {
     distance: newDistance,
     magnetPosition: newPosition,
     tension: tension,
+    velocity: newVelocity,
+    accelerationTime: newAccelerationTime,
     failed: false,
     complete: false,
   };

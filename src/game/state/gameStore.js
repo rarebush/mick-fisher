@@ -26,6 +26,7 @@ const useGameStore = create((set, get) => ({
     distance: 0, // meters from shore
     depth: 0, // meters underwater
     itemId: null, // ID of caught item (null if nothing)
+    tension: 0, // Rope tension throughout cast sequence (0-100)
   },
 
   // Last completed cast (for notifications)
@@ -47,7 +48,7 @@ const useGameStore = create((set, get) => ({
   startCast: (quadrant, distance, depth) => {
     set({
       gamePhase: "casting",
-      currentCast: { quadrant, distance, depth, itemId: null },
+      currentCast: { quadrant, distance, depth, itemId: null, tension: 40 }, // Start with throw momentum
     });
 
     // Increment cast counter
@@ -56,6 +57,13 @@ const useGameStore = create((set, get) => ({
         ...state.sessionStats,
         castsTotal: state.sessionStats.castsTotal + 1,
       },
+    }));
+  },
+
+  // Update tension during cast animation
+  updateCastTension: (tension) => {
+    set((state) => ({
+      currentCast: { ...state.currentCast, tension },
     }));
   },
 

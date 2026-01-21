@@ -194,6 +194,7 @@ export class PixiApp {
       y,
       quadrant,
       () => getItemPosition(this.app, this.sessionStore),
+      this, // Pass PixiApp instance for immediate rope storage
     );
 
     if (result) {
@@ -346,6 +347,18 @@ export class PixiApp {
         this.dragRope = null;
         this.dragLine = null;
       },
+      () => {
+        // Clean up rope on successful retrieval
+        if (this.dragRope) {
+          this.dragRope.destroy();
+          this.dragRope = null;
+        }
+        if (this.dragLine && this.dragLine.parent) {
+          this.dragLine.parent.removeChild(this.dragLine);
+          this.dragLine.destroy();
+          this.dragLine = null;
+        }
+      },
     );
 
     this.lastDragUpdateTime = result.lastDragUpdateTime;
@@ -354,19 +367,43 @@ export class PixiApp {
 
   // Ticker method for rope physics updates during drag
   tickerUpdateRope() {
-    if (!this.app || !this.dragRope || !this.dragLine) return;
+    if (!this.app || !this.dragRope || !this.dragLine) {
+      return;
+    }
 
-    const gamePhase = this.gameStore?.getState().gamePhase;
-    if (gamePhase !== "dragging") return;
+    // Get current item position (or use stored magnet position during settling)
+    let itemPos = getItemPosition(this.app, this.sessionStore);
 
-    // Get current item position
-    const itemPos = getItemPosition(this.app, this.sessionStore);
-    if (!itemPos) return;
+    // During settling period (after cast, before drag), use the magnet's stored position
+    if (!itemPos && this.dragRope.pinEnd) {
+      itemPos = { x: this.dragRope.pinEnd.x, y: this.dragRope.pinEnd.y };
+    }
+
+    if (!itemPos) {
+      return;
+    }
+
+    // Get current tension - use drag tension if dragging, otherwise use cast tension
+    const dragState = this.sessionStore?.getState().dragState;
+    const castState = this.gameStore?.getState().currentCast;
+    const tension = dragState?.active
+      ? dragState.tension
+      : castState?.tension || 10;
+
+    // Adjust rope length to match actual distance and tension
+    // Low tension = slack rope, high tension = taut rope
+    this.dragRope.adjustLengthToDistance(
+      this.dragPlayerX,
+      this.dragPlayerY,
+      itemPos.x,
+      itemPos.y,
+      tension,
+    );
 
     // Update rope physics with magnet at item position
     this.dragRope.setMagnetPosition(itemPos.x, itemPos.y);
     this.dragRope.setPlayerPosition(this.dragPlayerX, this.dragPlayerY);
-    this.dragRope.update();
+    this.dragRope.update(tension);
 
     // Render rope
     renderRope(this.dragLine, this.dragRope, 80);
