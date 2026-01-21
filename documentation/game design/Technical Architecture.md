@@ -354,3 +354,38 @@ app.ticker.add((ticker) => {
 - Reduce particle counts on lower-end devices
 - Adjust animation quality based on FPS monitoring
 - Fallback to simpler audio on devices with limited Web Audio API support
+
+## Input System Architecture
+
+All game inputs (pointer, touch, keyboard) are managed centrally through the `InputManager` class. This provides:
+
+- **Unified Input Handling**: Single source of truth for all input events
+- **Robust Tap/Hold Detection**: Timeout-based system (100ms threshold) prevents race conditions
+- **Multi-touch Prevention**: Active pointer tracking ensures only one input at a time
+- **Phase-Aware Routing**: Inputs handled differently based on game phase (idle, dragging, lift)
+- **Graceful Error Handling**: Window blur, pointer cancel, and edge cases properly managed
+
+**Key Implementation Details:**
+
+```javascript
+// Separate physical state from logical state
+this.isPointerDown = false; // Hardware: finger/mouse is down
+this.isHoldingForDrag = false; // Logic: this counts as "holding for drag"
+
+// Timeout-based hold detection (prevents rapid tap → hold issues)
+this.holdDetectionTimeout = setTimeout(() => {
+  if (this.isPointerDown) {
+    this.isHoldingForDrag = true;
+    sessionStore.setState({ isDragging: true });
+  }
+}, 100);
+```
+
+**Why This Matters:**
+
+- Prevents the bug where rapid tapping followed by holding fails to register
+- Allows seamless transition from tapping (tension boosts) to holding (continuous drag)
+- More performant than polling-based detection
+- Cleaner separation of concerns
+
+**For full input system documentation, see:** [Technical Architecture - Input System](Technical%20Architecture%20-%20Input%20System.md)

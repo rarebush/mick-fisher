@@ -3,6 +3,7 @@ import PixiGame from "../game/PixiGame";
 import TensionBar from "../game/TensionBar";
 import SlipMeter from "../game/SlipMeter";
 import GameNotification from "../ui/GameNotification";
+import GiveUpButton from "../ui/GiveUpButton";
 import "../../styles/game-layout.css";
 
 function GameLayout({ onQuit }) {
@@ -14,6 +15,7 @@ function GameLayout({ onQuit }) {
         <GameNotification />
         <SlipMeter />
         <TensionBar />
+        <GiveUpButton />
       </main>
       <button className="quit-btn" onClick={onQuit}>
         ← Menu

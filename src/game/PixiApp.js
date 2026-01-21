@@ -114,8 +114,9 @@ export class PixiApp {
       // Final check before setting up scene
       if (!this.isDestroyed && this.app) {
         await this.setupSceneInternal();
+        this.setupDebugOverlay(); // Must be before setupInteraction so InputManager can access it
         this.setupInteraction();
-        this.setupDebugOverlay();
+        this.setupManualFailureListener();
         console.log("PixiJS initialized successfully");
       }
     } catch (err) {
@@ -213,37 +214,58 @@ export class PixiApp {
       },
     );
 
-    // Add keyboard listeners for debug commands
-    window.addEventListener("keydown", this.handleDebugKeyDown);
-
     console.log("Debug overlay initialized. Press 'D' to toggle.");
   }
 
-  handleDebugKeyDown = (event) => {
-    // Toggle debug overlay with 'D' key
-    if (event.key.toLowerCase() === "d") {
-      this.debugOverlay?.toggle();
-      // Update engaged items display when toggling on
-      if (this.debugOverlay?.visible) {
-        const currentLocation =
-          this.gameStore?.getState().currentLocation || "picturesque-river";
-        this.debugOverlay.updateEngagedItems(currentLocation);
-      }
-      return;
-    }
+  setupManualFailureListener() {
+    // Handle manual "Give Up" button
+    this.handleManualFailure = (event) => {
+      const gamePhase = this.gameStore?.getState().gamePhase;
+      const dragState = this.sessionStore?.getState().dragState;
 
-    // Clear engaged items with 'C' key (when debug overlay is visible)
-    if (event.key.toLowerCase() === "c" && this.debugOverlay?.visible) {
-      if (confirm("Clear all engaged items for this location?")) {
-        const currentLocation =
-          this.gameStore?.getState().currentLocation || "picturesque-river";
-        this.locationStore.getState().clearLocation(currentLocation);
-        this.debugOverlay.updateEngagedItems(currentLocation);
-        console.log(`[DEBUG] Cleared all engaged items for ${currentLocation}`);
+      // Only allow during active dragging
+      if (gamePhase === "dragging" && dragState?.active) {
+        console.log("[MANUAL FAILURE] Player gave up");
+
+        // Complete drag session
+        this.sessionStore.getState().completeDrag();
+
+        // Trigger failure at current distance
+        const currentDistance = event.detail.distance || dragState.distance;
+        handleDragFailure(
+          this.app,
+          this.gameStore,
+          this.sessionStore,
+          this.locationStore,
+          this.debugOverlay,
+          currentDistance,
+          this.inputManager
+            ? this.inputManager.getQuadrantFromPosition.bind(this.inputManager)
+            : null,
+        );
+
+        // Store failure reason - manual yank = tension overload
+        this.gameStore.setState((state) => ({
+          currentCast: {
+            ...state.currentCast,
+            failureReason: "tension-overload",
+          },
+        }));
+
+        // Complete cast as failure
+        this.gameStore.getState().completeCast(false);
+
+        // Return to idle after brief delay
+        setTimeout(() => {
+          if (this.app && !this.isDestroyed) {
+            this.gameStore.getState().setGamePhase("idle");
+          }
+        }, 1000);
       }
-      return;
-    }
-  };
+    };
+
+    window.addEventListener("manualDragFailure", this.handleManualFailure);
+  }
 
   // Ticker method for sprite updates
   tickerUpdateSprites() {
@@ -351,6 +373,12 @@ export class PixiApp {
       this.dragBubbleInterval = null;
     }
 
+    // Clean up manual failure listener
+    if (this.handleManualFailure) {
+      window.removeEventListener("manualDragFailure", this.handleManualFailure);
+      this.handleManualFailure = null;
+    }
+
     // Clean up location store subscription
     if (this.locationStoreUnsubscribe) {
       this.locationStoreUnsubscribe();
@@ -363,16 +391,13 @@ export class PixiApp {
       this.debugOverlay = null;
     }
 
-    // Clean up debug keyboard listener
-    window.removeEventListener("keydown", this.handleDebugKeyDown);
-
     // Clean up sprite manager
     if (this.spriteManager) {
       this.spriteManager.clearSprites();
       this.spriteManager = null;
     }
 
-    // Clean up input manager
+    // Clean up input manager (handles all keyboard/pointer events)
     if (this.inputManager) {
       this.inputManager.destroy();
       this.inputManager = null;

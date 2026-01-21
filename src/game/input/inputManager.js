@@ -24,9 +24,12 @@ export class InputManager {
     this.debugOverlay = debugOverlay;
     this.onCast = callbacks?.onCast;
 
-    // Track input state
-    this.isDragging = false;
-    this.lastTapTime = 0;
+    // Track input state - improved tap/hold detection
+    this.isPointerDown = false; // Physical pointer state
+    this.isHoldingForDrag = false; // Logical drag hold state
+    this.pointerDownTime = 0; // When pointer went down
+    this.lastTapReleaseTime = 0; // When last tap was released
+    this.holdDetectionTimeout = null; // Timer for hold detection
     this.isCasting = false;
     this.activePointerId = null; // Track which pointer is active
 
@@ -160,13 +163,45 @@ export class InputManager {
 
   handleKeyDown(event) {
     const gamePhase = this.gameStore?.getState().gamePhase;
+
+    // Debug commands (work in any phase)
+    if (event.key.toLowerCase() === "d") {
+      this.debugOverlay?.toggle();
+      // Update engaged items display when toggling on
+      if (this.debugOverlay?.visible) {
+        const currentLocation =
+          this.gameStore?.getState().currentLocation || "picturesque-river";
+        this.debugOverlay.updateEngagedItems(currentLocation);
+      }
+      return;
+    }
+
+    // Clear engaged items with 'C' key (when debug overlay is visible)
+    if (event.key.toLowerCase() === "c" && this.debugOverlay?.visible) {
+      if (confirm("Clear all engaged items for this location?")) {
+        const currentLocation =
+          this.gameStore?.getState().currentLocation || "picturesque-river";
+        this.locationStore.getState().clearLocation(currentLocation);
+        this.debugOverlay.updateEngagedItems(currentLocation);
+        console.log(`[DEBUG] Cleared all engaged items for ${currentLocation}`);
+      }
+      return;
+    }
+
+    // Drag controls only work during dragging phase
     if (gamePhase !== "dragging") return;
 
-    // Space or any key to drag
+    // Space to drag
     if (event.code === "Space" || event.key === " ") {
       event.preventDefault();
-      if (!this.isDragging) {
-        this.handleDragMouseDown();
+      if (!this.isPointerDown) {
+        // Treat keyboard as immediate hold (no tap detection needed)
+        this.isPointerDown = true;
+        this.isHoldingForDrag = true;
+        this.pointerDownTime = performance.now();
+        if (this.sessionStore) {
+          this.sessionStore.setState({ isDragging: true });
+        }
       }
     }
   }
@@ -177,7 +212,12 @@ export class InputManager {
 
     if (event.code === "Space" || event.key === " ") {
       event.preventDefault();
-      this.handleDragMouseUp();
+      // For keyboard, just clear hold state directly (no tap processing)
+      this.isPointerDown = false;
+      this.isHoldingForDrag = false;
+      if (this.sessionStore) {
+        this.sessionStore.setState({ isDragging: false });
+      }
     }
   }
 
@@ -187,7 +227,15 @@ export class InputManager {
   }
 
   resetInputState() {
-    this.isDragging = false;
+    // Clear hold detection timeout
+    if (this.holdDetectionTimeout) {
+      clearTimeout(this.holdDetectionTimeout);
+      this.holdDetectionTimeout = null;
+    }
+
+    // Reset all input state
+    this.isPointerDown = false;
+    this.isHoldingForDrag = false;
     this.activePointerId = null;
 
     if (this.sessionStore) {
@@ -197,31 +245,46 @@ export class InputManager {
 
   handleDragMouseDown() {
     const now = performance.now();
-    const timeSinceLastTap = now - this.lastTapTime;
 
-    // Detect tap (quick press) vs hold
-    if (timeSinceLastTap < 200) {
-      // This is part of rapid tapping, don't set holding
-      return;
+    // Clear any pending hold detection from previous input
+    if (this.holdDetectionTimeout) {
+      clearTimeout(this.holdDetectionTimeout);
+      this.holdDetectionTimeout = null;
     }
 
-    this.lastTapTime = now;
-    this.isDragging = true;
+    // Mark pointer as physically down
+    this.isPointerDown = true;
+    this.pointerDownTime = now;
 
-    // Update session store
-    if (this.sessionStore) {
-      this.sessionStore.setState({ isDragging: true });
-    }
+    // Start hold detection with 100ms delay
+    // If pointer is still down after delay, it's a hold, not a tap
+    this.holdDetectionTimeout = setTimeout(() => {
+      if (this.isPointerDown) {
+        // Pointer still down after 100ms = definite hold
+        this.isHoldingForDrag = true;
+        if (this.sessionStore) {
+          this.sessionStore.setState({ isDragging: true });
+        }
+      }
+    }, 100);
   }
 
   handleDragMouseUp() {
-    if (!this.isDragging) return;
-
     const now = performance.now();
-    const pressDuration = now - this.lastTapTime;
+    const pressDuration = now - this.pointerDownTime;
 
-    // If released within 200ms, treat as tap
-    if (pressDuration < 200) {
+    // Clear hold detection timeout
+    if (this.holdDetectionTimeout) {
+      clearTimeout(this.holdDetectionTimeout);
+      this.holdDetectionTimeout = null;
+    }
+
+    // Mark pointer as physically up
+    this.isPointerDown = false;
+
+    // If this was a tap (released before 100ms OR never triggered hold mode)
+    if (pressDuration < 100 || !this.isHoldingForDrag) {
+      // Process as tap - instant +10% tension boost
       const currentCast = this.gameStore?.getState().currentCast;
       const dragState = this.sessionStore?.getState().dragState;
 
@@ -231,13 +294,17 @@ export class InputManager {
         if (item) {
           const newTension = processTap(dragState.tension);
           this.sessionStore.getState().updateDragTension(newTension);
+          console.log(
+            `[TAP] Tension: ${dragState.tension.toFixed(0)}% → ${newTension.toFixed(0)}% (+10%)`,
+          );
         }
       }
+
+      this.lastTapReleaseTime = now;
     }
 
-    this.isDragging = false;
-
-    // Update session store
+    // Always clear hold state when pointer released
+    this.isHoldingForDrag = false;
     if (this.sessionStore) {
       this.sessionStore.setState({ isDragging: false });
     }
@@ -293,6 +360,12 @@ export class InputManager {
    * Cleanup event listeners
    */
   destroy() {
+    // Clear any pending hold detection timeout
+    if (this.holdDetectionTimeout) {
+      clearTimeout(this.holdDetectionTimeout);
+      this.holdDetectionTimeout = null;
+    }
+
     if (this.app && this.app.stage) {
       this.app.stage.off("pointerdown", this.handlePointerDown);
       this.app.stage.off("pointerup", this.handlePointerUp);
@@ -307,7 +380,8 @@ export class InputManager {
     this.app = null;
     this.gameStore = null;
     this.sessionStore = null;
+    this.locationStore = null;
+    this.debugOverlay = null;
     this.onCast = null;
-    this.showAccessMessage = null;
   }
 }

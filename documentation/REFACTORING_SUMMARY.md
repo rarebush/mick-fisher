@@ -44,15 +44,18 @@ Refactored `PixiApp.js` from a monolithic 1,188-line file into a modular archite
   - `updateSprites()` - Create/position sprites during drag
   - `clearSprites()` - Cleanup when not dragging
 
-### Input (217 lines)
+### Input (314 lines)
 
-- **inputManager.js** (217 lines)
+- **inputManager.js** (314 lines)
   - `InputManager` class - Centralized input handling
   - Pointer events (down/up/outside/cancel)
-  - Keyboard support (space for drag)
-  - Tap vs hold detection (<200ms threshold)
+  - Keyboard support (Space for drag, D for debug, C for clear)
+  - **Improved tap vs hold detection** (100ms timeout-based threshold)
   - Quadrant calculation
   - Multi-touch prevention (activePointerId tracking)
+  - **Debug commands** migrated from PixiApp (D toggle, C clear)
+  - **Separate physical vs logical state** (isPointerDown vs isHoldingForDrag)
+  - Prevents race conditions in rapid tap → hold transitions
 
 ### Sequences (366 lines)
 

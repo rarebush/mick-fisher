@@ -37,6 +37,16 @@ export async function executeCastSequence(
     .getState()
     .checkForHit(currentLocation, x, y, quadrant);
 
+  if (hitItem) {
+    console.log(
+      `[CAST] Found engaged item: ${hitItem.item.name} at (${hitItem.x.toFixed(1)}, ${hitItem.y.toFixed(1)})`,
+    );
+  } else {
+    console.log(
+      `[CAST] No engaged item hit at (${x.toFixed(1)}, ${y.toFixed(1)}) in quadrant ${quadrant}`,
+    );
+  }
+
   // Animate casting line
   await animateCastLine(app, x, y);
 
@@ -219,6 +229,10 @@ export function handleDragFailure(
       size: currentCast.itemSize,
       quadrant: actualQuadrant !== null ? actualQuadrant : dragState.quadrant, // Use actual quadrant or fallback
     });
+
+  console.log(
+    `[DRAG FAILURE] Item engaged at (${stopPosition.x.toFixed(1)}, ${stopPosition.y.toFixed(1)}) in quadrant ${actualQuadrant !== null ? actualQuadrant : dragState.quadrant}`,
+  );
 
   // Update debug overlay
   debugOverlay?.updateEngagedItems(currentLocation);

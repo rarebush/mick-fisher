@@ -12,6 +12,7 @@ export class DebugOverlay {
     this.width = width;
     this.height = height;
     this.locationStore = locationStore;
+    this.currentLocationId = null; // Track current location for lazy marker creation
 
     // Enable sortable children on stage for z-index to work
     this.app.stage.sortableChildren = true;
@@ -84,6 +85,13 @@ export class DebugOverlay {
     this.visible = !this.visible;
     this.container.visible = this.visible;
     this.engagedItemMarkers.visible = this.visible;
+
+    // When becoming visible, update markers with current location
+    if (this.visible && this.currentLocationId) {
+      this.showEngagedItemMarkers(this.currentLocationId);
+      this.updateDisplay();
+    }
+
     console.log(`[DEBUG] Overlay ${this.visible ? "enabled" : "disabled"}`);
     console.log(
       `[DEBUG] Container visible: ${this.container.visible}, Markers visible: ${this.engagedItemMarkers.visible}`,
@@ -372,11 +380,17 @@ export class DebugOverlay {
 
   /**
    * Update engaged item display
+   * Only creates markers if debug overlay is visible
    */
   updateEngagedItems(locationId) {
-    this.showEngagedItemMarkers(locationId);
+    // Only update markers if debug overlay is visible
     if (this.visible) {
+      this.showEngagedItemMarkers(locationId);
       this.updateDisplay();
+    }
+    // If not visible, just store the location for when it becomes visible
+    else {
+      this.currentLocationId = locationId;
     }
   }
 
