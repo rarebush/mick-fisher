@@ -21,10 +21,24 @@ import {
   loadSpriteSheet,
   createTiledBackground,
 } from "./graphics/spriteLoader.js";
-import { processTap } from "./mechanics/dragMechanics.js";
+import {
+  processTap,
+  calculateTensionBuildRate,
+  updateDragState,
+} from "./mechanics/dragMechanics.js";
+import { DebugOverlay } from "./graphics/debugOverlay.js";
+import useLocationStore from "./state/locationStore.js";
 
 export class PixiApp {
-  constructor(canvas, width, height, gameStore, sessionStore) {
+  constructor(
+    canvas,
+    width,
+    height,
+    gameStore,
+    sessionStore,
+    locationStore,
+    inventoryStore,
+  ) {
     this.canvas = canvas;
     this.width = width;
     this.height = height;
@@ -32,6 +46,8 @@ export class PixiApp {
     this.isInitializing = false;
     this.gameStore = gameStore;
     this.sessionStore = sessionStore;
+    this.locationStore = locationStore || useLocationStore;
+    this.inventoryStore = inventoryStore;
   }
 
   async initialize() {
@@ -84,6 +100,7 @@ export class PixiApp {
       if (!this.isDestroyed && this.app) {
         this.setupScene();
         this.setupInteraction();
+        this.setupDebugOverlay();
         console.log("PixiJS initialized successfully");
       }
     } catch (err) {
@@ -101,8 +118,13 @@ export class PixiApp {
   setupScene() {
     if (!this.app || this.isDestroyed) return;
 
-    // Add ticker for continuous sprite updates
+    // Add ticker for continuous updates (sprites + drag mechanics)
     this.app.ticker.add(this.updateSprites, this);
+    this.app.ticker.add(this.updateDragMechanics, this);
+
+    // Track last update time for deltaTime calculation
+    this.lastDragUpdateTime = null;
+    this.dragStartTime = null;
 
     // Shore
     const shore = new PIXI.Graphics()
@@ -160,7 +182,7 @@ export class PixiApp {
         tileWidth,
         tileHeight,
         0.1, // Animation speed
-        2, // Scale 2x (32px tiles become 64px)
+        4, // Scale 4x (32px tiles become 128px)
       );
 
       console.log("Water tiles loaded successfully");
@@ -320,7 +342,59 @@ export class PixiApp {
     window.addEventListener("blur", this.handleWindowBlur);
   }
 
+  setupDebugOverlay() {
+    if (!this.app || this.isDestroyed) return;
+
+    this.debugOverlay = new DebugOverlay(
+      this.app,
+      this.width,
+      this.height,
+      this.locationStore,
+    );
+
+    // Subscribe to location store changes to update engaged items display
+    this.locationStoreUnsubscribe = this.locationStore.subscribe(
+      (state) => state.engagedItems,
+      () => {
+        console.log(
+          "[DEBUG] Location store subscription fired - updating markers",
+        );
+        if (this.debugOverlay && this.gameStore) {
+          const currentLocation =
+            this.gameStore.getState().currentLocation || "picturesque-river";
+          this.debugOverlay.updateEngagedItems(currentLocation);
+        }
+      },
+    );
+
+    console.log("Debug overlay initialized. Press 'D' to toggle.");
+  }
+
   handleKeyDown = (event) => {
+    // Toggle debug overlay with 'D' key
+    if (event.key.toLowerCase() === "d") {
+      this.debugOverlay?.toggle();
+      // Update engaged items display when toggling on
+      if (this.debugOverlay?.visible) {
+        const currentLocation =
+          this.gameStore?.getState().currentLocation || "picturesque-river";
+        this.debugOverlay.updateEngagedItems(currentLocation);
+      }
+      return;
+    }
+
+    // Clear engaged items with 'C' key (when debug overlay is visible)
+    if (event.key.toLowerCase() === "c" && this.debugOverlay?.visible) {
+      if (confirm("Clear all engaged items for this location?")) {
+        const currentLocation =
+          this.gameStore?.getState().currentLocation || "picturesque-river";
+        this.locationStore.getState().clearLocation(currentLocation);
+        this.debugOverlay.updateEngagedItems(currentLocation);
+        console.log(`[DEBUG] Cleared all engaged items for ${currentLocation}`);
+      }
+      return;
+    }
+
     const gamePhase = this.gameStore?.getState().gamePhase;
     if (gamePhase !== "dragging") return;
 
@@ -423,6 +497,17 @@ export class PixiApp {
   }
 
   async executeCastSequence(x, y, quadrant) {
+    // Show spawn table for this quadrant in debug overlay
+    const currentLocation =
+      this.gameStore?.getState().currentLocation || "picturesque-river";
+    this.debugOverlay?.showSpawnTable(quadrant, currentLocation);
+    this.debugOverlay?.highlightQuadrant(quadrant, x, y);
+
+    // Check for engaged item hit
+    const hitItem = this.locationStore
+      .getState()
+      .checkForHit(currentLocation, x, y, quadrant);
+
     // Animate casting line
     await this.animateCastLine(x, y);
 
@@ -432,10 +517,26 @@ export class PixiApp {
     // Create bubbles to show magnet sinking
     this.createBubbles(x, y, 500);
 
-    // Execute cast mechanics
-    const currentLocation =
-      this.gameStore?.getState().currentLocation || "picturesque-river";
-    const castResult = executeCast(quadrant, currentLocation);
+    // Execute cast mechanics (with hit detection)
+    const castResult = executeCast(quadrant, currentLocation, x, y, hitItem);
+
+    // Log spawn event to debug overlay
+    if (castResult.success) {
+      this.debugOverlay?.logSpawnEvent({
+        quadrant,
+        success: true,
+        itemName: castResult.item.name,
+        distance: castResult.distance,
+        magnetPosition: castResult.magnetPosition,
+        placement: castResult.placementQuality.label,
+        isEngaged: castResult.isEngagedItem,
+      });
+    } else {
+      this.debugOverlay?.logSpawnEvent({
+        quadrant,
+        success: false,
+      });
+    }
 
     // Update game state
     if (this.gameStore) {
@@ -450,13 +551,46 @@ export class PixiApp {
         // Item found!
         setCaughtItem(castResult.item.id);
 
-        // Store placement info in the cast
+        // Store cast metadata (including engaged item tracking)
         this.gameStore.setState((state) => ({
           currentCast: {
             ...state.currentCast,
+            item: castResult.item, // Store the full item object
             placementQuality: castResult.placementQuality,
+            itemInstanceId: castResult.itemInstanceId,
+            isEngagedItem: castResult.isEngagedItem,
+            itemPosition: castResult.itemPosition,
+            itemSize: castResult.itemSize,
           },
         }));
+
+        // For re-engaged items, update the engaged position
+        // (For new items, wait until drag fails to engage them)
+        if (castResult.isEngagedItem) {
+          this.locationStore
+            .getState()
+            .engageItem(currentLocation, castResult.itemInstanceId, {
+              item: castResult.item,
+              x: castResult.itemPosition.x,
+              y: castResult.itemPosition.y,
+              size: castResult.itemSize,
+              quadrant,
+            });
+
+          // Update debug overlay to show engaged item
+          this.debugOverlay?.updateEngagedItems(currentLocation);
+        }
+
+        console.log(
+          `[CAST] ${castResult.isEngagedItem ? "Re-engaged" : "New"} item: ${castResult.item.name} at (${castResult.itemPosition.x.toFixed(1)}, ${castResult.itemPosition.y.toFixed(1)})`,
+        );
+
+        // Calculate initial position based on distance
+        // For new items, use cast location
+        // For re-engaged items, use saved position for progressive retrieval
+        const initialPosition = castResult.isEngagedItem
+          ? castResult.itemPosition
+          : { x, y };
 
         // Start drag phase with magnet position
         const { startDrag } = this.sessionStore.getState();
@@ -464,7 +598,8 @@ export class PixiApp {
           castResult.distance,
           castResult.magnetPosition,
           castResult.magnetContactWidth,
-          { x, y },
+          initialPosition,
+          quadrant,
         );
         setGamePhase("dragging");
 
@@ -847,6 +982,65 @@ export class PixiApp {
   }
 
   /**
+   * Calculate position for a specific distance value
+   * Used when drag fails to determine where item stopped
+   */
+  calculatePositionAtDistance(distance, castPosition, totalDistance) {
+    if (!this.app) return null;
+
+    const shoreX = this.app.screen.width / 2;
+    const shoreY = 80;
+    const progress = 1 - distance / totalDistance;
+
+    const x = castPosition.x + (shoreX - castPosition.x) * progress;
+    const y = castPosition.y + (shoreY - castPosition.y) * progress;
+
+    return { x, y };
+  }
+
+  /**
+   * Handle drag failure - update engaged item position to where it stopped
+   */
+  handleDragFailure(failureDistance) {
+    if (!this.gameStore || !this.sessionStore || !this.locationStore) return;
+
+    const currentCast = this.gameStore.getState().currentCast;
+    const dragState = this.sessionStore.getState().dragState;
+    const currentLocation = this.gameStore.getState().currentLocation;
+
+    if (!currentCast.itemInstanceId || !currentCast.item) return;
+
+    // Calculate where item stopped based on remaining distance
+    const stopPosition = this.calculatePositionAtDistance(
+      failureDistance,
+      dragState.castPosition,
+      dragState.totalDistance,
+    );
+
+    if (!stopPosition) return;
+
+    // Calculate which quadrant the item is actually in based on stop position
+    const actualQuadrant = this.getQuadrantFromPosition(
+      stopPosition.x,
+      stopPosition.y,
+    );
+
+    // Update engaged item position
+    this.locationStore
+      .getState()
+      .engageItem(currentLocation, currentCast.itemInstanceId, {
+        item: currentCast.item,
+        x: stopPosition.x,
+        y: stopPosition.y,
+        size: currentCast.itemSize,
+        quadrant: actualQuadrant !== null ? actualQuadrant : dragState.quadrant, // Use actual quadrant or fallback
+      });
+
+    // Update debug overlay
+    this.debugOverlay?.updateEngagedItems(currentLocation);
+  }
+
+  /**
    * Update sprite positions during drag phase (called by ticker)
    */
   updateSprites() {
@@ -913,6 +1107,152 @@ export class PixiApp {
       }
       this.magnetSprite.destroy();
       this.magnetSprite = null;
+    }
+  }
+
+  /**
+   * Update drag mechanics (called by ticker)
+   * Handles tension, distance, slip calculations, and completion detection
+   */
+  updateDragMechanics() {
+    if (!this.app || this.isDestroyed || !this.gameStore || !this.sessionStore)
+      return;
+
+    const gamePhase = this.gameStore.getState().gamePhase;
+    const dragState = this.sessionStore.getState().dragState;
+    const currentCast = this.gameStore.getState().currentCast;
+    const isDragging = this.sessionStore.getState().isDragging;
+
+    if (gamePhase !== "dragging" || !dragState.active) {
+      this.lastDragUpdateTime = null;
+      this.dragStartTime = null;
+      return;
+    }
+
+    // Initialize timing on first frame
+    const now = performance.now();
+    if (!this.lastDragUpdateTime) {
+      this.lastDragUpdateTime = now;
+      this.dragStartTime = now;
+      return;
+    }
+
+    const deltaTime = (now - this.lastDragUpdateTime) / 1000;
+    this.lastDragUpdateTime = now;
+
+    // Get current item
+    const item = currentCast.itemId ? getItem(currentCast.itemId) : null;
+    if (!item) {
+      this.gameStore.getState().setGamePhase("idle");
+      return;
+    }
+
+    // Calculate tension change
+    const tensionChange = calculateTensionBuildRate(
+      dragState.tension,
+      item.weight,
+      isDragging,
+    );
+    const newTension = dragState.tension + tensionChange * deltaTime;
+
+    // Update drag progress with slip calculations (checks for failure)
+    const result = updateDragState(
+      {
+        tension: newTension,
+        distance: dragState.distance,
+        magnetPosition: dragState.magnetPosition,
+        magnetContactWidth: dragState.magnetContactWidth,
+        slipDirection: dragState.slipDirection,
+      },
+      item,
+      deltaTime,
+    );
+
+    // Only update tension if not failing (prevent decay after failure is detected)
+    if (!result.failed && !result.complete) {
+      this.sessionStore.getState().updateDragTension(newTension);
+      this.sessionStore
+        .getState()
+        .updateDragProgress(result.distance, result.magnetPosition);
+    }
+
+    // Verbose logging (~2% of frames)
+    if (Math.random() < 0.02) {
+      const dragSpeed =
+        result.distance !== dragState.distance
+          ? (dragState.distance - result.distance) / deltaTime
+          : 0;
+      const magnetLeftEdge =
+        result.magnetPosition - dragState.magnetContactWidth / 2;
+      const magnetRightEdge =
+        result.magnetPosition + dragState.magnetContactWidth / 2;
+      console.log(
+        `[DRAG] T:${newTension.toFixed(0)}% | Speed:${dragSpeed.toFixed(2)}m/s | Dist:${result.distance.toFixed(1)}/${dragState.totalDistance.toFixed(1)}m | MagPos:${result.magnetPosition.toFixed(1)} [${magnetLeftEdge.toFixed(1)}-${magnetRightEdge.toFixed(1)}] | ${item.name}(${item.weight}kg)`,
+      );
+    }
+
+    // Handle completion
+    if (result.complete) {
+      const finalSlip = this.sessionStore.getState().completeDrag();
+      const dragDuration = (now - this.dragStartTime) / 1000;
+
+      console.log(
+        `[DRAG COMPLETE] Duration:${dragDuration.toFixed(1)}s | Dist:${dragState.totalDistance.toFixed(1)}m | AvgSpeed:${(dragState.totalDistance / dragDuration).toFixed(2)}m/s | ${item.name} | Slip:${finalSlip.toFixed(1)}`,
+      );
+
+      // Add to inventory
+      if (this.inventoryStore) {
+        this.inventoryStore.getState().addItem(item);
+        console.log("Added item to inventory:", item.name);
+      }
+
+      // Remove from engaged items
+      if (currentCast.itemInstanceId) {
+        const currentLocation = this.gameStore.getState().currentLocation;
+        console.log(
+          `[RETRIEVE] Removing engaged item: ${currentCast.itemInstanceId} from location: ${currentLocation}`,
+        );
+        this.locationStore
+          .getState()
+          .removeEngagedItem(currentLocation, currentCast.itemInstanceId);
+
+        // Update debug overlay to remove marker
+        this.debugOverlay?.updateEngagedItems(currentLocation);
+      }
+
+      // Complete cast
+      this.gameStore.getState().completeCast(true);
+      this.gameStore.getState().setGamePhase("idle");
+    }
+    // Handle failure
+    else if (result.failed) {
+      this.sessionStore.getState().completeDrag();
+
+      console.log("Drag failed! Reason:", result.failReason);
+      console.log(
+        `[FAIL] Item remains engaged: ${currentCast.itemInstanceId} at location: ${this.gameStore.getState().currentLocation}`,
+      );
+
+      // Update item position to where it stopped
+      this.handleDragFailure(result.distance);
+
+      // Store failure reason
+      this.gameStore.setState((state) => ({
+        currentCast: {
+          ...state.currentCast,
+          failureReason: result.failReason,
+        },
+      }));
+
+      // Complete cast as failure
+      this.gameStore.getState().completeCast(false);
+
+      // Return to idle after brief delay
+      setTimeout(() => {
+        if (!this.isDestroyed) {
+          this.gameStore.getState().setGamePhase("idle");
+        }
+      }, 1000);
     }
   }
 
@@ -1031,6 +1371,18 @@ export class PixiApp {
 
     // Stop drag bubble animations
     this.stopDragBubbles();
+
+    // Clean up location store subscription
+    if (this.locationStoreUnsubscribe) {
+      this.locationStoreUnsubscribe();
+      this.locationStoreUnsubscribe = null;
+    }
+
+    // Clean up debug overlay
+    if (this.debugOverlay) {
+      this.debugOverlay.destroy();
+      this.debugOverlay = null;
+    }
 
     // Clean up event listeners
     window.removeEventListener("keydown", this.handleKeyDown);

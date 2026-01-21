@@ -13,31 +13,31 @@ import * as PIXI from "pixi.js";
  */
 function createFish(category) {
   const graphics = new PIXI.Graphics();
-  
+
   // Color based on category
   const colorMap = {
-    "common-fish": 0x6b9bd1,    // blue
-    "valuable-fish": 0xffd700,  // gold
-    "rare-fish": 0xff69b4,      // pink
+    "common-fish": 0x6b9bd1, // blue
+    "valuable-fish": 0xffd700, // gold
+    "rare-fish": 0xff69b4, // pink
   };
   const bodyColor = colorMap[category] || 0x6b9bd1;
-  
+
   // Body
   graphics.ellipse(8, 6, 8, 4).fill(bodyColor);
-  
+
   // Tail
   graphics.moveTo(0, 6);
   graphics.lineTo(4, 2);
   graphics.lineTo(4, 10);
   graphics.lineTo(0, 6);
   graphics.fill(bodyColor);
-  
+
   // Eye
   graphics.circle(12, 5, 1.5).fill(0x000000);
-  
+
   // Outline for pixel art look
   graphics.ellipse(8, 6, 8, 4).stroke({ width: 1, color: 0x000000 });
-  
+
   return graphics;
 }
 
@@ -47,21 +47,21 @@ function createFish(category) {
  */
 function createBoot() {
   const graphics = new PIXI.Graphics();
-  
+
   // Boot body (brown)
   graphics.rect(2, 2, 8, 10).fill(0x654321);
-  
+
   // Boot sole (darker)
   graphics.rect(0, 10, 12, 3).fill(0x3d2817);
-  
+
   // Laces (lighter)
   graphics.rect(3, 3, 1, 6).fill(0x8b6f47);
   graphics.rect(6, 3, 1, 6).fill(0x8b6f47);
-  
+
   // Outline
   graphics.rect(2, 2, 8, 10).stroke({ width: 1, color: 0x000000 });
   graphics.rect(0, 10, 12, 3).stroke({ width: 1, color: 0x000000 });
-  
+
   return graphics;
 }
 
@@ -71,19 +71,19 @@ function createBoot() {
  */
 function createCan() {
   const graphics = new PIXI.Graphics();
-  
+
   // Can body (red - soda can)
   graphics.rect(3, 1, 8, 12).fill(0xe74c3c);
-  
+
   // Top (silver)
   graphics.ellipse(7, 1, 4, 2).fill(0xc0c0c0);
-  
+
   // Label stripe (white)
   graphics.rect(3, 6, 8, 2).fill(0xffffff);
-  
+
   // Outline
   graphics.rect(3, 1, 8, 12).stroke({ width: 1, color: 0x000000 });
-  
+
   return graphics;
 }
 
@@ -93,13 +93,13 @@ function createCan() {
  */
 function createTire() {
   const graphics = new PIXI.Graphics();
-  
+
   // Outer tire (black)
   graphics.circle(8, 8, 7).fill(0x2c3e50);
-  
+
   // Inner hole (gray)
   graphics.circle(8, 8, 4).fill(0x7f8c8d);
-  
+
   // Tread marks
   for (let i = 0; i < 6; i++) {
     const angle = (i * Math.PI * 2) / 6;
@@ -111,11 +111,11 @@ function createTire() {
     graphics.lineTo(x2, y2);
     graphics.stroke({ width: 1, color: 0x000000 });
   }
-  
+
   // Outline
   graphics.circle(8, 8, 7).stroke({ width: 1, color: 0x000000 });
   graphics.circle(8, 8, 4).stroke({ width: 1, color: 0x000000 });
-  
+
   return graphics;
 }
 
@@ -126,24 +126,24 @@ function createTire() {
 // eslint-disable-next-line no-unused-vars
 function createBicycle() {
   const graphics = new PIXI.Graphics();
-  
+
   // Frame (gray)
   graphics.moveTo(4, 8);
   graphics.lineTo(10, 4);
   graphics.lineTo(16, 8);
   graphics.stroke({ width: 2, color: 0x95a5a6 });
-  
+
   // Front wheel
   graphics.circle(4, 10, 3).stroke({ width: 1.5, color: 0x2c3e50 });
-  
+
   // Back wheel
   graphics.circle(16, 10, 3).stroke({ width: 1.5, color: 0x2c3e50 });
-  
+
   // Handlebars
   graphics.moveTo(10, 4);
   graphics.lineTo(10, 2);
   graphics.stroke({ width: 1.5, color: 0x95a5a6 });
-  
+
   return graphics;
 }
 
@@ -153,20 +153,20 @@ function createBicycle() {
  */
 function createSafe() {
   const graphics = new PIXI.Graphics();
-  
+
   // Box body (dark gray)
   graphics.rect(2, 2, 12, 10).fill(0x34495e);
-  
+
   // Lock/dial (gold)
   graphics.circle(8, 7, 2.5).fill(0xf39c12);
-  
+
   // Hinges (silver)
   graphics.rect(2, 3, 1, 2).fill(0xbdc3c7);
   graphics.rect(2, 9, 1, 2).fill(0xbdc3c7);
-  
+
   // Outline
   graphics.rect(2, 2, 12, 10).stroke({ width: 1, color: 0x000000 });
-  
+
   return graphics;
 }
 
@@ -176,20 +176,20 @@ function createSafe() {
  */
 function createBottle() {
   const graphics = new PIXI.Graphics();
-  
+
   // Bottle body (green glass)
   graphics.rect(4, 4, 6, 10).fill(0x27ae60);
-  
+
   // Neck
   graphics.rect(5, 1, 4, 4).fill(0x27ae60);
-  
+
   // Cap (brown)
   graphics.rect(5, 0, 4, 2).fill(0x8b6f47);
-  
+
   // Outline
   graphics.rect(4, 4, 6, 10).stroke({ width: 1, color: 0x000000 });
   graphics.rect(5, 1, 4, 4).stroke({ width: 1, color: 0x000000 });
-  
+
   return graphics;
 }
 
@@ -204,22 +204,22 @@ export function createPlaceholderSprite(category) {
     case "valuable-fish":
     case "rare-fish":
       return createFish(category);
-    
+
     case "common-junk": {
       // Random junk items
       const junkTypes = [createCan, createBottle];
       return junkTypes[Math.floor(Math.random() * junkTypes.length)]();
     }
-    
+
     case "large-junk":
       return createTire();
-    
+
     case "valuable-junk":
       return createBoot();
-    
+
     case "treasure":
       return createSafe();
-    
+
     default: {
       // Generic item (gray square)
       const graphics = new PIXI.Graphics();
@@ -236,21 +236,21 @@ export function createPlaceholderSprite(category) {
  */
 export function createMagnetSprite() {
   const graphics = new PIXI.Graphics();
-  
+
   // Horseshoe shape (classic magnet)
   // Left side (red)
   graphics.rect(0, 0, 3, 10).fill(0xe74c3c);
-  
+
   // Right side (blue)
   graphics.rect(9, 0, 3, 10).fill(0x3498db);
-  
+
   // Bottom connector (gray)
   graphics.rect(3, 8, 6, 2).fill(0x7f8c8d);
-  
+
   // Outline
   graphics.rect(0, 0, 3, 10).stroke({ width: 1, color: 0x000000 });
   graphics.rect(9, 0, 3, 10).stroke({ width: 1, color: 0x000000 });
   graphics.rect(3, 8, 6, 2).stroke({ width: 1, color: 0x000000 });
-  
+
   return graphics;
 }

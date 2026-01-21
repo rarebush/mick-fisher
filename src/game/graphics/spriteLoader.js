@@ -19,9 +19,9 @@ export async function loadSpriteSheet(spriteSheetPath, jsonPath) {
 
     // Create texture from image
     const texture = await PIXI.Assets.load(spriteSheetPath);
-    
+
     // Set texture to nearest-neighbor for crisp pixel art (no smoothing)
-    texture.source.scaleMode = 'nearest';
+    texture.source.scaleMode = "nearest";
 
     // Convert Aseprite JSON to PixiJS Spritesheet format
     const spriteSheetData = convertAsepriteToPixi(data, texture);

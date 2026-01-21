@@ -490,25 +490,35 @@ if (magnetLeftEdge <= 0 || magnetRightEdge >= 100) {
 
 1. Magnet slides past edge (position ≤ 0 or ≥ 100 with contact width factored)
 2. Magnet detaches cleanly from item
-3. Item falls back to water (splash animation)
-4. **Retry opportunity available**:
-   - Item floats/sinks slowly (5-10 second window)
-   - Can recast immediately to re-attempt
-   - On retry: Magnet position resets to **center (position 50)**
+3. Item remains in water at the position where drag stopped
+4. **Progressive Retrieval - Item Position Persistence**:
+   - Item is saved as "engaged" at screen coordinates where it stopped during drag
+   - Position calculated based on remaining distance: `progress = 1 - (remainingDistance / totalDistance)`
+   - Re-casting within the item's radius re-engages it at that position
+   - Each failed attempt moves item progressively closer to shore
+   - Magnet position resets to new RNG placement on re-engagement
    - Surface condition unchanged (still rusty/sludge if it was before)
-   - Slip rate same, but fresh starting position
 5. Line and magnet intact (no equipment loss)
 
-**Retry Positioning:**
+**Progressive Retrieval Example:**
 
 ```
-Original attempt: Landed at position 18 → slipped off left edge
-Retry attempt: Starts at position 50 (center reset)
-  - Much better starting position
-  - Distance to edge: 50 units (vs 18 original)
-  - Same surface condition penalty applies
-  - Can still slip off if player repeats poor tension management
+Initial cast at 10m depth:
+  - Drag fails at 6.5m remaining (35% progress toward shore)
+  - Item saved at screen position corresponding to 6.5m from shore
+
+Second attempt:
+  - Re-cast near saved position, magnet lands randomly on surface
+  - Drag fails at 3.2m remaining (68% total progress)
+  - Item now saved closer to shore
+
+Third attempt:
+  - Re-cast hits item again
+  - Successfully drag final 3.2m to shore
 ```
+
+**Implementation Note:**
+Item positions are persisted in locationStore and survive page refresh. Position updates occur when drag fails based on exact screen coordinates calculated from remaining distance, ensuring visual consistency between drag animation and saved marker position.
 
 **Hard Failure: Line Snap**
 

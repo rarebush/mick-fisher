@@ -2,10 +2,17 @@ import { useRef, useEffect, useState } from "react";
 import { PixiApp } from "../../game/PixiApp";
 import useGameStore from "../../game/state/gameStore";
 import useSessionStore from "../../game/state/sessionStore";
+import useLocationStore from "../../game/state/locationStore";
+import useInventoryStore from "../../game/state/inventoryStore";
 import "./pixi-game.css";
 
 // Track global PixiApp instance for HMR cleanup
 let globalPixiApp = null;
+
+// Expose for other components (e.g., TensionBar needs to update debug overlay)
+if (typeof window !== "undefined") {
+  window.getPixiApp = () => globalPixiApp;
+}
 
 // HMR: Force full page reload to avoid canvas reinitialization issues
 if (import.meta.hot) {
@@ -28,6 +35,8 @@ function PixiGame() {
   // Get store references
   const gameStore = useGameStore;
   const sessionStore = useSessionStore;
+  const locationStore = useLocationStore;
+  const inventoryStore = useInventoryStore;
   const gamePhase = useGameStore((state) => state.gamePhase);
   const lastCompletedCast = useGameStore((state) => state.lastCompletedCast);
 
@@ -59,6 +68,8 @@ function PixiGame() {
       clientHeight,
       gameStore,
       sessionStore,
+      locationStore,
+      inventoryStore,
     );
     pixiAppRef.current = pixiApp;
     globalPixiApp = pixiApp;

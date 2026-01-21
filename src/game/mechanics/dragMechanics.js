@@ -52,11 +52,12 @@ export function calculateTensionBuildRate(
 /**
  * Process a tap input (instant tension boost)
  * @param {number} currentTension - Current tension (0-100%)
- * @returns {number} - New tension value
+ * @returns {number} - New tension value (can exceed 100% for failure detection)
  */
 export function processTap(currentTension) {
   const TAP_BOOST = 10; // Fixed 10% per tap
-  return Math.min(100, currentTension + TAP_BOOST);
+  // Allow tension to exceed 100% so tension-overload failure can trigger
+  return currentTension + TAP_BOOST;
 }
 
 /**

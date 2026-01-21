@@ -16,6 +16,25 @@ import {
 } from "./slipCalculations.js";
 
 /**
+ * Calculate distance from shore based on item's Y position
+ * Used for re-engaged items to derive distance from screen coordinates
+ * @param {number} itemY - Item's Y position on screen
+ * @returns {number} - Estimated distance in meters
+ */
+function calculateDistanceFromPosition(itemY) {
+  const shoreY = 80;
+  const maxY = 600; // Approximate max cast depth on screen
+  const maxDistance = 15; // Max distance in meters
+
+  // Linear interpolation: closer to shore (lower Y) = less distance
+  const normalizedY = Math.max(
+    0,
+    Math.min(1, (itemY - shoreY) / (maxY - shoreY)),
+  );
+  return normalizedY * maxDistance;
+}
+
+/**
  * Roll for item spawn in selected quadrant
  * @param {number} quadrant - Quadrant number (0-9)
  * @param {string} locationId - Location ID
@@ -115,13 +134,49 @@ export function getRandomDepth(quadrant, locationId) {
 }
 
 /**
- * Execute complete cast sequence (positional slip model)
+ * Execute complete cast sequence with engaged item checking
  * @param {number} quadrant - Selected quadrant (0-9)
  * @param {string} locationId - Current location
+ * @param {number} x - Cast x position (for hit detection)
+ * @param {number} y - Cast y position (for hit detection)
+ * @param {object|null} hitItem - Pre-checked engaged item hit (from locationStore)
  * @returns {object} - Cast result with item, distance, depth, magnetPosition
  */
-export function executeCast(quadrant, locationId) {
-  const item = rollForItem(quadrant, locationId);
+export function executeCast(
+  quadrant,
+  locationId,
+  x = 0,
+  y = 0,
+  hitItem = null,
+) {
+  let item;
+  let isEngagedItem = false;
+  let itemInstanceId = null;
+  let itemPosition = { x, y };
+  let itemSize = 50; // Default size in pixels
+
+  // Check if we hit an engaged item
+  if (hitItem) {
+    item = hitItem.item;
+    isEngagedItem = true;
+    itemInstanceId = hitItem.itemId;
+    // Use the item's SAVED position for progressive retrieval
+    itemPosition = { x: hitItem.x, y: hitItem.y };
+    itemSize = hitItem.size;
+    console.log(
+      `[CAST] Re-engaging with lost item: ${item.name} at saved position`,
+    );
+  } else {
+    // New RNG spawn
+    item = rollForItem(quadrant, locationId);
+    if (item) {
+      // Generate unique instance ID for this newly engaged item
+      itemInstanceId = `${item.id}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      // Assign size based on item category
+      itemSize = getItemSize(item);
+      console.log(`[CAST] New item spawned: ${item.name}, size: ${itemSize}px`);
+    }
+  }
 
   if (!item) {
     return {
@@ -130,15 +185,19 @@ export function executeCast(quadrant, locationId) {
       distance: getRandomDistance(quadrant),
       depth: getRandomDepth(quadrant, locationId),
       magnetPosition: null,
-      magnetContactWidth: 6, // Reduced for more slip risk
+      magnetContactWidth: 6,
     };
   }
 
-  const distance = getRandomDistance(quadrant);
+  // Calculate distance based on item position
+  // For re-engaged items, derive from Y position; for new items, use random
+  const distance = isEngagedItem
+    ? calculateDistanceFromPosition(itemPosition.y)
+    : getRandomDistance(quadrant);
   const depth = getRandomDepth(quadrant, locationId);
 
   // Roll for magnet landing position (0-100 on item surface)
-  const magnetContactWidth = 6; // Basic magnet width (reduced for more slip risk)
+  const magnetContactWidth = 6;
   const magnetPosition = rollMagnetLandingPosition(magnetContactWidth);
 
   // Calculate placement quality based on position
@@ -156,13 +215,34 @@ export function executeCast(quadrant, locationId) {
 
   return {
     success: true,
-    item: { ...item }, // Clone item data
+    item: { ...item },
     distance,
     depth,
     magnetPosition,
     magnetContactWidth,
     placementQuality,
+    // Engaged item metadata
+    isEngagedItem,
+    itemInstanceId,
+    itemPosition,
+    itemSize,
   };
+}
+
+/**
+ * Get item visual size based on category
+ * @param {object} item - Item data
+ * @returns {number} - Size in pixels (diameter)
+ */
+export function getItemSize(item) {
+  // Size based on item weight/category
+  const weight = item.weight;
+
+  if (weight >= 60) return 80; // Very heavy items - large
+  if (weight >= 30) return 60; // Heavy items - medium-large
+  if (weight >= 10) return 45; // Medium items
+  if (weight >= 3) return 30; // Small items
+  return 20; // Tiny items - difficult to hit
 }
 
 /**
