@@ -9,7 +9,12 @@ import {
   createRipple,
   createBubbles,
   startDragBubbles,
+  renderRope as animationRenderRope,
+  animateReelIn,
 } from "../animations/castAnimations.js";
+
+// Re-export renderRope for use by PixiApp
+export { animationRenderRope as renderRope };
 import { showNothingMessage } from "../animations/messageAnimations.js";
 
 /**
@@ -47,8 +52,8 @@ export async function executeCastSequence(
     );
   }
 
-  // Animate casting line
-  await animateCastLine(app, x, y);
+  // Animate casting line and get rope for continued rendering
+  const { rope, line, playerX, playerY } = await animateCastLine(app, x, y);
 
   // Visual feedback - ripple at landing point
   createRipple(app, x, y);
@@ -166,9 +171,14 @@ export async function executeCastSequence(
         castResult.placementQuality.label,
       );
 
-      return dragBubbleInterval;
+      return { dragBubbleInterval, rope, line, playerX, playerY };
     } else {
-      // Nothing found
+      // Nothing found - clean up rope
+      if (line && line.parent) {
+        line.parent.removeChild(line);
+        line.destroy();
+      }
+
       showNothingMessage(app, x, y);
 
       // Return to idle after showing message
@@ -185,8 +195,9 @@ export async function executeCastSequence(
 
 /**
  * Handle drag failure - update engaged item position to where it stopped
+ * Animate rope reeling in
  */
-export function handleDragFailure(
+export async function handleDragFailure(
   app,
   gameStore,
   sessionStore,
@@ -194,6 +205,10 @@ export function handleDragFailure(
   debugOverlay,
   failureDistance,
   getQuadrantFromPosition,
+  rope = null,
+  line = null,
+  playerX = 0,
+  playerY = 0,
 ) {
   if (!gameStore || !sessionStore || !locationStore) return;
 
@@ -212,6 +227,19 @@ export function handleDragFailure(
   );
 
   if (!stopPosition) return;
+
+  // Animate rope reeling in from stop position back to player
+  if (rope && line) {
+    await animateReelIn(
+      app,
+      rope,
+      line,
+      playerX,
+      playerY,
+      stopPosition.x,
+      stopPosition.y,
+    );
+  }
 
   // Calculate which quadrant the item is actually in based on stop position
   const actualQuadrant = getQuadrantFromPosition(

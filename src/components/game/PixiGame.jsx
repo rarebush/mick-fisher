@@ -40,18 +40,9 @@ function PixiGame() {
   const gamePhase = useGameStore((state) => state.gamePhase);
   const lastCompletedCast = useGameStore((state) => state.lastCompletedCast);
 
-  // Control PixiJS ticker based on game phase and notification state
-  useEffect(() => {
-    if (!pixiAppRef.current || pixiAppRef.current.isDestroyed) return;
-
-    // Pause ticker when notification is showing
-    // Resume when no notification (regardless of gamePhase - idle just means between casts)
-    if (lastCompletedCast !== null) {
-      pixiAppRef.current.pauseTicker();
-    } else {
-      pixiAppRef.current.resumeTicker();
-    }
-  }, [gamePhase, lastCompletedCast]);
+  // Note: We no longer pause the PixiJS ticker when notifications appear
+  // This allows animations (like rope reel-in) to continue smoothly
+  // The game timer is paused by GameNotification component instead
 
   useEffect(() => {
     if (!canvasRef.current || !containerRef.current) {

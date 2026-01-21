@@ -22,6 +22,7 @@ import { InputManager } from "./input/inputManager.js";
 import {
   executeCastSequence,
   handleDragFailure,
+  renderRope,
 } from "./sequences/castSequence.js";
 import {
   getItemPosition,
@@ -63,6 +64,12 @@ export class PixiApp {
 
     // Drag bubble interval
     this.dragBubbleInterval = null;
+
+    // Rope physics for drag visualization
+    this.dragRope = null;
+    this.dragLine = null;
+    this.dragPlayerX = 0;
+    this.dragPlayerY = 0;
   }
 
   async initialize() {
@@ -140,6 +147,7 @@ export class PixiApp {
     // Setup tickers for continuous updates
     this.app.ticker.add(this.tickerUpdateSprites, this);
     this.app.ticker.add(this.tickerUpdateDragMechanics, this);
+    this.app.ticker.add(this.tickerUpdateRope, this);
 
     // Setup scene (shore, text)
     setupScene(this.app);
@@ -176,7 +184,7 @@ export class PixiApp {
 
   // Cast callback invoked by InputManager
   async handleCast(x, y, quadrant) {
-    this.dragBubbleInterval = await executeCastSequence(
+    const result = await executeCastSequence(
       this.app,
       this.gameStore,
       this.sessionStore,
@@ -187,6 +195,14 @@ export class PixiApp {
       quadrant,
       () => getItemPosition(this.app, this.sessionStore),
     );
+
+    if (result) {
+      this.dragBubbleInterval = result.dragBubbleInterval;
+      this.dragRope = result.rope;
+      this.dragLine = result.line;
+      this.dragPlayerX = result.playerX;
+      this.dragPlayerY = result.playerY;
+    }
   }
 
   setupDebugOverlay() {
@@ -219,7 +235,7 @@ export class PixiApp {
 
   setupManualFailureListener() {
     // Handle manual "Give Up" button
-    this.handleManualFailure = (event) => {
+    this.handleManualFailure = async (event) => {
       const gamePhase = this.gameStore?.getState().gamePhase;
       const dragState = this.sessionStore?.getState().dragState;
 
@@ -230,9 +246,9 @@ export class PixiApp {
         // Complete drag session
         this.sessionStore.getState().completeDrag();
 
-        // Trigger failure at current distance
+        // Trigger failure at current distance (with rope reel-in animation)
         const currentDistance = event.detail.distance || dragState.distance;
-        handleDragFailure(
+        await handleDragFailure(
           this.app,
           this.gameStore,
           this.sessionStore,
@@ -242,7 +258,15 @@ export class PixiApp {
           this.inputManager
             ? this.inputManager.getQuadrantFromPosition.bind(this.inputManager)
             : null,
+          this.dragRope,
+          this.dragLine,
+          this.dragPlayerX,
+          this.dragPlayerY,
         );
+
+        // Clear rope references after reel-in
+        this.dragRope = null;
+        this.dragLine = null;
 
         // Store failure reason - manual yank = tension overload
         this.gameStore.setState((state) => ({
@@ -302,8 +326,8 @@ export class PixiApp {
       this.debugOverlay,
       this.lastDragUpdateTime,
       this.dragStartTime,
-      (failureDistance) =>
-        handleDragFailure(
+      async (failureDistance) => {
+        await handleDragFailure(
           this.app,
           this.gameStore,
           this.sessionStore,
@@ -313,11 +337,39 @@ export class PixiApp {
           this.inputManager
             ? this.inputManager.getQuadrantFromPosition.bind(this.inputManager)
             : null,
-        ),
+          this.dragRope,
+          this.dragLine,
+          this.dragPlayerX,
+          this.dragPlayerY,
+        );
+        // Clear rope references after reel-in
+        this.dragRope = null;
+        this.dragLine = null;
+      },
     );
 
     this.lastDragUpdateTime = result.lastDragUpdateTime;
     this.dragStartTime = result.dragStartTime;
+  }
+
+  // Ticker method for rope physics updates during drag
+  tickerUpdateRope() {
+    if (!this.app || !this.dragRope || !this.dragLine) return;
+
+    const gamePhase = this.gameStore?.getState().gamePhase;
+    if (gamePhase !== "dragging") return;
+
+    // Get current item position
+    const itemPos = getItemPosition(this.app, this.sessionStore);
+    if (!itemPos) return;
+
+    // Update rope physics with magnet at item position
+    this.dragRope.setMagnetPosition(itemPos.x, itemPos.y);
+    this.dragRope.setPlayerPosition(this.dragPlayerX, this.dragPlayerY);
+    this.dragRope.update();
+
+    // Render rope
+    renderRope(this.dragLine, this.dragRope, 80);
   }
 
   resize(width, height) {
@@ -372,6 +424,26 @@ export class PixiApp {
       clearInterval(this.dragBubbleInterval);
       this.dragBubbleInterval = null;
     }
+
+    // Clean up rope graphics
+    if (this.dragLine) {
+      if (this.dragLine.parent) {
+        this.dragLine.parent.removeChild(this.dragLine);
+      }
+      this.dragLine.destroy();
+      this.dragLine = null;
+    }
+    this.dragRope = null;
+
+    // Clean up rope graphics
+    if (this.dragLine) {
+      if (this.dragLine.parent) {
+        this.dragLine.parent.removeChild(this.dragLine);
+      }
+      this.dragLine.destroy();
+      this.dragLine = null;
+    }
+    this.dragRope = null;
 
     // Clean up manual failure listener
     if (this.handleManualFailure) {
