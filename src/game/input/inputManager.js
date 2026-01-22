@@ -74,7 +74,9 @@ export class InputManager {
     }
 
     const { x, y } = event.global;
-    if (y < 80) return; // Shore area, no interaction
+    // Block interaction in walkway area (top 20% of screen)
+    const walkwayEndY = this.app.screen.height * 0.2;
+    if (y < walkwayEndY) return; // Walkway area, no interaction
 
     const gamePhase = this.gameStore?.getState().gamePhase;
 
@@ -311,15 +313,16 @@ export class InputManager {
   }
 
   getQuadrantFromPosition(x, y) {
-    const startY = 80;
-    if (y < startY) return null;
+    // Quadrants only exist on the riverbed (bottom 60% of screen)
+    const riverbedStartY = this.app.screen.height * 0.4; // 40% from top (where wall ends)
+    if (y < riverbedStartY) return null; // Above riverbed, no quadrants
 
-    const availableHeight = this.app.screen.height - startY;
+    const riverbedHeight = this.app.screen.height * 0.6;
     const quadrantWidth = this.app.screen.width / 3;
-    const quadrantHeight = availableHeight / 3;
+    const quadrantHeight = riverbedHeight / 3;
 
     const col = Math.floor(x / quadrantWidth);
-    const row = Math.floor((y - startY) / quadrantHeight);
+    const row = Math.floor((y - riverbedStartY) / quadrantHeight);
 
     if (col < 0 || col > 2 || row < 0 || row > 2) return null;
 

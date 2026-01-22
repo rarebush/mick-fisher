@@ -16,6 +16,7 @@ import {
   setupScene,
   setupWaterBackground,
   drawQuadrantGrid,
+  setupEnvironmentLayers,
 } from "./rendering/sceneSetup.js";
 import { SpriteManager } from "./rendering/spriteManager.js";
 import { InputManager } from "./input/inputManager.js";
@@ -27,6 +28,7 @@ import {
 import {
   getItemPosition,
   updateDragMechanics,
+  updateRopePhysics,
 } from "./sequences/dragSequence.js";
 
 export class PixiApp {
@@ -58,15 +60,20 @@ export class PixiApp {
     this.waterSpritesheet = null;
     this.waterTiles = [];
 
+    // Environment layer references
+    this.environmentLayers = null;
+    this.sceneContainer = null;
+
     // Drag timing (for deltaTime calculations)
     this.lastDragUpdateTime = null;
     this.dragStartTime = null;
+    this.lastRopeUpdateTime = null; // For 3D rope physics timing
 
     // Drag bubble interval
     this.dragBubbleInterval = null;
 
     // Rope physics for drag visualization
-    this.dragRope = null;
+
     this.dragLine = null;
     this.dragPlayerX = 0;
     this.dragPlayerY = 0;
@@ -149,15 +156,35 @@ export class PixiApp {
     this.app.ticker.add(this.tickerUpdateDragMechanics, this);
     this.app.ticker.add(this.tickerUpdateRope, this);
 
-    // Setup scene (shore, text)
-    setupScene(this.app);
+    // Create scene container to offset for 3D perspective
+    // This prevents negative Y coordinates from rendering off-screen
+    this.sceneContainer = new PIXI.Container();
+    this.sceneContainer.y = 0; // No offset needed - layers fill screen
+    this.app.stage.addChild(this.sceneContainer);
+
+    // Setup 3D environment layers (pier, wall, water, riverbed)
+    this.environmentLayers = setupEnvironmentLayers(
+      this.sceneContainer,
+      this.app.screen.width,
+      this.app.screen.height,
+    );
+
+    // No need to apply Y offset - layers are positioned to fill screen
+    console.log(`[SCENE] Environment layers created, filling full screen`);
+
+    // Setup scene (shore, text) - now deprecated in favor of environment layers
+    // setupScene(this.app);
 
     // Setup water background and store references
+    // Note: Disabled in favor of environment layers with static water
+    // You can re-enable this for animated water tiles if desired
+    /*
     const { waterSpritesheet, waterTiles } = await setupWaterBackground(
       this.app,
     );
     this.waterSpritesheet = waterSpritesheet;
     this.waterTiles = waterTiles || [];
+    */
 
     // Draw quadrant grid on top
     drawQuadrantGrid(this.app);
@@ -199,7 +226,6 @@ export class PixiApp {
 
     if (result) {
       this.dragBubbleInterval = result.dragBubbleInterval;
-      this.dragRope = result.rope;
       this.dragLine = result.line;
       this.dragPlayerX = result.playerX;
       this.dragPlayerY = result.playerY;
@@ -244,8 +270,14 @@ export class PixiApp {
       if (gamePhase === "dragging" && dragState?.active) {
         console.log("[MANUAL FAILURE] Player gave up");
 
-        // Complete drag session
-        this.sessionStore.getState().completeDrag();
+        // Immediately deactivate drag and set reeling phase to stop ticker physics
+        this.sessionStore.setState((state) => ({
+          dragState: {
+            ...state.dragState,
+            active: false,
+          },
+        }));
+        this.sessionStore.getState().setPhase("reeling");
 
         // Trigger failure at current distance (with rope reel-in animation)
         const currentDistance = event.detail.distance || dragState.distance;
@@ -259,14 +291,16 @@ export class PixiApp {
           this.inputManager
             ? this.inputManager.getQuadrantFromPosition.bind(this.inputManager)
             : null,
-          this.dragRope,
+          null, // No 2D rope
           this.dragLine,
           this.dragPlayerX,
           this.dragPlayerY,
         );
 
-        // Clear rope references after reel-in
-        this.dragRope = null;
+        // Complete drag session AFTER reel-in animation
+        this.sessionStore.getState().completeDrag();
+
+        // Clear line reference after reel-in
         this.dragLine = null;
 
         // Store failure reason - manual yank = tension overload
@@ -317,8 +351,8 @@ export class PixiApp {
   }
 
   // Ticker method for drag mechanics updates
-  tickerUpdateDragMechanics() {
-    const result = updateDragMechanics(
+  async tickerUpdateDragMechanics() {
+    const result = await updateDragMechanics(
       this.app,
       this.gameStore,
       this.sessionStore,
@@ -338,25 +372,28 @@ export class PixiApp {
           this.inputManager
             ? this.inputManager.getQuadrantFromPosition.bind(this.inputManager)
             : null,
-          this.dragRope,
+          null, // No 2D rope
           this.dragLine,
           this.dragPlayerX,
           this.dragPlayerY,
         );
-        // Clear rope references after reel-in
-        this.dragRope = null;
+        // Clear line reference after reel-in
         this.dragLine = null;
       },
       () => {
-        // Clean up rope on successful retrieval
-        if (this.dragRope) {
-          this.dragRope.destroy();
-          this.dragRope = null;
-        }
+        // Clean up line and rope state on successful retrieval
         if (this.dragLine && this.dragLine.parent) {
           this.dragLine.parent.removeChild(this.dragLine);
           this.dragLine.destroy();
           this.dragLine = null;
+        }
+
+        // Clear 3D rope from sessionStore
+        if (this.sessionStore) {
+          this.sessionStore.getState().setRope(null);
+          this.sessionStore.getState().setPhase("idle");
+          this.sessionStore.getState().setPhaseProgress(0);
+          this.sessionStore.getState().setCastPosition(null, null);
         }
       },
     );
@@ -367,46 +404,49 @@ export class PixiApp {
 
   // Ticker method for rope physics updates during drag
   tickerUpdateRope() {
-    if (!this.app || !this.dragRope || !this.dragLine) {
+    if (!this.app || !this.dragLine) {
       return;
     }
 
-    // Get current item position (or use stored magnet position during settling)
-    let itemPos = getItemPosition(this.app, this.sessionStore);
+    // Calculate delta time for physics
+    const now = performance.now();
+    const deltaTime = this.lastRopeUpdateTime
+      ? (now - this.lastRopeUpdateTime) / 1000
+      : 1 / 60; // Default to 60 FPS
 
-    // During settling period (after cast, before drag), use the magnet's stored position
-    if (!itemPos && this.dragRope.pinEnd) {
-      itemPos = { x: this.dragRope.pinEnd.x, y: this.dragRope.pinEnd.y };
+    // Log if deltaTime is suspiciously large
+    if (deltaTime > 0.1) {
+      console.warn(
+        `[TICKER] Large deltaTime in tickerUpdateRope: ${deltaTime.toFixed(3)}s (${(now - this.lastRopeUpdateTime).toFixed(0)}ms)`,
+      );
     }
 
-    if (!itemPos) {
-      return;
-    }
+    this.lastRopeUpdateTime = now;
 
-    // Get current tension - use drag tension if dragging, otherwise use cast tension
-    const dragState = this.sessionStore?.getState().dragState;
-    const castState = this.gameStore?.getState().currentCast;
-    const tension = dragState?.active
-      ? dragState.tension
-      : castState?.tension || 10;
-
-    // Adjust rope length to match actual distance and tension
-    // Low tension = slack rope, high tension = taut rope
-    this.dragRope.adjustLengthToDistance(
+    // Update 3D rope physics and get screen coordinates
+    const screenPoints = updateRopePhysics(
+      this.app,
+      this.sessionStore,
+      deltaTime,
       this.dragPlayerX,
       this.dragPlayerY,
-      itemPos.x,
-      itemPos.y,
-      tension,
     );
 
-    // Update rope physics with magnet at item position
-    this.dragRope.setMagnetPosition(itemPos.x, itemPos.y);
-    this.dragRope.setPlayerPosition(this.dragPlayerX, this.dragPlayerY);
-    this.dragRope.update(tension);
+    if (screenPoints && this.dragLine) {
+      // Render 3D rope using screen-projected points
+      this.dragLine.clear();
+      this.dragLine.setStrokeStyle({ width: 3, color: 0x8b4513 }); // Brown rope color
 
-    // Render rope
-    renderRope(this.dragLine, this.dragRope, 80);
+      if (screenPoints.length > 0) {
+        this.dragLine.moveTo(screenPoints[0].x, screenPoints[0].y);
+
+        for (let i = 1; i < screenPoints.length; i++) {
+          this.dragLine.lineTo(screenPoints[i].x, screenPoints[i].y);
+        }
+
+        this.dragLine.stroke();
+      }
+    }
   }
 
   resize(width, height) {
@@ -470,7 +510,6 @@ export class PixiApp {
       this.dragLine.destroy();
       this.dragLine = null;
     }
-    this.dragRope = null;
 
     // Clean up rope graphics
     if (this.dragLine) {
@@ -480,7 +519,6 @@ export class PixiApp {
       this.dragLine.destroy();
       this.dragLine = null;
     }
-    this.dragRope = null;
 
     // Clean up manual failure listener
     if (this.handleManualFailure) {

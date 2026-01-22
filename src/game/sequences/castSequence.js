@@ -16,6 +16,13 @@ import {
 // Re-export renderRope for use by PixiApp
 export { animationRenderRope as renderRope };
 import { showNothingMessage } from "../animations/messageAnimations.js";
+import { Rope3D } from "../physics/RopePhysics3D.js";
+import {
+  getAvatarPosition,
+  getMagnetPosition,
+  calculateRopeSegments,
+  HEIGHTS,
+} from "../mechanics/heightMechanics.js";
 
 /**
  * Execute complete cast sequence
@@ -53,21 +60,25 @@ export async function executeCastSequence(
     );
   }
 
-  // Animate casting line and get rope for continued rendering
-  const { rope, line, playerX, playerY, finalTension } = await animateCastLine(
+  // Animate casting line and get graphics for continued rendering
+  const { line, playerX, playerY, finalTension } = await animateCastLine(
     app,
     x,
     y,
     gameStore,
+    sessionStore,
   );
 
-  // Store rope on PixiApp instance immediately for ticker updates
+  // The 3D rope is already stored in sessionStore by animateCastLine
+  // Store line and player position on PixiApp instance for rendering
   if (pixiApp) {
-    pixiApp.dragRope = rope;
     pixiApp.dragLine = line;
     pixiApp.dragPlayerX = playerX;
     pixiApp.dragPlayerY = playerY;
   }
+
+  // Store cast position for rope rendering (before drag starts)
+  sessionStore.getState().setCastPosition(x, y);
 
   // Visual feedback - ripple at landing point
   createRipple(app, x, y);
@@ -156,6 +167,16 @@ export async function executeCastSequence(
         quadrant,
         finalTension || 10, // Use final cast tension or default to 10
       );
+
+      // Reset rope timer in PixiApp to prevent large deltaTime
+      if (typeof window !== "undefined" && window.getPixiApp) {
+        const pixiApp = window.getPixiApp();
+        if (pixiApp) {
+          pixiApp.lastRopeUpdateTime = performance.now();
+          console.log("[CAST] Reset rope update timer for drag phase");
+        }
+      }
+
       setGamePhase("dragging");
 
       // Start periodic bubble animation during drag
@@ -183,12 +204,25 @@ export async function executeCastSequence(
         castResult.placementQuality.label,
       );
 
-      return { dragBubbleInterval, rope, line, playerX, playerY };
+      return { dragBubbleInterval, line, playerX, playerY };
     } else {
-      // Nothing found - clean up rope
+      // Nothing found - clean up rope and graphics
       if (line && line.parent) {
         line.parent.removeChild(line);
         line.destroy();
+      }
+
+      // Clear sessionStore rope state
+      sessionStore.getState().setRope(null);
+      sessionStore.getState().setPhase("idle");
+      sessionStore.getState().setPhaseProgress(0);
+      sessionStore.getState().setCastPosition(null, null);
+
+      // Clear PixiApp references
+      if (pixiApp) {
+        pixiApp.dragLine = null;
+        pixiApp.dragPlayerX = null;
+        pixiApp.dragPlayerY = null;
       }
 
       showNothingMessage(app, x, y);
@@ -241,15 +275,16 @@ export async function handleDragFailure(
   if (!stopPosition) return;
 
   // Animate rope reeling in from stop position back to player
-  if (rope && line) {
+  if (line) {
     await animateReelIn(
       app,
-      rope,
+      null, // No 2D rope
       line,
       playerX,
       playerY,
       stopPosition.x,
       stopPosition.y,
+      sessionStore,
     );
   }
 
@@ -290,12 +325,12 @@ function calculatePositionAtDistance(
 ) {
   if (!app) return null;
 
-  const shoreX = app.screen.width / 2;
-  const shoreY = 80;
+  const wallBaseX = app.screen.width / 2;
+  const wallBaseY = app.screen.height * 0.4; // Bottom of wall (40% from top)
   const progress = 1 - distance / totalDistance;
 
-  const x = castPosition.x + (shoreX - castPosition.x) * progress;
-  const y = castPosition.y + (shoreY - castPosition.y) * progress;
+  const x = castPosition.x + (wallBaseX - castPosition.x) * progress;
+  const y = castPosition.y + (wallBaseY - castPosition.y) * progress;
 
   return { x, y };
 }

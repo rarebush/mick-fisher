@@ -8,6 +8,10 @@ import {
   calculateTensionBuildRate,
   updateDragState,
 } from "../mechanics/dragMechanics.js";
+import {
+  getAvatarPosition,
+  getMagnetPosition,
+} from "../mechanics/heightMechanics.js";
 
 /**
  * Calculate current item position during drag
@@ -20,24 +24,103 @@ export function getItemPosition(app, sessionStore) {
 
   const { castPosition, distance, totalDistance } = dragState;
 
-  // Interpolate between cast position and shore bottom
-  const shoreX = app.screen.width / 2;
-  const shoreY = 80; // Bottom of shore area
+  // Interpolate between cast position (on riverbed) and wall base
+  // The item moves along the riverbed surface toward the wall base
+  const wallBaseX = app.screen.width / 2; // Center of screen
+  const wallBaseY = app.screen.height * 0.4; // Wall base (40% from top - top edge of riverbed)
 
-  // Progress: 0 = at cast position, 1 = at shore
+  // Progress: 0 = at cast position, 1 = at wall base
   const progress = 1 - distance / totalDistance;
 
-  const currentX = castPosition.x + (shoreX - castPosition.x) * progress;
-  const currentY = castPosition.y + (shoreY - castPosition.y) * progress;
+  // Item moves both horizontally and vertically toward wall base
+  const currentX = castPosition.x + (wallBaseX - castPosition.x) * progress;
+  const currentY = castPosition.y + (wallBaseY - castPosition.y) * progress;
 
   return { x: currentX, y: currentY };
+}
+
+/**
+ * Update 3D rope physics
+ * Called from ticker to simulate rope with gravity
+ */
+export function updateRopePhysics(
+  app,
+  sessionStore,
+  deltaTime,
+  playerX,
+  playerY,
+) {
+  const rope = sessionStore.getState().rope;
+  if (!rope) return null;
+
+  const phase = sessionStore.getState().phase;
+  const phaseProgress = sessionStore.getState().phaseProgress;
+
+  // Don't update rope physics during cast animation or reel-in - those are controlled by animations
+  if (
+    phase === "throwing" ||
+    phase === "splashing" ||
+    phase === "sinking" ||
+    phase === "settling" ||
+    phase === "reeling"
+  ) {
+    // Only log occasionally to avoid spam
+    if (Math.random() < 0.1) {
+      console.log(
+        `[ROPE] Skipping physics update during ${phase} phase (progress: ${(phaseProgress * 100).toFixed(0)}%) - animation controls the rope`,
+      );
+    }
+    return rope.getScreenPoints(); // Just return current points for rendering
+  }
+
+  console.log(
+    `[ROPE] Physics update in phase: ${phase}, deltaTime: ${deltaTime.toFixed(3)}s`,
+  );
+
+  // Get avatar position (always at pier height)
+  const avatarPos = getAvatarPosition(playerX, playerY);
+
+  // Get magnet position based on game state
+  const dragState = sessionStore.getState().dragState;
+  const castPosition = sessionStore.getState().castPosition;
+  let itemPos;
+
+  if (dragState.active) {
+    // During drag, get moving item position
+    itemPos = getItemPosition(app, sessionStore);
+  } else if (castPosition) {
+    // During cast/settle phase, use stored cast position
+    itemPos = { x: castPosition.x, y: castPosition.y };
+  }
+
+  if (!itemPos) return null;
+
+  // Get magnet height based on phase
+  const magnetPos = getMagnetPosition(
+    itemPos.x,
+    itemPos.y,
+    phase,
+    phaseProgress,
+  );
+
+  console.log(
+    `[ROPE] Item at (${itemPos.x.toFixed(1)}, ${itemPos.y.toFixed(1)}), Magnet 3D: (${magnetPos.x.toFixed(1)}, ${magnetPos.y.toFixed(1)}, ${magnetPos.z}), Screen: (${magnetPos.x.toFixed(1)}, ${(magnetPos.y - magnetPos.z).toFixed(1)})`,
+  );
+
+  // Update rope physics
+  rope.update(deltaTime, avatarPos, magnetPos);
+
+  // Get screen coordinates for rendering
+  const screenPoints = rope.getScreenPoints();
+
+  return screenPoints;
 }
 
 /**
  * Update drag mechanics (called by ticker)
  * Handles tension, distance, slip calculations, and completion detection
  */
-export function updateDragMechanics(
+export async function updateDragMechanics(
   app,
   gameStore,
   sessionStore,
@@ -169,15 +252,27 @@ export function updateDragMechanics(
   }
   // Handle failure
   else if (result.failed) {
-    sessionStore.getState().completeDrag();
-
     console.log("Drag failed! Reason:", result.failReason);
     console.log(
       `[FAIL] Item remains engaged: ${currentCast.itemInstanceId} at location: ${gameStore.getState().currentLocation}`,
     );
 
-    // Update item position to where it stopped
-    onDragFailure(result.distance);
+    // Immediately deactivate drag to prevent re-triggering failure on next frame
+    sessionStore.setState((state) => ({
+      dragState: {
+        ...state.dragState,
+        active: false,
+      },
+    }));
+
+    // Set phase to prevent ticker from updating rope physics during reel-in
+    sessionStore.getState().setPhase("reeling");
+
+    // Update item position to where it stopped (includes reel-in animation)
+    await onDragFailure(result.distance);
+
+    // Complete drag session AFTER reel-in animation
+    sessionStore.getState().completeDrag();
 
     // Store failure reason
     gameStore.setState((state) => ({

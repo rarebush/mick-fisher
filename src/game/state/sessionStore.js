@@ -40,6 +40,12 @@ const useSessionStore = create((set, get) => ({
     revealed: false, // false = blind lift, true = revealed lift
   },
 
+  // 3D Rope physics state
+  rope: null, // Rope3D instance
+  phase: "idle", // Current phase: 'idle', 'cast', 'drag', 'lift'
+  phaseProgress: 0, // Phase completion (0 to 1)
+  castPosition: null, // Cast landing position (set before drag starts, for rope rendering)
+
   // Actions - Session Control
   startSession: () => {
     set({
@@ -88,6 +94,12 @@ const useSessionStore = create((set, get) => ({
     quadrant = 0,
     initialTension = 10, // Tension from end of cast animation
   ) => {
+    // Reset rope physics state to prevent velocity carryover from animation
+    const rope = get().rope;
+    if (rope && rope.resetPhysicsState) {
+      rope.resetPhysicsState();
+    }
+
     // Determine slip direction based on initial position
     const distanceToLeftEdge = magnetPosition;
     const distanceToRightEdge = 100 - magnetPosition;
@@ -95,6 +107,8 @@ const useSessionStore = create((set, get) => ({
 
     set({
       isDragging: false, // Reset to ensure no auto-dragging
+      phase: "drag", // Set phase for 3D rope physics
+      phaseProgress: 0,
       dragState: {
         active: true,
         tension: initialTension, // Use tension from cast animation
@@ -151,6 +165,8 @@ const useSessionStore = create((set, get) => ({
   completeDrag: () => {
     const state = get();
     set({
+      phase: "idle", // Reset phase
+      phaseProgress: 0,
       dragState: {
         ...state.dragState,
         active: false,
@@ -162,6 +178,8 @@ const useSessionStore = create((set, get) => ({
   // Actions - Lift Phase
   startLift: (depth, carryOverSlip = 0) => {
     set({
+      phase: "lift", // Set phase for 3D rope physics
+      phaseProgress: 0,
       liftState: {
         active: true,
         depth,
@@ -214,6 +232,8 @@ const useSessionStore = create((set, get) => ({
     const finalSlip = state.liftState.slipAccumulated;
 
     set({
+      phase: "idle", // Reset phase
+      phaseProgress: 0,
       liftState: {
         active: false,
         depth: 0,
@@ -225,6 +245,22 @@ const useSessionStore = create((set, get) => ({
     });
 
     return finalSlip;
+  },
+
+  // Actions - 3D Rope Physics
+  setRope: (rope) => set({ rope }),
+
+  setPhase: (phase) => set({ phase }),
+
+  setPhaseProgress: (progress) =>
+    set({ phaseProgress: Math.max(0, Math.min(1, progress)) }),
+
+  setCastPosition: (x, y) => set({ castPosition: { x, y } }),
+
+  updatePhaseProgress: (delta) => {
+    const state = get();
+    const newProgress = state.phaseProgress + delta;
+    set({ phaseProgress: Math.max(0, Math.min(1, newProgress)) });
   },
 
   // Utility
@@ -246,6 +282,9 @@ const useSessionStore = create((set, get) => ({
     set({
       sessionActive: false,
       sessionTimeRemaining: 600,
+      rope: null,
+      phase: "idle",
+      phaseProgress: 0,
       dragState: {
         active: false,
         tension: 0,

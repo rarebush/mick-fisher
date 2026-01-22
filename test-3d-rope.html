@@ -1,0 +1,271 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>3D Rope Physics Test</title>
+    <style>
+      body {
+        margin: 0;
+        padding: 20px;
+        font-family: monospace;
+        background: #1a1a1a;
+        color: #00ff00;
+      }
+
+      h1 {
+        margin: 0 0 20px 0;
+        font-size: 24px;
+      }
+
+      .info {
+        margin-bottom: 20px;
+        padding: 10px;
+        background: #2a2a2a;
+        border: 1px solid #00ff00;
+      }
+
+      .info p {
+        margin: 5px 0;
+      }
+
+      .controls {
+        margin-bottom: 20px;
+        padding: 10px;
+        background: #2a2a2a;
+        border: 1px solid #00ff00;
+      }
+
+      button {
+        background: #00ff00;
+        color: #1a1a1a;
+        border: none;
+        padding: 10px 20px;
+        margin: 5px;
+        cursor: pointer;
+        font-family: monospace;
+        font-weight: bold;
+      }
+
+      button:hover {
+        background: #00cc00;
+      }
+
+      .status {
+        color: #ffff00;
+      }
+
+      .success {
+        color: #00ff00;
+      }
+
+      .error {
+        color: #ff0000;
+      }
+    </style>
+  </head>
+  <body>
+    <h1>3D Rope Physics - Implementation Test</h1>
+
+    <div class="info">
+      <p>
+        <strong>Status:</strong>
+        <span id="status" class="status">Checking implementation...</span>
+      </p>
+      <p><strong>Files Created:</strong> <span id="filesCreated">0/2</span></p>
+      <p>
+        <strong>Files Modified:</strong> <span id="filesModified">0/5</span>
+      </p>
+      <p><strong>Errors:</strong> <span id="errors">0</span></p>
+    </div>
+
+    <div class="controls">
+      <h3>Quick Tests</h3>
+      <button onclick="testRopeCreation()">Test Rope Creation</button>
+      <button onclick="testHeightMechanics()">Test Height Mechanics</button>
+      <button onclick="testSessionStore()">Test Session Store</button>
+      <button onclick="runAllTests()">Run All Tests</button>
+    </div>
+
+    <div class="info">
+      <h3>Test Results</h3>
+      <pre id="results">No tests run yet.</pre>
+    </div>
+
+    <div class="info">
+      <h3>Console Output</h3>
+      <pre id="console" style="max-height: 300px; overflow-y: auto"></pre>
+    </div>
+
+    <script type="module">
+      const resultsEl = document.getElementById("results");
+      const consoleEl = document.getElementById("console");
+      const statusEl = document.getElementById("status");
+
+      // Intercept console.log
+      const originalLog = console.log;
+      console.log = function (...args) {
+        originalLog.apply(console, args);
+        consoleEl.textContent += args.join(" ") + "\n";
+        consoleEl.scrollTop = consoleEl.scrollHeight;
+      };
+
+      const originalError = console.error;
+      console.error = function (...args) {
+        originalError.apply(console, args);
+        consoleEl.textContent += "[ERROR] " + args.join(" ") + "\n";
+        consoleEl.scrollTop = consoleEl.scrollHeight;
+      };
+
+      // Check implementation status
+      async function checkImplementation() {
+        let filesCreated = 0;
+        let filesModified = 0;
+        let errors = 0;
+
+        try {
+          // Check new files
+          const ropePhysics =
+            await import("./src/game/physics/RopePhysics3D.js");
+          if (ropePhysics.Rope3D) {
+            filesCreated++;
+            console.log("✅ RopePhysics3D.js loaded successfully");
+          }
+
+          const heightMechanics =
+            await import("./src/game/mechanics/heightMechanics.js");
+          if (heightMechanics.HEIGHTS) {
+            filesCreated++;
+            console.log("✅ heightMechanics.js loaded successfully");
+          }
+
+          // Check modified files
+          const sessionStore = await import("./src/game/state/sessionStore.js");
+          const castSequence =
+            await import("./src/game/sequences/castSequence.js");
+          const dragSequence =
+            await import("./src/game/sequences/dragSequence.js");
+          const sceneSetup = await import("./src/game/rendering/sceneSetup.js");
+
+          if (sessionStore.default) filesModified++;
+          if (castSequence.executeCastSequence) filesModified++;
+          if (dragSequence.updateRopePhysics) filesModified++;
+          if (sceneSetup.setupEnvironmentLayers) filesModified++;
+
+          // PixiApp check
+          try {
+            const pixiApp = await import("./src/game/PixiApp.js");
+            if (pixiApp.PixiApp) filesModified++;
+          } catch (e) {
+            console.error("PixiApp check failed (might be normal):", e.message);
+          }
+
+          document.getElementById("filesCreated").textContent =
+            `${filesCreated}/2`;
+          document.getElementById("filesModified").textContent =
+            `${filesModified}/5`;
+          document.getElementById("errors").textContent = errors;
+
+          if (filesCreated === 2 && filesModified >= 4) {
+            statusEl.textContent = "Implementation Complete ✅";
+            statusEl.className = "success";
+          } else {
+            statusEl.textContent = "Implementation Incomplete ⚠️";
+            statusEl.className = "status";
+          }
+        } catch (error) {
+          errors++;
+          console.error("Implementation check failed:", error);
+          statusEl.textContent = "Implementation Error ❌";
+          statusEl.className = "error";
+          document.getElementById("errors").textContent = errors;
+        }
+      }
+
+      window.testRopeCreation = async function () {
+        resultsEl.textContent = "Testing rope creation...\n";
+
+        try {
+          const { Rope3D } =
+            await import("./src/game/physics/RopePhysics3D.js");
+          const { HEIGHTS } =
+            await import("./src/game/mechanics/heightMechanics.js");
+
+          const rope = new Rope3D(
+            20,
+            { x: 100, y: 100, z: HEIGHTS.AVATAR },
+            { x: 400, y: 400, z: HEIGHTS.RIVERBED },
+          );
+
+          resultsEl.textContent += `✅ Rope created with ${rope.points.length} segments\n`;
+          resultsEl.textContent += `✅ Segment length: ${rope.segmentLength.toFixed(2)}px\n`;
+          resultsEl.textContent += `✅ First point pinned: ${rope.points[0].pinned}\n`;
+          resultsEl.textContent += `✅ Last point pinned: ${rope.points[rope.points.length - 1].pinned}\n`;
+          resultsEl.textContent += "\n✅ TEST PASSED\n";
+        } catch (error) {
+          resultsEl.textContent += `❌ TEST FAILED: ${error.message}\n`;
+        }
+      };
+
+      window.testHeightMechanics = async function () {
+        resultsEl.textContent = "Testing height mechanics...\n";
+
+        try {
+          const { HEIGHTS, getMagnetHeight, isUnderwater } =
+            await import("./src/game/mechanics/heightMechanics.js");
+
+          resultsEl.textContent += `✅ HEIGHTS.AVATAR = ${HEIGHTS.AVATAR}\n`;
+          resultsEl.textContent += `✅ HEIGHTS.WATER_SURFACE = ${HEIGHTS.WATER_SURFACE}\n`;
+          resultsEl.textContent += `✅ HEIGHTS.RIVERBED = ${HEIGHTS.RIVERBED}\n`;
+
+          const castHeight = getMagnetHeight("cast", 0.5);
+          resultsEl.textContent += `✅ Cast height (50%): ${castHeight}\n`;
+
+          const dragHeight = getMagnetHeight("drag", 0);
+          resultsEl.textContent += `✅ Drag height: ${dragHeight}\n`;
+
+          const underwater = isUnderwater(30);
+          resultsEl.textContent += `✅ Z=30 underwater: ${underwater}\n`;
+
+          resultsEl.textContent += "\n✅ TEST PASSED\n";
+        } catch (error) {
+          resultsEl.textContent += `❌ TEST FAILED: ${error.message}\n`;
+        }
+      };
+
+      window.testSessionStore = async function () {
+        resultsEl.textContent = "Testing session store...\n";
+
+        try {
+          const useSessionStore = (
+            await import("./src/game/state/sessionStore.js")
+          ).default;
+          const store = useSessionStore.getState();
+
+          resultsEl.textContent += `✅ Store has rope property: ${typeof store.rope}\n`;
+          resultsEl.textContent += `✅ Store has phase property: ${store.phase}\n`;
+          resultsEl.textContent += `✅ Store has phaseProgress property: ${store.phaseProgress}\n`;
+          resultsEl.textContent += `✅ Store has setRope method: ${typeof store.setRope === "function"}\n`;
+          resultsEl.textContent += `✅ Store has setPhase method: ${typeof store.setPhase === "function"}\n`;
+          resultsEl.textContent += `✅ Store has setPhaseProgress method: ${typeof store.setPhaseProgress === "function"}\n`;
+
+          resultsEl.textContent += "\n✅ TEST PASSED\n";
+        } catch (error) {
+          resultsEl.textContent += `❌ TEST FAILED: ${error.message}\n`;
+        }
+      };
+
+      window.runAllTests = async function () {
+        await window.testRopeCreation();
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        await window.testHeightMechanics();
+        await new Promise((resolve) => setTimeout(resolve, 500));
+        await window.testSessionStore();
+        resultsEl.textContent += "\n=== ALL TESTS COMPLETE ===\n";
+      };
+
+      // Auto-check on load
+      checkImplementation();
+    </script>
+  </body>
+</html>

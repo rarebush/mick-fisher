@@ -18,18 +18,19 @@ import {
 /**
  * Calculate distance from shore based on item's Y position
  * Used for re-engaged items to derive distance from screen coordinates
+ * Items are on the riverbed (40%-100% of screen height)
  * @param {number} itemY - Item's Y position on screen
  * @returns {number} - Estimated distance in meters
  */
 function calculateDistanceFromPosition(itemY) {
-  const shoreY = 80;
-  const maxY = 600; // Approximate max cast depth on screen
+  const riverbedStartY = 0.4; // 40% from top (proportion)
   const maxDistance = 15; // Max distance in meters
 
-  // Linear interpolation: closer to shore (lower Y) = less distance
+  // Normalize Y to 0-1 range within riverbed area
+  // riverbedStartY (40%) = 0 distance, bottom (100%) = max distance
   const normalizedY = Math.max(
     0,
-    Math.min(1, (itemY - shoreY) / (maxY - shoreY)),
+    Math.min(1, (itemY / window.innerHeight - riverbedStartY) / 0.6),
   );
   return normalizedY * maxDistance;
 }
