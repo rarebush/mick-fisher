@@ -7,6 +7,18 @@
  */
 
 /**
+ * Calculate slip direction based on magnet position
+ * Magnet slides toward the nearest edge
+ * @param {number} magnetPosition - Position on surface (0-100)
+ * @returns {number} - Direction: -1 (toward 0) or 1 (toward 100)
+ */
+export function calculateSlipDirection(magnetPosition) {
+  const distanceToLeftEdge = magnetPosition;
+  const distanceToRightEdge = 100 - magnetPosition;
+  return distanceToLeftEdge < distanceToRightEdge ? -1 : 1;
+}
+
+/**
  * Determine initial magnet landing position on item surface
  * Ensures magnet contact area stays within bounds (0-100)
  * @param {number} contactWidth - Width of magnet contact area (default 10)

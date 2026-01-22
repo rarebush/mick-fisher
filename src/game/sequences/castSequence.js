@@ -4,6 +4,7 @@
  */
 
 import { executeCast } from "../mechanics/castMechanics.js";
+import { calculateSlipDirection } from "../mechanics/slipCalculations.js";
 import {
   animateCastLine,
   createRipple,
@@ -157,6 +158,9 @@ export async function executeCastSequence(
         ? castResult.itemPosition
         : { x, y };
 
+      // Calculate slip direction from magnet position (pure function)
+      const slipDirection = calculateSlipDirection(castResult.magnetPosition);
+
       // Start drag phase with magnet position and final cast tension
       const { startDrag } = sessionStore.getState();
       startDrag(
@@ -166,6 +170,7 @@ export async function executeCastSequence(
         initialPosition,
         quadrant,
         finalTension || 10, // Use final cast tension or default to 10
+        slipDirection,
       );
 
       // Reset rope timer in PixiApp to prevent large deltaTime

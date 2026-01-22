@@ -93,17 +93,13 @@ const useSessionStore = create((set, get) => ({
     castPosition = { x: 0, y: 0 },
     quadrant = 0,
     initialTension = 10, // Tension from end of cast animation
+    slipDirection = 0, // Calculated by caller using calculateSlipDirection()
   ) => {
     // Reset rope physics state to prevent velocity carryover from animation
     const rope = get().rope;
     if (rope && rope.resetPhysicsState) {
       rope.resetPhysicsState();
     }
-
-    // Determine slip direction based on initial position
-    const distanceToLeftEdge = magnetPosition;
-    const distanceToRightEdge = 100 - magnetPosition;
-    const slipDirection = distanceToLeftEdge < distanceToRightEdge ? -1 : 1;
 
     set({
       isDragging: false, // Reset to ensure no auto-dragging
@@ -173,6 +169,16 @@ const useSessionStore = create((set, get) => ({
       },
     });
     return state.dragState.magnetPosition;
+  },
+
+  // Deactivate drag without completing (for manual failure)
+  deactivateDrag: () => {
+    set((state) => ({
+      dragState: {
+        ...state.dragState,
+        active: false,
+      },
+    }));
   },
 
   // Actions - Lift Phase

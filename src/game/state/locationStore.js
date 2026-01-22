@@ -5,6 +5,7 @@
 
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
+import { isPointInCircle } from "../mechanics/hitDetection.js";
 
 const useLocationStore = create(
   persist(
@@ -80,13 +81,10 @@ const useLocationStore = create(
         for (const [itemId, itemData] of Object.entries(locationItems)) {
           if (itemData.quadrant !== quadrant) continue;
 
-          // Calculate distance from cast position to item center
-          const dx = x - itemData.x;
-          const dy = y - itemData.y;
-          const distance = Math.sqrt(dx * dx + dy * dy);
-
-          // Check if within item's radius (hit detection)
-          if (distance <= itemData.size / 2) {
+          // Use pure function for hit detection
+          if (
+            isPointInCircle(x, y, itemData.x, itemData.y, itemData.size / 2)
+          ) {
             console.log(
               `[LOCATION] HIT! Cast hit engaged item: ${itemData.item.name}`,
             );

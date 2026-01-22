@@ -258,12 +258,7 @@ export async function updateDragMechanics(
     );
 
     // Immediately deactivate drag to prevent re-triggering failure on next frame
-    sessionStore.setState((state) => ({
-      dragState: {
-        ...state.dragState,
-        active: false,
-      },
-    }));
+    sessionStore.getState().deactivateDrag();
 
     // Set phase to prevent ticker from updating rope physics during reel-in
     sessionStore.getState().setPhase("reeling");

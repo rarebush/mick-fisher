@@ -10,6 +10,7 @@
 import * as PIXI from "pixi.js";
 import { DebugOverlay } from "./graphics/debugOverlay.js";
 import useLocationStore from "./state/locationStore.js";
+import { processTap } from "./mechanics/dragMechanics.js";
 
 // Import new modules
 import {
@@ -202,11 +203,24 @@ export class PixiApp {
       this.debugOverlay,
       {
         onCast: this.handleCast.bind(this),
+        onTap: this.handleTap.bind(this),
       },
     );
 
     // Setup event listeners
     this.inputManager.setupInteraction();
+  }
+
+  // Tap callback invoked by InputManager during drag phase
+  handleTap() {
+    const dragState = this.sessionStore?.getState().dragState;
+    if (!dragState) return;
+
+    const newTension = processTap(dragState.tension);
+    this.sessionStore.getState().updateDragTension(newTension);
+    console.log(
+      `[TAP] Tension: ${dragState.tension.toFixed(0)}% → ${newTension.toFixed(0)}% (+10%)`,
+    );
   }
 
   // Cast callback invoked by InputManager
@@ -271,12 +285,7 @@ export class PixiApp {
         console.log("[MANUAL FAILURE] Player gave up");
 
         // Immediately deactivate drag and set reeling phase to stop ticker physics
-        this.sessionStore.setState((state) => ({
-          dragState: {
-            ...state.dragState,
-            active: false,
-          },
-        }));
+        this.sessionStore.getState().deactivateDrag();
         this.sessionStore.getState().setPhase("reeling");
 
         // Trigger failure at current distance (with rope reel-in animation)

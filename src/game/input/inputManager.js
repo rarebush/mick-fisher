@@ -4,8 +4,6 @@
  */
 
 import * as PIXI from "pixi.js";
-import { getItem } from "../data/itemDatabase.js";
-import { processTap } from "../mechanics/dragMechanics.js";
 import { isQuadrantAccessible } from "../mechanics/castMechanics.js";
 
 export class InputManager {
@@ -23,6 +21,7 @@ export class InputManager {
     this.locationStore = locationStore;
     this.debugOverlay = debugOverlay;
     this.onCast = callbacks?.onCast;
+    this.onTap = callbacks?.onTap;
 
     // Track input state - improved tap/hold detection
     this.isPointerDown = false; // Physical pointer state
@@ -286,22 +285,8 @@ export class InputManager {
 
     // If this was a tap (released before 100ms OR never triggered hold mode)
     if (pressDuration < 100 || !this.isHoldingForDrag) {
-      // Process as tap - instant +10% tension boost
-      const currentCast = this.gameStore?.getState().currentCast;
-      const dragState = this.sessionStore?.getState().dragState;
-
-      if (currentCast?.itemId && dragState) {
-        const item = getItem(currentCast.itemId);
-
-        if (item) {
-          const newTension = processTap(dragState.tension);
-          this.sessionStore.getState().updateDragTension(newTension);
-          console.log(
-            `[TAP] Tension: ${dragState.tension.toFixed(0)}% → ${newTension.toFixed(0)}% (+10%)`,
-          );
-        }
-      }
-
+      // Delegate tap processing to orchestrator via callback
+      this.onTap?.();
       this.lastTapReleaseTime = now;
     }
 
