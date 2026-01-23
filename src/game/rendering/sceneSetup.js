@@ -48,6 +48,15 @@ export function setupEnvironmentLayers(container, width, height) {
   const waterBounds = getSurfaceScreenBounds(WORLD_Z.WATER_SURFACE, viewport);
   const riverbedBounds = getSurfaceScreenBounds(WORLD_Z.RIVERBED, viewport);
 
+  // Debug: line at top of walkway Y, projected to riverbed Z
+  const walkwayTopAtRiverbed = projectToScreen(
+    0,
+    WORLD_Y.WALKWAY_BACK,
+    WORLD_Z.RIVERBED,
+    viewport,
+  );
+  const walkwayTopLineY = walkwayTopAtRiverbed.y;
+
   // Walkway: horizontal surface at Z=3, spanning Y from WALKWAY_BACK to WALKWAY_FRONT
   // Per diagram: walkway is extended upward for avatar backdrop
   // This is now purely projection-based - no dependency on other layers
@@ -92,6 +101,9 @@ export function setupEnvironmentLayers(container, width, height) {
   console.log(
     `[ENVIRONMENT] Walkway: ${walkwayY.toFixed(0)}-${(walkwayY + walkwayHeight).toFixed(0)}px (Z=${WORLD_Z.WALKWAY}), Wall: ${wallY.toFixed(0)}-${(wallY + wallHeight).toFixed(0)}px, Water: ${waterY.toFixed(0)}-${(waterY + waterHeight).toFixed(0)}px (Z=${WORLD_Z.WATER_SURFACE}), Riverbed: ${riverbedY.toFixed(0)}-${(riverbedY + riverbedHeight).toFixed(0)}px (Z=${WORLD_Z.RIVERBED})`,
   );
+  console.log(
+    `[ENVIRONMENT] Walkway top at Z=0: ${walkwayTopLineY.toFixed(0)}px`,
+  );
 
   // ==========================================================================
   // RENDER ORDER (per diagram.svg):
@@ -127,6 +139,69 @@ export function setupEnvironmentLayers(container, width, height) {
   pier.rect(0, walkwayY, width, walkwayHeight);
   pier.stroke({ width: 3, color: 0xff00ff, alpha: 1.0 }); // Magenta outline
   container.addChild(pier);
+
+  // Debug: stick figure at walkway edge (cast origin at chest)
+  const stickMan = new PIXI.Graphics();
+  const headWorld = { x: 0, y: WORLD_Y.AVATAR, z: WORLD_Z.AVATAR_HAND + 0.6 };
+  const chestWorld = { x: 0, y: WORLD_Y.AVATAR, z: WORLD_Z.AVATAR_HAND };
+  const waistWorld = { x: 0, y: WORLD_Y.AVATAR, z: WORLD_Z.WALKWAY + 0.6 };
+  const footWorld = { x: 0, y: WORLD_Y.AVATAR, z: WORLD_Z.WALKWAY };
+
+  const headScreen = projectToScreen(
+    headWorld.x,
+    headWorld.y,
+    headWorld.z,
+    viewport,
+  );
+  const chestScreen = projectToScreen(
+    chestWorld.x,
+    chestWorld.y,
+    chestWorld.z,
+    viewport,
+  );
+  const waistScreen = projectToScreen(
+    waistWorld.x,
+    waistWorld.y,
+    waistWorld.z,
+    viewport,
+  );
+  const footScreen = projectToScreen(
+    footWorld.x,
+    footWorld.y,
+    footWorld.z,
+    viewport,
+  );
+
+  stickMan.circle(headScreen.x, headScreen.y, 6).stroke({
+    width: 2,
+    color: 0xffffff,
+    alpha: 0.9,
+  });
+  stickMan.moveTo(headScreen.x, chestScreen.y);
+  stickMan.lineTo(waistScreen.x, waistScreen.y);
+  stickMan.stroke({ width: 2, color: 0xffffff, alpha: 0.9 });
+  stickMan.moveTo(chestScreen.x - 6, chestScreen.y + 6);
+  stickMan.lineTo(chestScreen.x + 6, chestScreen.y + 6);
+  stickMan.stroke({ width: 2, color: 0xffffff, alpha: 0.9 });
+  stickMan.moveTo(waistScreen.x, waistScreen.y);
+  stickMan.lineTo(footScreen.x - 6, footScreen.y + 8);
+  stickMan.moveTo(waistScreen.x, waistScreen.y);
+  stickMan.lineTo(footScreen.x + 6, footScreen.y + 8);
+  stickMan.stroke({ width: 2, color: 0xffffff, alpha: 0.9 });
+
+  // Cast origin marker at chest
+  stickMan.circle(chestScreen.x, chestScreen.y, 3).fill({
+    color: 0xffd700,
+    alpha: 0.9,
+  });
+  container.addChild(stickMan);
+
+  // Debug line: walkway top projected to riverbed (Z=0)
+  const walkwayTopLine = new PIXI.Graphics();
+  walkwayTopLine.moveTo(0, walkwayTopLineY);
+  walkwayTopLine.lineTo(width, walkwayTopLineY);
+  walkwayTopLine.stroke({ width: 2, color: 0x00c2ff, alpha: 0.9 });
+  container.addChild(walkwayTopLine);
 
   // Layer 2: Avatar would be added here (handled separately by PixiApp)
 
@@ -203,6 +278,13 @@ export function setupEnvironmentLayers(container, width, height) {
   }
   water.rect(0, waterY, width, waterHeight);
   water.stroke({ width: 3, color: 0x00ffff, alpha: 1.0 }); // Cyan outline
+
+  // Extend water fill to bottom of viewport (visual-only)
+  const waterBottom = waterY + waterHeight;
+  if (waterBottom < height) {
+    water.rect(0, waterBottom, width, height - waterBottom);
+    water.fill({ color: 0x00ffff, alpha: 0.4 });
+  }
   container.addChild(water);
 
   // Layer 7: Magnet would be added here with dynamic Z-based ordering (handled separately)
