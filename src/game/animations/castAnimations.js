@@ -241,10 +241,10 @@ export function animateCastLine(
     // ===========================================
     // ANIMATION PARAMETERS
     // ===========================================
-    // Throw timing: slow, deliberate lob for realistic fishing cast
-    // Base 800ms + 1.5ms per world unit of horizontal distance
-    // Example: 100 units = 950ms, 200 units = 1100ms, 400 units = 1400ms
-    const throwDuration = Math.max(800, 800 + horizontalDistance * 1.5);
+    // Throw timing: slowed for suspenseful cast feel
+    // Base 1200ms + 2.5ms per world unit of horizontal distance
+    // Example: 100 units = 1450ms, 200 units = 1700ms, 400 units = 2200ms
+    const throwDuration = Math.max(1200, 1200 + horizontalDistance * 2.5);
     const settleDuration = 200;
     const startTime = performance.now();
 
@@ -335,14 +335,12 @@ export function animateCastLine(
         // VALIDATION: Log rope length vs 3D distance (sample 10% of frames)
         if (Math.random() < 0.1) {
           const actualRopeLength = rope3D.getTotalLength();
-          const slackMultiplier =
-            rope3D.baseSegmentLength > 0
-              ? rope3D.segmentLength / rope3D.baseSegmentLength
-              : 1.0;
-          const expectedLength =
-            rope3D.baseSegmentLength * (rope3D.points.length - 1);
+          const slackMultiplier = rope3D.getSlackMultiplierForTension(
+            currentTension,
+          );
+          const expectedAtTension = currentDist3D * slackMultiplier;
           console.log(
-            `[CAST ROPE] 3D Dist: ${currentDist3D.toFixed(2)} | dX:${dx.toFixed(2)} dY:${dy.toFixed(2)} dZ:${dz.toFixed(2)} | Base: ${expectedLength.toFixed(2)} | Actual: ${actualRopeLength.toFixed(2)} | Expected@${currentTension.toFixed(0)}%: ${(expectedLength * slackMultiplier).toFixed(2)} | Ratio: ${(actualRopeLength / expectedLength).toFixed(2)}x`,
+            `[CAST ROPE] Tension: ${currentTension.toFixed(1)}% | Multiplier: ${slackMultiplier.toFixed(3)}x | 3D Dist: ${currentDist3D.toFixed(2)} | Expected: ${expectedAtTension.toFixed(2)} | Actual: ${actualRopeLength.toFixed(2)} | dX:${dx.toFixed(2)} dY:${dy.toFixed(2)} dZ:${dz.toFixed(2)}`,
           );
         }
 
@@ -388,7 +386,7 @@ Z: ${magnetWorld.z.toFixed(2)} (max: ${peaks.maxZ.toFixed(2)})`;
         prevTime = currentTime;
 
         // Water drag slows sinking
-        const terminalVelocityZ = -0.8; // Terminal velocity (world units/sec)
+        const terminalVelocityZ = -0.3; // Terminal velocity (world units/sec)
         const dragCoeff = 8;
         sinkVelocityZ += (terminalVelocityZ - sinkVelocityZ) * dragCoeff * dt;
 
@@ -565,13 +563,19 @@ Z: ${magnetWorld.z.toFixed(2)} (max: ${peaks.maxZ.toFixed(2)})`;
  * @param {Object} viewport - Viewport configuration
  * @param {number} waterSurfaceScreenY - Screen Y coordinate of water surface
  */
-function render3DRopeWithViewport(line, rope3D, viewport, waterSurfaceScreenY) {
+export function render3DRopeWithViewport(
+  line,
+  rope3D,
+  viewport,
+  waterSurfaceScreenY,
+) {
   if (!line || !rope3D || line.destroyed) {
     return;
   }
 
   // Get world-space points from rope
   const worldPoints = rope3D.points;
+  const waterSurfaceZ = WORLD_Z.WATER_SURFACE;
 
   // Project each point to screen space
   const screenPoints = worldPoints.map((point) =>
@@ -598,49 +602,39 @@ function render3DRopeWithViewport(line, rope3D, viewport, waterSurfaceScreenY) {
   }
 
   line.stroke();
-}
 
-/**
- * Render 3D rope with underwater opacity (legacy - uses rope's built-in projection)
- * @deprecated Use render3DRopeWithViewport instead
- * @param {PIXI.Graphics} line - Graphics object to draw rope on
- * @param {Rope3D} rope3D - 3D rope physics object
- * @param {number} waterSurfaceY - Y coordinate of water surface
- */
-function render3DRope(line, rope3D, waterSurfaceY) {
-  if (!line || !rope3D || line.destroyed) {
-    return;
-  }
+  // Mark rope intersection with water surface (first crossing)
+  let surfacePoint = null;
+  for (let i = 1; i < worldPoints.length; i++) {
+    const p1 = worldPoints[i - 1].pos;
+    const p2 = worldPoints[i].pos;
+    const dz1 = p1.z - waterSurfaceZ;
+    const dz2 = p2.z - waterSurfaceZ;
 
-  // Get screen-projected points from 3D rope
-  const screenPoints = rope3D.getScreenPoints();
-
-  line.clear();
-
-  if (screenPoints.length < 2) {
-    return;
-  }
-
-  // Draw rope as brown line
-  line.setStrokeStyle({ width: 3, color: 0x8b4513 });
-
-  // Start at first point
-  line.moveTo(screenPoints[0].x, screenPoints[0].y);
-
-  // Draw rest of rope
-  for (let i = 1; i < screenPoints.length; i++) {
-    const point = screenPoints[i];
-
-    // Fade underwater portions
-    if (point.y > waterSurfaceY) {
-      line.setStrokeStyle({ width: 3, color: 0x8b4513, alpha: 0.6 });
+    if (dz1 === 0) {
+      surfacePoint = p1;
+      break;
     }
 
-    line.lineTo(point.x, point.y);
+    if (dz1 * dz2 < 0) {
+      const t = (waterSurfaceZ - p1.z) / (p2.z - p1.z);
+      surfacePoint = {
+        x: p1.x + (p2.x - p1.x) * t,
+        y: p1.y + (p2.y - p1.y) * t,
+        z: waterSurfaceZ,
+      };
+      break;
+    }
   }
 
-  line.stroke();
+  if (surfacePoint) {
+    const surfaceScreen = worldToScreen(surfacePoint, viewport);
+    line
+      .circle(surfaceScreen.x, surfaceScreen.y, 4)
+      .stroke({ width: 2, color: 0x00c2ff });
+  }
 }
+
 
 /**
  * Animate rope reeling in after drag failure
@@ -685,16 +679,18 @@ export function animateReelIn(
     const totalDuration = jerkDuration + reelDuration;
     const startTime = performance.now();
 
-    // Get initial magnet position from cast position
+    // Get initial magnet position from failure stop position
     const castPos = sessionStore.getState().castPosition;
-    const initialMagnetX = castPos?.x || startX;
-    const initialMagnetY = castPos?.y || startY;
+    const hasStartX = Number.isFinite(startX);
+    const hasStartY = Number.isFinite(startY);
+    const initialMagnetX = hasStartX ? startX : castPos?.x || startX;
+    const initialMagnetY = hasStartY ? startY : castPos?.y || startY;
 
     const deltaTime = 1 / 60; // Approximate frame time
 
     // Water surface from world constants
     const viewport = createViewport(app.screen.width, app.screen.height);
-    const waterSurfaceY = worldToScreen(
+    const waterSurfaceScreenY = worldToScreen(
       { x: 0, y: WORLD_Y.WATER_NEAR, z: WORLD_Z.WATER_SURFACE },
       viewport,
     ).y;
@@ -737,18 +733,17 @@ export function animateReelIn(
       }
 
       // Update 3D rope physics using world coordinates
-      // For reel-in, we use the legacy functions since we're working with screen positions
-      // TODO: Refactor reel-in to use world coordinates properly
       const avatarWorld = {
-        x: playerX,
+        x: 0,
         y: WORLD_Y.AVATAR,
         z: WORLD_Z.AVATAR_HAND,
       };
-      const magnetWorld = {
-        x: magnetX,
-        y: magnetY, // This is still in screen-ish space - needs proper refactoring
-        z: WORLD_Z.RIVERBED, // Assume on riverbed during reel
-      };
+      const magnetWorld = screenToWorld(
+        magnetX,
+        magnetY,
+        WORLD_Z.RIVERBED,
+        viewport,
+      );
       const dx = magnetWorld.x - avatarWorld.x;
       const dy = magnetWorld.y - avatarWorld.y;
       const dz = magnetWorld.z - avatarWorld.z;
@@ -757,8 +752,8 @@ export function animateReelIn(
       rope3D.setTension(80); // High tension during reel (taut rope)
       rope3D.update(deltaTime, avatarWorld, magnetWorld);
 
-      // Render rope
-      render3DRope(line, rope3D, waterSurfaceY);
+      // Render rope with viewport projection
+      render3DRopeWithViewport(line, rope3D, viewport, waterSurfaceScreenY);
 
       if (progress >= 1) {
         // Reel complete - clean up rope and graphics

@@ -26,11 +26,18 @@ import {
   handleDragFailure,
   renderRope,
 } from "./sequences/castSequence.js";
+import { render3DRopeWithViewport } from "./animations/castAnimations.js";
 import {
   getItemPosition,
   updateDragMechanics,
   updateRopePhysics,
 } from "./sequences/dragSequence.js";
+import {
+  createViewport,
+  worldToScreen,
+  WORLD_Y,
+  WORLD_Z,
+} from "./mechanics/worldConstants.js";
 
 export class PixiApp {
   constructor(
@@ -417,6 +424,11 @@ export class PixiApp {
       return;
     }
 
+    const phase = this.sessionStore?.getState().phase;
+    if (phase === "reeling") {
+      return;
+    }
+
     // Calculate delta time for physics
     const now = performance.now();
     const deltaTime = this.lastRopeUpdateTime
@@ -435,7 +447,7 @@ export class PixiApp {
     // Update 3D rope physics and get screen coordinates
     const dragState = this.sessionStore?.getState().dragState;
     const tension = dragState?.tension ?? 50; // Default to medium tension
-    const screenPoints = updateRopePhysics(
+    updateRopePhysics(
       this.app,
       this.sessionStore,
       deltaTime,
@@ -444,20 +456,22 @@ export class PixiApp {
       tension,
     );
 
-    if (screenPoints && this.dragLine) {
-      // Render 3D rope using screen-projected points
-      this.dragLine.clear();
-      this.dragLine.setStrokeStyle({ width: 3, color: 0x8b4513 }); // Brown rope color
-
-      if (screenPoints.length > 0) {
-        this.dragLine.moveTo(screenPoints[0].x, screenPoints[0].y);
-
-        for (let i = 1; i < screenPoints.length; i++) {
-          this.dragLine.lineTo(screenPoints[i].x, screenPoints[i].y);
-        }
-
-        this.dragLine.stroke();
-      }
+    const rope = this.sessionStore?.getState().rope;
+    if (rope && this.dragLine) {
+      const viewport = createViewport(
+        this.app.screen.width,
+        this.app.screen.height,
+      );
+      const waterSurfaceScreenY = worldToScreen(
+        { x: 0, y: WORLD_Y.WATER_NEAR, z: WORLD_Z.WATER_SURFACE },
+        viewport,
+      ).y;
+      render3DRopeWithViewport(
+        this.dragLine,
+        rope,
+        viewport,
+        waterSurfaceScreenY,
+      );
     }
   }
 

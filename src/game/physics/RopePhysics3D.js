@@ -77,6 +77,8 @@ export class RopePoint3D {
 }
 
 const MAX_SLACK_MULTIPLIER = 1.1;
+const XPBD_COMPLIANCE = 0.00001; // Lower = stiffer constraints
+const ROPE_LENGTH_BIAS = 0.5; // <1.0 shortens rope vs straight-line target
 
 /**
  * Rope3D - Complete rope simulation in world space
@@ -95,6 +97,9 @@ export class Rope3D {
     this.segmentLength = 10; // Desired rest length between points (world units)
     this.baseSegmentLength = 10; // Store the original for tension calculations
     this.tension = 0; // 0-100, affects slack amount
+    this.constraintLambdas = new Array(segments - 1).fill(0);
+    this.prevAvatarPos = null;
+    this.prevMagnetPos = null;
 
     // Calculate actual segment length based on distance
     const dx = endPos.x - startPos.x;
@@ -141,7 +146,8 @@ export class Rope3D {
     const slackMultiplier =
       1.0 + (1.0 - tensionRatio) * (MAX_SLACK_MULTIPLIER - 1.0); // 1.25 at 0%, 1.0 at 100%
     const oldLength = this.segmentLength;
-    this.segmentLength = this.baseSegmentLength * slackMultiplier;
+    this.segmentLength =
+      this.baseSegmentLength * slackMultiplier * ROPE_LENGTH_BIAS;
 
     // ENHANCED LOGGING - Always log for debugging
     const endpointDistance = this.getEndpointDistance();
@@ -160,6 +166,16 @@ export class Rope3D {
     console.log(
       `[ROPE SLACK] Amount: ${slackAmount.toFixed(1)} units (${slackPercent.toFixed(1)}% of straight line) | Segment: ${oldLength.toFixed(2)}→${this.segmentLength.toFixed(2)}`,
     );
+  }
+
+  /**
+   * Get slack multiplier for a given tension value (unbiased).
+   * @param {number} tension - Tension value 0-100
+   */
+  getSlackMultiplierForTension(tension) {
+    const clamped = Math.max(0, Math.min(100, tension));
+    const tensionRatio = clamped / 100;
+    return 1.0 + (1.0 - tensionRatio) * (MAX_SLACK_MULTIPLIER - 1.0);
   }
 
   /**
@@ -228,8 +244,18 @@ export class Rope3D {
     const dz = magnetPos.z - avatarPos.z;
     const endpointDist = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
-    // Physics update for unpinned points
-    this.points.forEach((point) => point.update(deltaTime));
+    // Estimate endpoint speed to decide on substeps
+    let endpointSpeed = 0;
+    if (this.prevAvatarPos && this.prevMagnetPos && deltaTime > 0) {
+      const pdx = magnetPos.x - this.prevMagnetPos.x;
+      const pdy = magnetPos.y - this.prevMagnetPos.y;
+      const pdz = magnetPos.z - this.prevMagnetPos.z;
+      const deltaDist = Math.sqrt(pdx * pdx + pdy * pdy + pdz * pdz);
+      endpointSpeed = deltaDist / deltaTime;
+    }
+
+    const substeps = endpointSpeed > 3 ? 2 : 1;
+    const subDeltaTime = deltaTime / substeps;
 
     // Clamp desired segment length to enforce max slack
     if (endpointDist > 0.001) {
@@ -240,38 +266,50 @@ export class Rope3D {
       }
     }
 
-    // Constraint solving (more iterations = stiffer rope)
-    for (let iteration = 0; iteration < 8; iteration++) {
-      this.applyConstraints();
-      this.applyGroundCollision(); // Prevent rope from going below riverbed
-    }
+    for (let step = 0; step < substeps; step++) {
+      // Physics update for unpinned points
+      this.points.forEach((point) => point.update(subDeltaTime));
 
-    // Enforce max length after constraints in case ground collision adds slack
-    if (endpointDist > 0.001) {
-      const maxLength = endpointDist * MAX_SLACK_MULTIPLIER;
-      let actualLength = this.getTotalLength();
+      // Reset XPBD lambdas each substep
+      this.constraintLambdas.fill(0);
 
-      if (actualLength > maxLength) {
-        const overRatio = actualLength / maxLength;
-        const extraIterations = Math.min(
-          20,
-          Math.ceil((overRatio - 1) * 20) + 4,
-        );
+      // Constraint solving (more iterations = stiffer rope)
+      const baseIterations = substeps === 2 ? 6 : 8;
+      for (let iteration = 0; iteration < baseIterations; iteration++) {
+        this.applyConstraints(subDeltaTime);
+        this.applyGroundCollision(); // Prevent rope from going below riverbed
+      }
 
-        for (let iteration = 0; iteration < extraIterations; iteration++) {
-          this.applyConstraints();
-          this.applyGroundCollision();
-        }
+      // Enforce max length after constraints in case ground collision adds slack
+      if (endpointDist > 0.001) {
+        const maxLength = endpointDist * MAX_SLACK_MULTIPLIER;
+        let actualLength = this.getTotalLength();
 
-        actualLength = this.getTotalLength();
-        if (actualLength > maxLength * 1.02) {
-          // Reduce oscillations if we still exceed the cap
-          for (let i = 1; i < this.points.length - 1; i++) {
-            this.points[i].oldPos = { ...this.points[i].pos };
+        if (actualLength > maxLength) {
+          const overRatio = actualLength / maxLength;
+          const extraIterations = Math.min(
+            12,
+            Math.ceil((overRatio - 1) * 12) + 2,
+          );
+
+          for (let iteration = 0; iteration < extraIterations; iteration++) {
+            this.applyConstraints(subDeltaTime);
+            this.applyGroundCollision();
+          }
+
+          actualLength = this.getTotalLength();
+          if (actualLength > maxLength * 1.02) {
+            // Reduce oscillations if we still exceed the cap
+            for (let i = 1; i < this.points.length - 1; i++) {
+              this.points[i].oldPos = { ...this.points[i].pos };
+            }
           }
         }
       }
     }
+
+    this.prevAvatarPos = { ...avatarPos };
+    this.prevMagnetPos = { ...magnetPos };
 
     // LOG: Rope state after physics (only every 10 frames to reduce spam)
     if (Math.random() < 0.1) {
@@ -311,7 +349,8 @@ export class Rope3D {
    * Apply distance constraints between consecutive points
    * Keeps rope segments at desired length
    */
-  applyConstraints() {
+  applyConstraints(deltaTime) {
+    const alpha = XPBD_COMPLIANCE / (deltaTime * deltaTime);
     for (let i = 0; i < this.points.length - 1; i++) {
       const p1 = this.points[i];
       const p2 = this.points[i + 1];
@@ -325,23 +364,29 @@ export class Rope3D {
       // Avoid division by zero
       if (distance < 0.001) continue;
 
-      const difference = (distance - this.segmentLength) / distance;
+      const w1 = p1.pinned ? 0 : 1;
+      const w2 = p2.pinned ? 0 : 1;
+      const wSum = w1 + w2;
+      if (wSum === 0) continue;
 
-      const offsetX = dx * difference * 0.5;
-      const offsetY = dy * difference * 0.5;
-      const offsetZ = dz * difference * 0.5;
+      const C = distance - this.segmentLength;
+      const nX = dx / distance;
+      const nY = dy / distance;
+      const nZ = dz / distance;
+      const lambda = this.constraintLambdas[i];
+      const deltaLambda = (-C - alpha * lambda) / (wSum + alpha);
+      this.constraintLambdas[i] = lambda + deltaLambda;
 
-      // Move points to maintain constraint
       if (!p1.pinned) {
-        p1.pos.x += offsetX;
-        p1.pos.y += offsetY;
-        p1.pos.z += offsetZ;
+        p1.pos.x -= w1 * deltaLambda * nX;
+        p1.pos.y -= w1 * deltaLambda * nY;
+        p1.pos.z -= w1 * deltaLambda * nZ;
       }
 
       if (!p2.pinned) {
-        p2.pos.x -= offsetX;
-        p2.pos.y -= offsetY;
-        p2.pos.z -= offsetZ;
+        p2.pos.x += w2 * deltaLambda * nX;
+        p2.pos.y += w2 * deltaLambda * nY;
+        p2.pos.z += w2 * deltaLambda * nZ;
       }
     }
   }

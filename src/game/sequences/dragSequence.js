@@ -186,20 +186,13 @@ export function updateRopePhysics(
   // Update rope tension - this will recalculate segmentLength from baseSegmentLength
   rope.setTension(tension);
 
-  // VALIDATION: Check actual rope length vs expected
+  // VALIDATION: Log expected length vs actual (unbiased slack multiplier)
   const actualRopeLength = rope.getTotalLength();
-  const expectedRopeLength =
-    rope.baseSegmentLength *
-    (rope.points.length - 1) *
-    (rope.segmentLength / rope.baseSegmentLength);
-  const slackMultiplier =
-    rope.baseSegmentLength > 0
-      ? rope.segmentLength / rope.baseSegmentLength
-      : 1.0;
+  const slackMultiplier = rope.getSlackMultiplierForTension(tension);
   const expectedAtTension = distance3D * slackMultiplier;
 
   console.log(
-    `[ROPE VALIDATION] Tension: ${tension.toFixed(0)}% | 3D Dist: ${distance3D.toFixed(2)} | Actual Length: ${actualRopeLength.toFixed(2)} | Expected@Tension: ${expectedAtTension.toFixed(2)} | Ratio: ${(actualRopeLength / distance3D).toFixed(2)}x`,
+    `[ROPE VALIDATION] Tension: ${tension.toFixed(1)}% | Multiplier: ${slackMultiplier.toFixed(3)}x | 3D Dist: ${distance3D.toFixed(2)} | Expected: ${expectedAtTension.toFixed(2)} | Actual: ${actualRopeLength.toFixed(2)}`,
   );
 
   // Project magnet world position to screen for logging
