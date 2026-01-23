@@ -42,6 +42,7 @@ export function getItemPosition(app, sessionStore) {
 /**
  * Update 3D rope physics
  * Called from ticker to simulate rope with gravity
+ * @param {number} tension - Current tension value (0-100)
  */
 export function updateRopePhysics(
   app,
@@ -49,6 +50,7 @@ export function updateRopePhysics(
   deltaTime,
   playerX,
   playerY,
+  tension = 50, // Default to medium tension
 ) {
   const rope = sessionStore.getState().rope;
   if (!rope) return null;
@@ -102,6 +104,21 @@ export function updateRopePhysics(
     phase,
     phaseProgress,
   );
+
+  // During drag, update rope length based on current 3D distance
+  // As we reel in, the rope gets shorter
+  if (dragState.active) {
+    const dx = magnetPos.x - avatarPos.x;
+    const dy = magnetPos.y - avatarPos.y;
+    const dz = magnetPos.z - avatarPos.z;
+    const currentDistance = Math.sqrt(dx * dx + dy * dy + dz * dz);
+    const numSegments = rope.points.length - 1;
+    const newBaseSegmentLength = currentDistance / numSegments;
+    rope.baseSegmentLength = newBaseSegmentLength;
+  }
+
+  // Update rope tension AFTER setting base length
+  rope.setTension(tension);
 
   console.log(
     `[ROPE] Item at (${itemPos.x.toFixed(1)}, ${itemPos.y.toFixed(1)}), Magnet 3D: (${magnetPos.x.toFixed(1)}, ${magnetPos.y.toFixed(1)}, ${magnetPos.z}), Screen: (${magnetPos.x.toFixed(1)}, ${(magnetPos.y - magnetPos.z).toFixed(1)})`,

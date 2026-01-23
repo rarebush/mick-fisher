@@ -438,13 +438,13 @@ export class DebugOverlay {
 
     this.app.stage.addChild(this.highlight);
 
-    // Fade out and remove after 2 seconds
+    // Fade out and remove after 0.5 seconds
     setTimeout(() => {
       if (this.highlight) {
         this.highlight.destroy();
         this.highlight = null;
       }
-    }, 2000);
+    }, 500);
   }
 
   destroy() {

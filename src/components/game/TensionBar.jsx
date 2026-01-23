@@ -6,15 +6,19 @@ import "./tension-bar.css";
 function TensionBar() {
   // Zustand stores - read only
   const { dragState, isDragging } = useSessionStore();
-  const { gamePhase } = useGameStore();
+  const { gamePhase, currentCast } = useGameStore();
 
-  // Don't render if not in drag phase
-  if (gamePhase !== "dragging" || !dragState.active) {
+  // Show during casting or dragging phases
+  const isCasting = gamePhase === "casting";
+  const isDragPhase = gamePhase === "dragging" && dragState.active;
+
+  if (!isCasting && !isDragPhase) {
     return null;
   }
 
-  const tension = dragState.tension;
-  const distance = dragState.distance;
+  // Use cast tension during casting, drag tension during dragging
+  const tension = isCasting ? currentCast.tension : dragState.tension;
+  const distance = isCasting ? currentCast.distance : dragState.distance;
 
   // Clamp tension for display only (actual value can exceed 100 to trigger failure)
   const displayTension = Math.max(0, Math.min(100, tension));
@@ -53,7 +57,8 @@ function TensionBar() {
       </div>
 
       <div className="drag-instruction">
-        {isDragging ? "Pulling..." : "Click to pull"}
+        {isCasting && "Casting..."}
+        {isDragPhase && (isDragging ? "Pulling..." : "Click to pull")}
       </div>
 
       <div className="tension-hint">

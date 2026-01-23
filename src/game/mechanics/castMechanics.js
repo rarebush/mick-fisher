@@ -16,23 +16,31 @@ import {
 } from "./slipCalculations.js";
 
 /**
- * Calculate distance from shore based on item's Y position
+ * Calculate distance from avatar based on item's X and Y position
  * Used for re-engaged items to derive distance from screen coordinates
- * Items are on the riverbed (40%-100% of screen height)
+ * Distance is the 2D distance from item to avatar (wall base center)
+ * @param {number} itemX - Item's X position on screen
  * @param {number} itemY - Item's Y position on screen
  * @returns {number} - Estimated distance in meters
  */
-function calculateDistanceFromPosition(itemY) {
-  const riverbedStartY = 0.4; // 40% from top (proportion)
+function calculateDistanceFromPosition(itemX, itemY) {
+  // Avatar is at center of screen, at wall base (40% from top)
+  const avatarX = window.innerWidth / 2;
+  const avatarY = window.innerHeight * 0.4;
+
+  // Calculate pixel distance from item to avatar
+  const dx = itemX - avatarX;
+  const dy = itemY - avatarY;
+  const pixelDistance = Math.sqrt(dx * dx + dy * dy);
+
+  // Convert to meters
+  // Max riverbed extent is from 40% to 100% of screen = 60% of screen height
+  // This represents max distance of 15 meters
+  const maxPixelDistance = window.innerHeight * 0.6;
   const maxDistance = 15; // Max distance in meters
 
-  // Normalize Y to 0-1 range within riverbed area
-  // riverbedStartY (40%) = 0 distance, bottom (100%) = max distance
-  const normalizedY = Math.max(
-    0,
-    Math.min(1, (itemY / window.innerHeight - riverbedStartY) / 0.6),
-  );
-  return normalizedY * maxDistance;
+  // Scale pixel distance to meters
+  return (pixelDistance / maxPixelDistance) * maxDistance;
 }
 
 /**
@@ -191,9 +199,9 @@ export function executeCast(
   }
 
   // Calculate distance based on item position
-  // For re-engaged items, derive from Y position; for new items, use random
+  // For re-engaged items, use 2D distance to avatar; for new items, use random
   const distance = isEngagedItem
-    ? calculateDistanceFromPosition(itemPosition.y)
+    ? calculateDistanceFromPosition(itemPosition.x, itemPosition.y)
     : getRandomDistance(quadrant);
   const depth = getRandomDepth(quadrant, locationId);
 

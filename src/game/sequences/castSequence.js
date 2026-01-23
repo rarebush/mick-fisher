@@ -40,6 +40,21 @@ export async function executeCastSequence(
   getItemPosition,
   pixiApp = null, // PixiApp instance for immediate rope storage
 ) {
+  // Set game phase to casting IMMEDIATELY so tension bar shows
+  if (gameStore) {
+    gameStore.getState().setGamePhase("casting");
+    // Initialize cast tension
+    gameStore.setState((state) => ({
+      currentCast: {
+        ...state.currentCast,
+        tension: 95,
+        quadrant,
+        distance: 0,
+        depth: 0,
+      },
+    }));
+  }
+
   // Show spawn table for this quadrant in debug overlay
   const currentLocation =
     gameStore?.getState().currentLocation || "picturesque-river";

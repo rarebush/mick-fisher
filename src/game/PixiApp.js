@@ -433,12 +433,15 @@ export class PixiApp {
     this.lastRopeUpdateTime = now;
 
     // Update 3D rope physics and get screen coordinates
+    const dragState = this.sessionStore?.getState().dragState;
+    const tension = dragState?.tension ?? 50; // Default to medium tension
     const screenPoints = updateRopePhysics(
       this.app,
       this.sessionStore,
       deltaTime,
       this.dragPlayerX,
       this.dragPlayerY,
+      tension,
     );
 
     if (screenPoints && this.dragLine) {
