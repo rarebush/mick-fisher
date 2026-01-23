@@ -1,6 +1,8 @@
 /**
  * Drag Sequence
  * Handles drag mechanics ticker - tension, distance, slip calculations
+ *
+ * All positions are calculated in WORLD SPACE, then projected to screen space.
  */
 
 import { getItem } from "../data/itemDatabase.js";
@@ -9,34 +11,82 @@ import {
   updateDragState,
 } from "../mechanics/dragMechanics.js";
 import {
-  getAvatarPosition,
-  getMagnetPosition,
-} from "../mechanics/heightMechanics.js";
+  WORLD_Z,
+  WORLD_Y,
+  createViewport,
+  worldToScreen,
+  screenToWorld,
+  lerp,
+} from "../mechanics/worldConstants.js";
+import useMagnetStore from "../state/magnetStore.js";
 
 /**
- * Calculate current item position during drag
+ * Calculate current item WORLD position during drag
+ * Item moves along the riverbed (Z=0) from cast position toward avatar
+ * @returns {{x: number, y: number, z: number, screenX: number, screenY: number} | null}
  */
-export function getItemPosition(app, sessionStore) {
+export function getItemWorldPosition(app, sessionStore) {
   if (!app || !sessionStore) return null;
 
   const dragState = sessionStore.getState().dragState;
   if (!dragState.active) return null;
 
   const { castPosition, distance, totalDistance } = dragState;
+  if (!castPosition) return null;
 
-  // Interpolate between cast position (on riverbed) and wall base
-  // The item moves along the riverbed surface toward the wall base
-  const wallBaseX = app.screen.width / 2; // Center of screen
-  const wallBaseY = app.screen.height * 0.4; // Wall base (40% from top - top edge of riverbed)
+  // Create viewport for projection
+  const viewport = createViewport(app.screen.width, app.screen.height);
 
-  // Progress: 0 = at cast position, 1 = at wall base
+  // Cast position is in screen coordinates - convert to world on riverbed
+  const castWorld = screenToWorld(
+    castPosition.x,
+    castPosition.y,
+    WORLD_Z.RIVERBED,
+    viewport,
+  );
+
+  // Avatar position (where item is dragged toward)
+  const avatarWorld = {
+    x: app.screen.width / 2,
+    y: WORLD_Y.AVATAR,
+    z: WORLD_Z.RIVERBED, // Item approaches at riverbed level
+  };
+
+  // Progress: 0 = at cast position, 1 = at avatar (wall base)
   const progress = 1 - distance / totalDistance;
 
-  // Item moves both horizontally and vertically toward wall base
-  const currentX = castPosition.x + (wallBaseX - castPosition.x) * progress;
-  const currentY = castPosition.y + (wallBaseY - castPosition.y) * progress;
+  // Interpolate world position
+  const itemWorld = {
+    x: lerp(castWorld.x, avatarWorld.x, progress),
+    y: lerp(castWorld.y, avatarWorld.y, progress),
+    z: WORLD_Z.RIVERBED, // Always on riverbed during drag
+  };
 
-  return { x: currentX, y: currentY };
+  // Update magnet store with current position
+  const magnetStore = useMagnetStore.getState();
+  magnetStore.updateMagnetPosition(itemWorld.x, itemWorld.y, itemWorld.z);
+  magnetStore.setMagnetPhase("dragging");
+
+  // Also provide screen coordinates for rendering
+  const itemScreen = worldToScreen(itemWorld, viewport);
+
+  return {
+    ...itemWorld,
+    screenX: itemScreen.x,
+    screenY: itemScreen.y,
+    viewport, // Include viewport for other calculations
+  };
+}
+
+/**
+ * Calculate current item position during drag (legacy - returns screen coordinates)
+ * @deprecated Use getItemWorldPosition instead
+ */
+export function getItemPosition(app, sessionStore) {
+  const worldPos = getItemWorldPosition(app, sessionStore);
+  if (!worldPos) return null;
+
+  return { x: worldPos.screenX, y: worldPos.screenY };
 }
 
 /**
@@ -75,42 +125,54 @@ export function updateRopePhysics(
     return rope.getScreenPoints(); // Just return current points for rendering
   }
 
+  // Create viewport for this frame
+  const viewport = createViewport(app.screen.width, app.screen.height);
+
   console.log(
     `[ROPE] Physics update in phase: ${phase}, deltaTime: ${deltaTime.toFixed(3)}s`,
   );
 
-  // Get avatar position (always at pier height)
-  const avatarPos = getAvatarPosition(playerX, playerY);
+  // Avatar world position (fixed)
+  const avatarWorld = {
+    x: playerX,
+    y: WORLD_Y.AVATAR,
+    z: WORLD_Z.AVATAR_HAND,
+  };
 
-  // Get magnet position based on game state
+  // Get magnet/item world position based on game state
   const dragState = sessionStore.getState().dragState;
   const castPosition = sessionStore.getState().castPosition;
-  let itemPos;
+  let magnetWorld;
 
   if (dragState.active) {
-    // During drag, get moving item position
-    itemPos = getItemPosition(app, sessionStore);
+    // During drag, get moving item world position
+    const itemWorld = getItemWorldPosition(app, sessionStore);
+    if (itemWorld) {
+      magnetWorld = {
+        x: itemWorld.x,
+        y: itemWorld.y,
+        z: itemWorld.z,
+      };
+    }
   } else if (castPosition) {
     // During cast/settle phase, use stored cast position
-    itemPos = { x: castPosition.x, y: castPosition.y };
+    const castWorld = screenToWorld(
+      castPosition.x,
+      castPosition.y,
+      WORLD_Z.RIVERBED,
+      viewport,
+    );
+    magnetWorld = castWorld;
   }
 
-  if (!itemPos) return null;
-
-  // Get magnet height based on phase
-  const magnetPos = getMagnetPosition(
-    itemPos.x,
-    itemPos.y,
-    phase,
-    phaseProgress,
-  );
+  if (!magnetWorld) return null;
 
   // During drag, update rope length based on current 3D distance
   // As we reel in, the rope gets shorter
   if (dragState.active) {
-    const dx = magnetPos.x - avatarPos.x;
-    const dy = magnetPos.y - avatarPos.y;
-    const dz = magnetPos.z - avatarPos.z;
+    const dx = magnetWorld.x - avatarWorld.x;
+    const dy = magnetWorld.y - avatarWorld.y;
+    const dz = magnetWorld.z - avatarWorld.z;
     const currentDistance = Math.sqrt(dx * dx + dy * dy + dz * dz);
     const numSegments = rope.points.length - 1;
     const newBaseSegmentLength = currentDistance / numSegments;
@@ -120,15 +182,20 @@ export function updateRopePhysics(
   // Update rope tension AFTER setting base length
   rope.setTension(tension);
 
+  // Project magnet world position to screen for logging
+  const magnetScreen = worldToScreen(magnetWorld, viewport);
+
   console.log(
-    `[ROPE] Item at (${itemPos.x.toFixed(1)}, ${itemPos.y.toFixed(1)}), Magnet 3D: (${magnetPos.x.toFixed(1)}, ${magnetPos.y.toFixed(1)}, ${magnetPos.z}), Screen: (${magnetPos.x.toFixed(1)}, ${(magnetPos.y - magnetPos.z).toFixed(1)})`,
+    `[ROPE] Magnet world: (${magnetWorld.x.toFixed(1)}, ${magnetWorld.y.toFixed(1)}, ${magnetWorld.z.toFixed(1)}), Screen: (${magnetScreen.x.toFixed(1)}, ${magnetScreen.y.toFixed(1)})`,
   );
 
-  // Update rope physics
-  rope.update(deltaTime, avatarPos, magnetPos);
+  // Update rope physics in world space
+  rope.update(deltaTime, avatarWorld, magnetWorld);
 
   // Get screen coordinates for rendering
-  const screenPoints = rope.getScreenPoints();
+  // The rope points are in world space, so we need to project them
+  const worldPoints = rope.points.map((p) => p.pos);
+  const screenPoints = worldPoints.map((p) => worldToScreen(p, viewport));
 
   return screenPoints;
 }

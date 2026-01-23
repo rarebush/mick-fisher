@@ -14,6 +14,11 @@ import {
   rollMagnetLandingPosition,
   getDistanceToNearestEdge,
 } from "./slipCalculations.js";
+import {
+  WORLD_Z,
+  createViewport,
+  getSurfaceScreenBounds,
+} from "./worldConstants.js";
 
 /**
  * Calculate distance from avatar based on item's X and Y position
@@ -24,9 +29,14 @@ import {
  * @returns {number} - Estimated distance in meters
  */
 function calculateDistanceFromPosition(itemX, itemY) {
-  // Avatar is at center of screen, at wall base (40% from top)
+  // Get positions from world constants
+  const viewport = createViewport(window.innerWidth, window.innerHeight);
+  const waterBounds = getSurfaceScreenBounds(WORLD_Z.WATER_SURFACE, viewport);
+  const riverbedBounds = getSurfaceScreenBounds(WORLD_Z.RIVERBED, viewport);
+
+  // Avatar is at center of screen, at wall base (water surface near edge)
   const avatarX = window.innerWidth / 2;
-  const avatarY = window.innerHeight * 0.4;
+  const avatarY = waterBounds.top;
 
   // Calculate pixel distance from item to avatar
   const dx = itemX - avatarX;
@@ -34,9 +44,8 @@ function calculateDistanceFromPosition(itemX, itemY) {
   const pixelDistance = Math.sqrt(dx * dx + dy * dy);
 
   // Convert to meters
-  // Max riverbed extent is from 40% to 100% of screen = 60% of screen height
-  // This represents max distance of 15 meters
-  const maxPixelDistance = window.innerHeight * 0.6;
+  // Max riverbed extent is from water surface to riverbed far edge
+  const maxPixelDistance = riverbedBounds.bottom - waterBounds.top;
   const maxDistance = 15; // Max distance in meters
 
   // Scale pixel distance to meters

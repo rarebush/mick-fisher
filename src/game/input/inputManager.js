@@ -5,6 +5,11 @@
 
 import * as PIXI from "pixi.js";
 import { isQuadrantAccessible } from "../mechanics/castMechanics.js";
+import {
+  WORLD_Z,
+  createViewport,
+  getSurfaceScreenBounds,
+} from "../mechanics/worldConstants.js";
 
 export class InputManager {
   constructor(
@@ -73,9 +78,13 @@ export class InputManager {
     }
 
     const { x, y } = event.global;
-    // Block interaction in walkway area (top 20% of screen)
-    const walkwayEndY = this.app.screen.height * 0.2;
-    if (y < walkwayEndY) return; // Walkway area, no interaction
+    // Block interaction in walkway area (derived from world coordinates)
+    const viewport = createViewport(
+      this.app.screen.width,
+      this.app.screen.height,
+    );
+    const walkwayBounds = getSurfaceScreenBounds(WORLD_Z.WALKWAY, viewport);
+    if (y < walkwayBounds.bottom) return; // Walkway area, no interaction
 
     const gamePhase = this.gameStore?.getState().gamePhase;
 
@@ -298,11 +307,18 @@ export class InputManager {
   }
 
   getQuadrantFromPosition(x, y) {
-    // Quadrants only exist on the riverbed (bottom 60% of screen)
-    const riverbedStartY = this.app.screen.height * 0.4; // 40% from top (where wall ends)
+    // Quadrants only exist on the riverbed (derived from world coordinates)
+    const viewport = createViewport(
+      this.app.screen.width,
+      this.app.screen.height,
+    );
+    const riverbedBounds = getSurfaceScreenBounds(WORLD_Z.RIVERBED, viewport);
+
+    // Per diagram: riverbed is at Z=0, from riverbedBounds.top to riverbedBounds.bottom
+    const riverbedStartY = riverbedBounds.top;
     if (y < riverbedStartY) return null; // Above riverbed, no quadrants
 
-    const riverbedHeight = this.app.screen.height * 0.6;
+    const riverbedHeight = riverbedBounds.bottom - riverbedBounds.top;
     const quadrantWidth = this.app.screen.width / 3;
     const quadrantHeight = riverbedHeight / 3;
 

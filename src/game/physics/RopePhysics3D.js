@@ -2,10 +2,22 @@
  * RopePhysics3D.js
  * 3D rope simulation using Verlet integration
  * Simulates rope with gravity and constraint-based physics
+ *
+ * COORDINATE SYSTEM:
+ * All positions are in WORLD SPACE (abstract units):
+ * - X: Horizontal position (screen X)
+ * - Y: Depth into the scene (toward river, increases with distance)
+ * - Z: Height/elevation (higher = above water, lower = underwater)
+ *
+ * The caller is responsible for projecting world coordinates to screen space
+ * using the formula: screenY = (worldY - worldZ) * pixelsPerUnit + offset
+ *
+ * @see worldConstants.js for projection utilities
  */
 
 /**
  * RopePoint3D - Individual point in the rope
+ * Positions are in world space (X, Y depth, Z height)
  */
 export class RopePoint3D {
   constructor(x, y, z) {
@@ -30,8 +42,9 @@ export class RopePoint3D {
     this.oldPos = { ...this.pos };
 
     // Apply gravity (only affects Z axis - height)
-    // Gravity is negative because lower Z = lower on screen
-    const gravity = -980; // pixels/s² (adjust for game feel)
+    // Gravity is negative because lower Z = lower position
+    // Value is in world units/s² - tuned for game feel
+    const gravity = -980; // world units/s² (adjust for game feel)
     const gravityDelta = gravity * deltaTime * deltaTime;
 
     // Apply air resistance (damping) - lower = more rigid/less wobbly
@@ -46,29 +59,38 @@ export class RopePoint3D {
   /**
    * Project 3D position to 2D screen coordinates
    * Higher Z = higher on screen (lower Y coordinate)
+   *
+   * DEPRECATED: Prefer using worldToScreen() from worldConstants.js
+   * which applies proper pixelsPerUnit scaling.
+   * This method assumes 1:1 mapping (pixelsPerUnit = 1).
+   *
    * @returns {{x: number, y: number}}
    */
   toScreen() {
+    // Simple projection: screenY = worldY - worldZ
+    // Note: For proper scaling, use worldConstants.worldToScreen() instead
     return {
       x: this.pos.x,
-      y: this.pos.y - this.pos.z, // Higher Z appears higher on screen
+      y: this.pos.y - this.pos.z, // Orthogonal projection
     };
   }
 }
 
 /**
- * Rope3D - Complete rope simulation
+ * Rope3D - Complete rope simulation in world space
+ * All positions and lengths are in abstract world units.
+ * Use worldToScreen() from worldConstants.js to project to screen.
  */
 export class Rope3D {
   /**
    * Create a new 3D rope
    * @param {number} segments - Number of rope segments
-   * @param {{x: number, y: number, z: number}} startPos - Starting position (avatar)
-   * @param {{x: number, y: number, z: number}} endPos - Ending position (magnet)
+   * @param {{x: number, y: number, z: number}} startPos - Starting position in world space (avatar)
+   * @param {{x: number, y: number, z: number}} endPos - Ending position in world space (magnet)
    */
   constructor(segments, startPos, endPos) {
     this.points = [];
-    this.segmentLength = 10; // Desired rest length between points (pixels)
+    this.segmentLength = 10; // Desired rest length between points (world units)
     this.baseSegmentLength = 10; // Store the original for tension calculations
     this.tension = 0; // 0-100, affects slack amount
 
@@ -161,8 +183,8 @@ export class Rope3D {
   /**
    * Update rope physics
    * @param {number} deltaTime - Time step in seconds
-   * @param {{x: number, y: number, z: number}} avatarPos - Current avatar position
-   * @param {{x: number, y: number, z: number}} magnetPos - Current magnet position
+   * @param {{x: number, y: number, z: number}} avatarPos - Current avatar position in world space
+   * @param {{x: number, y: number, z: number}} magnetPos - Current magnet position in world space
    */
   update(deltaTime, avatarPos, magnetPos) {
     // Log if deltaTime is unusual
@@ -187,7 +209,7 @@ export class Rope3D {
     }
 
     // Clamp excessive velocities to prevent physics explosions
-    const MAX_VELOCITY_PER_FRAME = 100; // pixels per frame
+    const MAX_VELOCITY_PER_FRAME = 100; // world units per frame
     for (let i = 1; i < this.points.length - 1; i++) {
       // Skip pinned endpoints
       const point = this.points[i];
@@ -198,7 +220,7 @@ export class Rope3D {
 
       if (velocityMag > MAX_VELOCITY_PER_FRAME) {
         console.warn(
-          `[ROPE PHYSICS] Clamping excessive velocity: ${velocityMag.toFixed(1)} -> ${MAX_VELOCITY_PER_FRAME} px/frame`,
+          `[ROPE PHYSICS] Clamping excessive velocity: ${velocityMag.toFixed(1)} -> ${MAX_VELOCITY_PER_FRAME} units/frame`,
         );
         // Clamp velocity by adjusting oldPos
         const scale = MAX_VELOCITY_PER_FRAME / velocityMag;
@@ -250,6 +272,11 @@ export class Rope3D {
 
   /**
    * Get screen coordinates for rendering
+   *
+   * DEPRECATED: Prefer using worldToScreen() from worldConstants.js
+   * which applies proper pixelsPerUnit scaling.
+   * This method assumes 1:1 mapping (pixelsPerUnit = 1).
+   *
    * @returns {Array<{x: number, y: number}>}
    */
   getScreenPoints() {
@@ -289,7 +316,7 @@ export class Rope3D {
       this.segmentLength = totalRopeLength / (this.points.length - 1);
 
       console.log(
-        `[ROPE] Recalculated: distance=${straightLineDistance.toFixed(0)}px, ropeLength=${totalRopeLength.toFixed(0)}px, segment=${this.segmentLength.toFixed(1)}px (${((slackFactor - 1) * 100).toFixed(0)}% slack)`,
+        `[ROPE] Recalculated: distance=${straightLineDistance.toFixed(0)} units, ropeLength=${totalRopeLength.toFixed(0)} units, segment=${this.segmentLength.toFixed(1)} units (${((slackFactor - 1) * 100).toFixed(0)}% slack)`,
       );
     }
   }
@@ -300,22 +327,5 @@ export class Rope3D {
    */
   setSegmentLength(newLength) {
     this.segmentLength = newLength;
-  }
-
-  /**
-   * Get current total rope length
-   * @returns {number} Total length in pixels
-   */
-  getTotalLength() {
-    let length = 0;
-    for (let i = 0; i < this.points.length - 1; i++) {
-      const p1 = this.points[i];
-      const p2 = this.points[i + 1];
-      const dx = p2.pos.x - p1.pos.x;
-      const dy = p2.pos.y - p1.pos.y;
-      const dz = p2.pos.z - p1.pos.z;
-      length += Math.sqrt(dx * dx + dy * dy + dz * dz);
-    }
-    return length;
   }
 }

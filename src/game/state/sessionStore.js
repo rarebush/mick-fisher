@@ -4,6 +4,7 @@
  */
 
 import { create } from "zustand";
+import useMagnetStore from "./magnetStore.js";
 
 const useSessionStore = create((set, get) => ({
   // Session timing
@@ -160,6 +161,10 @@ const useSessionStore = create((set, get) => ({
 
   completeDrag: () => {
     const state = get();
+
+    // Despawn magnet
+    useMagnetStore.getState().despawnMagnet();
+
     set({
       phase: "idle", // Reset phase
       phaseProgress: 0,
@@ -173,6 +178,9 @@ const useSessionStore = create((set, get) => ({
 
   // Deactivate drag without completing (for manual failure)
   deactivateDrag: () => {
+    // Despawn magnet
+    useMagnetStore.getState().despawnMagnet();
+
     set((state) => ({
       dragState: {
         ...state.dragState,

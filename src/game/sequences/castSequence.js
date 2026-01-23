@@ -24,6 +24,11 @@ import {
   calculateRopeSegments,
   HEIGHTS,
 } from "../mechanics/heightMechanics.js";
+import {
+  WORLD_Z,
+  createViewport,
+  getSurfaceScreenBounds,
+} from "../mechanics/worldConstants.js";
 
 /**
  * Execute complete cast sequence
@@ -345,8 +350,12 @@ function calculatePositionAtDistance(
 ) {
   if (!app) return null;
 
+  // Get wall base position from world constants
+  const viewport = createViewport(app.screen.width, app.screen.height);
+  const waterBounds = getSurfaceScreenBounds(WORLD_Z.WATER_SURFACE, viewport);
+
   const wallBaseX = app.screen.width / 2;
-  const wallBaseY = app.screen.height * 0.4; // Bottom of wall (40% from top)
+  const wallBaseY = waterBounds.top;
   const progress = 1 - distance / totalDistance;
 
   const x = castPosition.x + (wallBaseX - castPosition.x) * progress;

@@ -198,6 +198,7 @@ Correctly placed after recent refactor:
 - `dragMechanics.js` - Tension, speed, drag state updates
 - `slipCalculations.js` - Slip rates, magnet position
 - `liftMechanics.js` - **TO CREATE** - Lift speed, tap mechanics
+- `worldConstants.js` - Single source of truth for world space dimensions and projection
 
 ### `/sequences/` - Orchestration (Stateful)
 
@@ -211,7 +212,7 @@ Correctly placed after recent refactor:
 
 ### `/physics/` - Simulation
 
-- `VerletRope.js` - Rope physics simulation
+- `RopePhysics3D.js` - 3D rope physics using Verlet integration
 
 ### `/rendering/` - Scene Management
 

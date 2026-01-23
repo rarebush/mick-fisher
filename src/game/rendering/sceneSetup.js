@@ -1,6 +1,10 @@
 /**
  * Scene Setup
  * Initial scene construction - shore, grid, water background
+ *
+ * Uses world constants for consistent projection from 3D world space to 2D screen.
+ * World coordinates: X = horizontal, Y = depth (toward river), Z = height
+ * Screen projection: screenY = worldY - worldZ (orthogonal projection)
  */
 
 import * as PIXI from "pixi.js";
@@ -8,11 +12,25 @@ import {
   loadSpriteSheet,
   createTiledBackground,
 } from "../graphics/spriteLoader.js";
-import { HEIGHTS } from "../mechanics/heightMechanics.js";
+import {
+  WORLD_Z,
+  WORLD_Y,
+  createViewport,
+  projectToScreen,
+  getSurfaceScreenBounds,
+  RENDER_LAYERS,
+} from "../mechanics/worldConstants.js";
 
 /**
  * Setup environment layers with 3D perspective
  * Creates pier, wall, water surface, and riverbed layers
+ *
+ * Layer positions are derived from world coordinates using orthogonal projection:
+ * - Walkway: at Z = WALKWAY (3 units), Y = AVATAR (0)
+ * - Wall: transition zone between walkway and water
+ * - Water surface: at Z = WATER_SURFACE (1 unit), spans Y depth
+ * - Riverbed: at Z = RIVERBED (0), spans Y depth
+ *
  * @param {PIXI.Container} container - Container to add layers to
  * @param {number} width - Screen width
  * @param {number} height - Screen height
@@ -21,64 +39,107 @@ import { HEIGHTS } from "../mechanics/heightMechanics.js";
 export function setupEnvironmentLayers(container, width, height) {
   if (!container) return null;
 
-  // Layout based on 100-unit system (percentages of screen height)
-  // Units 0-60: Riverbed (bottom 60%)
-  // Units 60-80: Wall (next 20%)
-  // Units 80-100: Walkway (top 20%)
-  // Units 10-70: Water (60 units tall, overlays riverbed and part of wall)
+  // Create viewport for world-to-screen projection
+  const viewport = createViewport(width, height);
 
-  // Convert to screen Y coordinates (0 = top of screen)
-  const walkwayY = 0;
-  const walkwayHeight = height * 0.2; // 20% of screen (units 80-100)
+  // Get screen bounds for each surface from world coordinates
+  // Note: getSurfaceScreenBounds returns {top, bottom} screen Y coordinates
+  const walkwayBounds = getSurfaceScreenBounds(WORLD_Z.WALKWAY, viewport);
+  const waterBounds = getSurfaceScreenBounds(WORLD_Z.WATER_SURFACE, viewport);
+  const riverbedBounds = getSurfaceScreenBounds(WORLD_Z.RIVERBED, viewport);
 
-  const wallY = walkwayY + walkwayHeight;
-  const wallHeight = height * 0.2; // 20% of screen (units 60-80)
+  // Walkway: horizontal surface at Z=3, spanning Y from WALKWAY_BACK to WALKWAY_FRONT
+  // Per diagram: walkway is extended upward for avatar backdrop
+  // This is now purely projection-based - no dependency on other layers
+  const walkwayY = walkwayBounds.top;
+  const walkwayHeight = walkwayBounds.bottom - walkwayBounds.top;
 
-  const riverbedY = wallY + wallHeight;
-  const riverbedHeight = height * 0.6; // 60% of screen (units 0-60)
+  // Wall: VERTICAL surface at the near edge (worldY ≈ 0), spanning Z=3 to Z=0
+  // Unlike horizontal surfaces, wall has Z height but no Y depth
+  // Wall top: where walkway ends (Z=3 at Y=0)
+  // Wall bottom: at riverbed level (Z=0 at Y=0)
+  // Per diagram: Height = (Z=3 - Z=0) * pixelsPerUnit
+  const wallTopScreen = projectToScreen(
+    0,
+    WORLD_Y.WALL_EDGE,
+    WORLD_Z.WALKWAY,
+    viewport,
+  );
+  const wallBottomScreen = projectToScreen(
+    0,
+    WORLD_Y.WALL_EDGE,
+    WORLD_Z.RIVERBED,
+    viewport,
+  );
+  const wallY = wallTopScreen.y;
+  const wallHeight = wallBottomScreen.y - wallTopScreen.y;
 
-  // Water starts at unit 10 (90% from top) and ends at unit 70 (30% from top)
-  const waterY = height * 0.3; // 30% from top (unit 70 in their system)
-  const waterHeight = height * 0.6; // 60 units tall (same as riverbed width)
+  // Riverbed: from riverbedBounds.top to riverbedBounds.bottom (worldY 0-6 at Z=0)
+  // Per diagram: riverbed is at Z=0, starts BELOW where water starts
+  const riverbedY = riverbedBounds.top;
+  const riverbedHeight = riverbedBounds.bottom - riverbedBounds.top;
+
+  // Water overlays riverbed (semi-transparent) - from waterBounds.top to waterBounds.bottom
+  // Per diagram: water is at Z=1, shifted up relative to riverbed
+  const waterY = waterBounds.top;
+  const waterHeight = waterBounds.bottom - waterBounds.top;
 
   const yOffset = 0; // No offset needed, layers fill the screen
 
   console.log(
-    `[ENVIRONMENT] Walkway: ${walkwayY}px (h:${walkwayHeight.toFixed(0)}), Wall: ${wallY.toFixed(0)}-${(wallY + wallHeight).toFixed(0)}px (h:${wallHeight.toFixed(0)}), Water: ${waterY.toFixed(0)}-${(waterY + waterHeight).toFixed(0)}px (h:${waterHeight.toFixed(0)}), Riverbed: ${riverbedY.toFixed(0)}px (h:${riverbedHeight.toFixed(0)})`,
+    `[ENVIRONMENT] World projection: pixelsPerUnit=${viewport.pixelsPerUnit.toFixed(1)}, screenYOffset=${viewport.screenYOffset.toFixed(0)}`,
+  );
+  console.log(
+    `[ENVIRONMENT] Walkway: ${walkwayY.toFixed(0)}-${(walkwayY + walkwayHeight).toFixed(0)}px (Z=${WORLD_Z.WALKWAY}), Wall: ${wallY.toFixed(0)}-${(wallY + wallHeight).toFixed(0)}px, Water: ${waterY.toFixed(0)}-${(waterY + waterHeight).toFixed(0)}px (Z=${WORLD_Z.WATER_SURFACE}), Riverbed: ${riverbedY.toFixed(0)}-${(riverbedY + riverbedHeight).toFixed(0)}px (Z=${WORLD_Z.RIVERBED})`,
   );
 
-  // Layer 1: Riverbed (drawn first, partially occluded by water)
-  const riverbed = new PIXI.Graphics();
-  // Base fill
-  riverbed.rect(0, riverbedY, width, riverbedHeight);
-  riverbed.fill({ color: 0x8b6914, alpha: 0.8 }); // Brown riverbed
-  // Diagonal stripe pattern
-  for (let x = -riverbedHeight; x < width + riverbedHeight; x += 15) {
-    riverbed.moveTo(x, riverbedY);
-    riverbed.lineTo(x + riverbedHeight, riverbedY + riverbedHeight);
-    riverbed.stroke({ width: 1, color: 0x654321, alpha: 0.5 });
+  // ==========================================================================
+  // RENDER ORDER (per diagram.svg):
+  // 1. Walkway (backdrop, behind everything)
+  // 2. Avatar (on walkway) - handled separately
+  // 3. Wall Face (connects walkway to water)
+  // 4. Riverbed (at Z=0)
+  // 5. Items on riverbed - handled separately
+  // 6. Water Surface (semi-transparent, overlays riverbed)
+  // 7. Magnet (dynamic based on Z position) - handled separately
+  // ==========================================================================
+
+  // Layer 1: Pier/Walkway (drawn first, at back)
+  const pier = new PIXI.Graphics();
+  // Base fill - DEBUG: Bright magenta/pink for visibility
+  pier.rect(0, walkwayY, width, walkwayHeight);
+  pier.fill({ color: 0xff00ff, alpha: 0.7 }); // Magenta walkway
+  // Horizontal wood plank lines
+  for (let y = walkwayY + 12; y < walkwayY + walkwayHeight; y += 12) {
+    pier.moveTo(0, y);
+    pier.lineTo(width, y);
+    pier.stroke({ width: 2, color: 0xcc00cc, alpha: 0.6 });
   }
-  // Horizontal dots pattern
-  for (let x = 10; x < width; x += 20) {
-    for (let y = riverbedY + 10; y < riverbedY + riverbedHeight; y += 15) {
-      riverbed.circle(x, y, 2);
-      riverbed.fill({ color: 0x654321, alpha: 0.6 });
+  // Wood grain vertical lines
+  for (let x = 0; x < width; x += 60) {
+    for (let y = walkwayY; y < walkwayY + walkwayHeight; y += 3) {
+      const offset = Math.random() * 2 - 1;
+      pier.moveTo(x + offset, y);
+      pier.lineTo(x + offset, y + 2);
+      pier.stroke({ width: 1, color: 0xcc00cc, alpha: 0.2 });
     }
   }
-  riverbed.rect(0, riverbedY, width, riverbedHeight);
-  riverbed.stroke({ width: 2, color: 0x654321, alpha: 1.0 }); // Dark brown outline
-  container.addChild(riverbed);
+  pier.rect(0, walkwayY, width, walkwayHeight);
+  pier.stroke({ width: 3, color: 0xff00ff, alpha: 1.0 }); // Magenta outline
+  container.addChild(pier);
 
-  // Layer 2: River Wall (connects pier to riverbed)
+  // Layer 2: Avatar would be added here (handled separately by PixiApp)
+
+  // Layer 3: River Wall (connects walkway to water/riverbed)
   const wall = new PIXI.Graphics();
-  // Base fill
+  // Base fill - DEBUG: Bright orange for visibility
   wall.rect(0, wallY, width, wallHeight);
-  wall.fill({ color: 0x606060, alpha: 0.6 }); // Gray wall with transparency
+  wall.fill({ color: 0xff8800, alpha: 0.7 }); // Orange wall
   // Brick pattern - horizontal lines
   for (let y = wallY; y < wallY + wallHeight; y += 12) {
     wall.moveTo(0, y);
     wall.lineTo(width, y);
-    wall.stroke({ width: 1, color: 0x404040, alpha: 0.4 });
+    wall.stroke({ width: 1, color: 0xcc6600, alpha: 0.4 });
   }
   // Brick pattern - vertical lines (offset every other row)
   for (let y = wallY; y < wallY + wallHeight; y += 24) {
@@ -86,18 +147,42 @@ export function setupEnvironmentLayers(container, width, height) {
     for (let x = offset; x < width; x += 40) {
       wall.moveTo(x, y);
       wall.lineTo(x, Math.min(y + 12, wallY + wallHeight));
-      wall.stroke({ width: 1, color: 0x404040, alpha: 0.3 });
+      wall.stroke({ width: 1, color: 0xcc6600, alpha: 0.3 });
     }
   }
   wall.rect(0, wallY, width, wallHeight);
-  wall.stroke({ width: 2, color: 0x404040, alpha: 1.0 }); // Dark gray outline
+  wall.stroke({ width: 3, color: 0xff8800, alpha: 1.0 }); // Orange outline
   container.addChild(wall);
 
-  // Layer 3: Water Surface (drawn on top to occlude wall and riverbed)
+  // Layer 4: Riverbed (at Z=0, behind water)
+  const riverbed = new PIXI.Graphics();
+  // Base fill - DEBUG: Bright yellow for visibility
+  riverbed.rect(0, riverbedY, width, riverbedHeight);
+  riverbed.fill({ color: 0xffff00, alpha: 0.7 }); // Yellow riverbed
+  // Diagonal stripe pattern
+  for (let x = -riverbedHeight; x < width + riverbedHeight; x += 15) {
+    riverbed.moveTo(x, riverbedY);
+    riverbed.lineTo(x + riverbedHeight, riverbedY + riverbedHeight);
+    riverbed.stroke({ width: 1, color: 0xcccc00, alpha: 0.5 });
+  }
+  // Horizontal dots pattern
+  for (let x = 10; x < width; x += 20) {
+    for (let y = riverbedY + 10; y < riverbedY + riverbedHeight; y += 15) {
+      riverbed.circle(x, y, 2);
+      riverbed.fill({ color: 0xcccc00, alpha: 0.6 });
+    }
+  }
+  riverbed.rect(0, riverbedY, width, riverbedHeight);
+  riverbed.stroke({ width: 3, color: 0xffff00, alpha: 1.0 }); // Yellow outline
+  container.addChild(riverbed);
+
+  // Layer 5: Items on riverbed would be added here (handled separately)
+
+  // Layer 6: Water Surface (semi-transparent, overlays riverbed)
   const water = new PIXI.Graphics();
-  // Base fill
+  // Base fill - DEBUG: Bright cyan for visibility
   water.rect(0, waterY, width, waterHeight);
-  water.fill({ color: 0x4a90e2, alpha: 0.4 }); // Translucent blue water
+  water.fill({ color: 0x00ffff, alpha: 0.4 }); // Cyan water
   // Horizontal wave pattern
   for (let y = waterY; y < waterY + waterHeight; y += 8) {
     const waveOffset = Math.sin(y * 0.1) * 3;
@@ -106,7 +191,7 @@ export function setupEnvironmentLayers(container, width, height) {
       const wave = Math.sin((x + y) * 0.05) * 2;
       water.lineTo(x, y + wave + waveOffset);
     }
-    water.stroke({ width: 1, color: 0x2a5f9e, alpha: 0.3 });
+    water.stroke({ width: 1, color: 0x00cccc, alpha: 0.3 });
   }
   // Bubble circles
   for (let i = 0; i < 30; i++) {
@@ -114,35 +199,13 @@ export function setupEnvironmentLayers(container, width, height) {
     const y = waterY + ((i * 17) % waterHeight);
     const radius = 2 + (i % 3);
     water.circle(x, y, radius);
-    water.stroke({ width: 1, color: 0x6ab0f2, alpha: 0.4 });
+    water.stroke({ width: 1, color: 0x00ffff, alpha: 0.4 });
   }
   water.rect(0, waterY, width, waterHeight);
-  water.stroke({ width: 2, color: 0x2a5f9e, alpha: 0.8 }); // Darker blue outline
+  water.stroke({ width: 3, color: 0x00ffff, alpha: 1.0 }); // Cyan outline
   container.addChild(water);
 
-  // Layer 4: Pier/Walkway (at top)
-  const pier = new PIXI.Graphics();
-  // Base fill
-  pier.rect(0, walkwayY, width, walkwayHeight);
-  pier.fill({ color: 0xc0b090, alpha: 0.9 }); // Wooden pier color
-  // Horizontal wood plank lines
-  for (let y = walkwayY + 12; y < walkwayY + walkwayHeight; y += 12) {
-    pier.moveTo(0, y);
-    pier.lineTo(width, y);
-    pier.stroke({ width: 2, color: 0x8b7355, alpha: 0.6 });
-  }
-  // Wood grain vertical lines
-  for (let x = 0; x < width; x += 60) {
-    for (let y = walkwayY; y < walkwayY + walkwayHeight; y += 3) {
-      const offset = Math.random() * 2 - 1;
-      pier.moveTo(x + offset, y);
-      pier.lineTo(x + offset, y + 2);
-      pier.stroke({ width: 1, color: 0x8b7355, alpha: 0.2 });
-    }
-  }
-  pier.rect(0, walkwayY, width, walkwayHeight);
-  pier.stroke({ width: 2, color: 0x8b7355, alpha: 1.0 }); // Brown outline
-  container.addChild(pier);
+  // Layer 7: Magnet would be added here with dynamic Z-based ordering (handled separately)
 
   // Add grid lines to show structure (wireframe effect)
   const gridLines = new PIXI.Graphics();
@@ -178,10 +241,10 @@ export function setupEnvironmentLayers(container, width, height) {
   container.addChild(gridLines);
 
   console.log(
-    `[ENVIRONMENT] Created 3D environment layers filling full screen (Walkway 20%, Wall 20%, Riverbed 60%, Water overlays)`,
+    `[ENVIRONMENT] Created 3D environment layers using world constants (Walkway Z=${WORLD_Z.WALKWAY}, Water Z=${WORLD_Z.WATER_SURFACE}, Riverbed Z=${WORLD_Z.RIVERBED})`,
   );
 
-  return { riverbed, wall, water, pier, gridLines, yOffset };
+  return { riverbed, wall, water, pier, gridLines, yOffset, viewport };
 }
 
 /**
@@ -261,15 +324,22 @@ export async function setupWaterBackground(app) {
 
 /**
  * Draw quadrant grid overlay
- * Quadrants only cover the riverbed area (bottom 60% of screen)
+ * Quadrants only cover the riverbed area (where items can spawn)
+ * Uses world constants to determine riverbed screen bounds
  */
 export function drawQuadrantGrid(app) {
   if (!app) return;
 
-  // Quadrants only exist on the riverbed (bottom 60% of screen)
-  // Riverbed starts at 40% from top (where wall ends) and goes to 100%
-  const riverbedStartY = app.screen.height * 0.4; // 40% from top
-  const riverbedHeight = app.screen.height * 0.6; // 60% of screen
+  // Create viewport for world-to-screen projection
+  const viewport = createViewport(app.screen.width, app.screen.height);
+
+  // Get riverbed screen bounds from world coordinates
+  const riverbedBounds = getSurfaceScreenBounds(WORLD_Z.RIVERBED, viewport);
+
+  // Quadrants cover the riverbed area (worldY 0-6 at Z=0)
+  // Per diagram: riverbed is from riverbedBounds.top to riverbedBounds.bottom
+  const riverbedStartY = riverbedBounds.top;
+  const riverbedHeight = riverbedBounds.bottom - riverbedBounds.top;
   const quadrantWidth = app.screen.width / 3;
   const quadrantHeight = riverbedHeight / 3;
 
@@ -288,6 +358,6 @@ export function drawQuadrantGrid(app) {
   }
 
   console.log(
-    `[QUADRANTS] Grid covers riverbed only: Y ${riverbedStartY.toFixed(0)}-${app.screen.height} (${riverbedHeight.toFixed(0)}px)`,
+    `[QUADRANTS] Grid: Y ${riverbedStartY.toFixed(0)}-${(riverbedStartY + riverbedHeight).toFixed(0)}px, same as riverbed visual`,
   );
 }

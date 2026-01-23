@@ -1,27 +1,43 @@
 /**
  * Cast Animations
  * Visual feedback animations for casting phase
+ *
+ * All positions are calculated in WORLD SPACE first, then projected to screen space.
+ * World coordinates: {x: horizontal, y: depth, z: height}
+ * Projection: screenX = worldX, screenY = (worldY - worldZ) * pixelsPerUnit + offset
  */
 
 import * as PIXI from "pixi.js";
 import { Rope3D } from "../physics/RopePhysics3D.js";
 import {
-  getAvatarPosition,
-  getMagnetPosition,
-  calculateRopeSegments,
-} from "../mechanics/heightMechanics.js";
+  WORLD_Z,
+  WORLD_Y,
+  createViewport,
+  worldToScreen,
+  screenToWorld,
+  lerp,
+} from "../mechanics/worldConstants.js";
+import { calculateRopeSegments } from "../mechanics/heightMechanics.js";
 import { createMagnetSprite } from "../graphics/placeholderSprites.js";
+import useMagnetStore from "../state/magnetStore.js";
 
 /**
  * Animate casting line from shore to target position with 3D rope physics
  * Shows magnet arc to water surface, splash, then sink to riverbed
  * Returns the graphics object to keep visible during drag
  * The 3D rope is stored in sessionStore for continuous use
+ *
+ * ALL POSITIONS ARE IN WORLD SPACE:
+ * - World X: horizontal position (same as screen X)
+ * - World Y: depth into the scene (0 = avatar, increases toward back)
+ * - World Z: height (0 = riverbed, increases upward)
+ *
+ * Projection to screen: screenY = (worldY - worldZ) * pixelsPerUnit + offset
  */
 export function animateCastLine(
   app,
-  targetX,
-  targetY,
+  targetScreenX,
+  targetScreenY,
   gameStore,
   sessionStore,
 ) {
@@ -43,29 +59,49 @@ export function animateCastLine(
       sessionStore.getState().setCastPosition(null, null);
     }
 
-    // Starting point - center of walkway
-    const startX = app.screen.width / 2;
-    const startY = app.screen.height * 0.1; // Middle of walkway (10% from top)
+    // ===========================================
+    // CREATE VIEWPORT - maps world units to screen pixels
+    // ===========================================
+    const viewport = createViewport(app.screen.width, app.screen.height);
+
+    console.log(
+      `[CAST] Viewport: ${viewport.pixelsPerUnit.toFixed(1)} px/unit, offset: ${viewport.screenYOffset.toFixed(1)}`,
+    );
 
     // ===========================================
-    // SIMPLIFIED DEPTH MODEL
+    // AVATAR POSITION (fixed in world space)
     // ===========================================
-    // The riverbed is where user clicks (real ground, Z=0)
-    // Water surface is WATER_DEPTH pixels above the riverbed visually
-    // Screen Y = World Y - Z (orthogonal projection)
-    //
-    // So for an object at position (worldY, Z):
-    //   screenY = worldY - Z
-    //
-    // Water surface: Z = WATER_DEPTH, screenY = riverbedY - WATER_DEPTH
-    // Riverbed:      Z = 0,           screenY = riverbedY
-    // ===========================================
+    const avatarWorld = {
+      x: app.screen.width / 2, // Center of screen
+      y: WORLD_Y.AVATAR, // Front of scene (Y=0)
+      z: WORLD_Z.AVATAR_HAND, // Hand height (Z=4.2)
+    };
+    const avatarScreen = worldToScreen(avatarWorld, viewport);
 
-    const riverbedStartY = app.screen.height * 0.4; // Riverbed begins at 40% from top
-    const waterSurfaceScreenY = app.screen.height * 0.3; // Water surface at 30% from top
-    const WATER_DEPTH = riverbedStartY - waterSurfaceScreenY; // Z units = pixel difference
-    const AVATAR_HEIGHT = WATER_DEPTH * 3; // Fixed avatar Z height (~290px if depth is 97px)
-    const waterSurfaceY = waterSurfaceScreenY; // Where water surface appears on screen
+    // ===========================================
+    // TARGET POSITION (where user clicked = riverbed)
+    // Convert screen click to world coordinates on riverbed (Z=0)
+    // ===========================================
+    const targetWorld = screenToWorld(
+      targetScreenX,
+      targetScreenY,
+      WORLD_Z.RIVERBED,
+      viewport,
+    );
+
+    console.log(
+      `[CAST] Click at screen (${targetScreenX.toFixed(0)}, ${targetScreenY.toFixed(0)}) -> world (${targetWorld.x.toFixed(2)}, ${targetWorld.y.toFixed(2)}, ${targetWorld.z})`,
+    );
+
+    // ===========================================
+    // WATER SURFACE POSITION (same world Y as target, but at water Z)
+    // ===========================================
+    const waterHitWorld = {
+      x: targetWorld.x,
+      y: targetWorld.y, // Same depth as final target
+      z: WORLD_Z.WATER_SURFACE, // At water surface height
+    };
+    const waterHitScreen = worldToScreen(waterHitWorld, viewport);
 
     // ===========================================
     // VISUAL DEBUG: Draw horizontal lines showing layer boundaries
@@ -74,421 +110,328 @@ export function animateCastLine(
     debugLines.zIndex = 9999;
     app.stage.addChild(debugLines);
 
-    // RED = where castAnimations thinks water surface is
-    debugLines.moveTo(0, waterSurfaceY);
-    debugLines.lineTo(app.screen.width, waterSurfaceY);
-    debugLines.stroke({ width: 3, color: 0xff0000 });
+    // Draw layer boundaries using world-to-screen projection
+    const waterNearScreen = worldToScreen(
+      { x: 0, y: WORLD_Y.WATER_NEAR, z: WORLD_Z.WATER_SURFACE },
+      viewport,
+    );
+    const riverbedFarScreen = worldToScreen(
+      { x: 0, y: WORLD_Y.RIVERBED_FAR, z: WORLD_Z.RIVERBED },
+      viewport,
+    );
 
-    // GREEN = where castAnimations thinks riverbed starts
-    debugLines.moveTo(0, riverbedStartY);
-    debugLines.lineTo(app.screen.width, riverbedStartY);
-    debugLines.stroke({ width: 3, color: 0x00ff00 });
+    // RED = water surface (near edge)
+    debugLines.moveTo(0, waterNearScreen.y);
+    debugLines.lineTo(app.screen.width, waterNearScreen.y);
+    debugLines.stroke({ width: 2, color: 0xff0000 });
 
-    // BLUE = walkway/avatar start position
-    debugLines.moveTo(0, startY);
-    debugLines.lineTo(app.screen.width, startY);
-    debugLines.stroke({ width: 3, color: 0x0000ff });
+    // GREEN = riverbed far edge
+    debugLines.moveTo(0, riverbedFarScreen.y);
+    debugLines.lineTo(app.screen.width, riverbedFarScreen.y);
+    debugLines.stroke({ width: 2, color: 0x00ff00 });
+
+    // BLUE = avatar position
+    debugLines.moveTo(0, avatarScreen.y);
+    debugLines.lineTo(app.screen.width, avatarScreen.y);
+    debugLines.stroke({ width: 2, color: 0x0000ff });
+
+    // YELLOW = water hit position for this cast
+    debugLines.circle(waterHitScreen.x, waterHitScreen.y, 8);
+    debugLines.stroke({ width: 2, color: 0xffff00 });
+
+    // MAGENTA = target riverbed position
+    debugLines.circle(targetScreenX, targetScreenY, 10);
+    debugLines.stroke({ width: 2, color: 0xff00ff });
 
     // Add labels
-    const style = { fontSize: 14, fill: 0xffffff };
+    const style = { fontSize: 12, fill: 0xffffff };
     const labelWater = new PIXI.Text({
-      text: `WATER SURFACE (${waterSurfaceY.toFixed(0)}px, 30%)`,
+      text: `Water (Z=${WORLD_Z.WATER_SURFACE})`,
       style,
     });
     labelWater.x = 10;
-    labelWater.y = waterSurfaceY - 20;
+    labelWater.y = waterNearScreen.y - 18;
     debugLines.addChild(labelWater);
 
-    const labelRiverbed = new PIXI.Text({
-      text: `RIVERBED START (${riverbedStartY.toFixed(0)}px, 40%)`,
-      style,
-    });
-    labelRiverbed.x = 10;
-    labelRiverbed.y = riverbedStartY + 5;
-    debugLines.addChild(labelRiverbed);
-
     const labelAvatar = new PIXI.Text({
-      text: `AVATAR/START (${startY.toFixed(0)}px, 10%)`,
+      text: `Avatar (Z=${WORLD_Z.AVATAR_HAND})`,
       style,
     });
     labelAvatar.x = 10;
-    labelAvatar.y = startY + 5;
+    labelAvatar.y = avatarScreen.y + 2;
     debugLines.addChild(labelAvatar);
 
-    const labelDepth = new PIXI.Text({
-      text: `WATER_DEPTH = ${WATER_DEPTH.toFixed(0)}px`,
+    const labelViewport = new PIXI.Text({
+      text: `Viewport: ${viewport.pixelsPerUnit.toFixed(1)} px/unit`,
       style,
     });
-    labelDepth.x = 10;
-    labelDepth.y = (waterSurfaceY + riverbedStartY) / 2;
-    debugLines.addChild(labelDepth);
+    labelViewport.x = 10;
+    labelViewport.y = 10;
+    debugLines.addChild(labelViewport);
 
     console.log(
-      `[CAST DEBUG] Water: ${waterSurfaceY.toFixed(0)}px | Riverbed: ${riverbedStartY.toFixed(0)}px | Depth: ${WATER_DEPTH.toFixed(0)}px | Target: ${targetY.toFixed(0)}px`,
+      `[CAST DEBUG] Avatar screen: ${avatarScreen.y.toFixed(0)}px | Water hit screen: ${waterHitScreen.y.toFixed(0)}px | Target: ${targetScreenY.toFixed(0)}px`,
     );
 
-    // Create fresh 3D rope with proper 3D positions
-    const dx = targetX - startX;
-    const dy = targetY - startY;
-    const distance2D = Math.sqrt(dx * dx + dy * dy);
-    const segments = calculateRopeSegments(distance2D);
+    // ===========================================
+    // CREATE 3D ROPE
+    // ===========================================
+    // Calculate 3D distance from avatar to target for segment count
+    const dx = targetWorld.x - avatarWorld.x;
+    const dy = targetWorld.y - avatarWorld.y;
+    const dz = targetWorld.z - avatarWorld.z;
+    const distance3D = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
-    // Avatar 3D position (fixed at pier)
-    const avatarWorldY = startY + AVATAR_HEIGHT;
-    const avatarPos3D = { x: startX, y: avatarWorldY, z: AVATAR_HEIGHT };
+    // For throw timing, use horizontal distance (XY plane) - more visually relevant
+    const horizontalDistance = Math.sqrt(dx * dx + dy * dy);
 
-    // Magnet final position - at riverbed
-    const riverbedPos3D = { x: targetX, y: targetY, z: 0 };
+    const segments = calculateRopeSegments(distance3D, viewport);
 
-    // Create rope from avatar to riverbed (final position)
-    // This initializes points spread out along the full path
-    const rope3D = new Rope3D(segments, avatarPos3D, riverbedPos3D);
+    // Create rope from avatar to target (final position)
+    const rope3D = new Rope3D(segments, avatarWorld, targetWorld);
 
-    // Calculate the rope length when magnet is at RIVERBED (final resting position)
-    // This is the TAUT length (no slack) - tension will add slack on top
-    const riverbedDistance = Math.sqrt(
-      (targetX - startX) ** 2 +
-        (targetY - avatarWorldY) ** 2 +
-        (0 - AVATAR_HEIGHT) ** 2,
-    );
-    const tautSegmentLength = riverbedDistance / (segments - 1);
-
-    // Set rope length - this is the base taut length
-    // Tension will multiply this by slack factor (1.0 to 1.1)
+    // Set base segment length for taut rope
+    const tautSegmentLength = distance3D / (segments - 1);
     rope3D.segmentLength = tautSegmentLength;
     rope3D.baseSegmentLength = tautSegmentLength;
 
     console.log(
-      `[CAST] Rope: avatar(${startX.toFixed(0)}, ${avatarWorldY.toFixed(0)}, ${AVATAR_HEIGHT.toFixed(0)}) to riverbed(${targetX.toFixed(0)}, ${targetY.toFixed(0)}, 0) = ${riverbedDistance.toFixed(0)}px (taut)`,
+      `[CAST] Rope: ${segments} segments, distance: ${distance3D.toFixed(2)} world units, segment: ${tautSegmentLength.toFixed(2)}`,
     );
-
     console.log(
-      `[CAST] Created fresh Rope3D with ${segments} segments for cast to (${targetX.toFixed(1)}, ${targetY.toFixed(1)})`,
+      `[CAST] Horizontal distance: ${horizontalDistance.toFixed(2)} units, throw duration will be: ${Math.max(300, 250 + horizontalDistance * 0.5).toFixed(0)}ms`,
     );
 
     // Store in sessionStore immediately
     if (sessionStore) {
       sessionStore.getState().setRope(rope3D);
-      sessionStore.getState().setPhase("cast");
+      sessionStore.getState().setPhase("throwing");
       sessionStore.getState().setPhaseProgress(0);
     }
+
+    // Spawn magnet in magnet store
+    const magnetStore = useMagnetStore.getState();
+    magnetStore.spawnMagnet(avatarWorld.x);
 
     // Create graphics object for the line
     const line = new PIXI.Graphics();
     app.stage.addChild(line);
 
-    // Create magnet sprite immediately so it's visible during throw
+    // Create magnet sprite
     const magnetSprite = createMagnetSprite();
     magnetSprite.scale.set(2);
-    // Graphics don't have anchor, so we'll offset position when rendering
     app.stage.addChild(magnetSprite);
 
-    // Calculate water surface hit position
-    // ===========================================
-    // CORRECTED MODEL:
-    // - User clicks at targetY (riverbed, Z=0) - this is both world Y and screen Y
-    // - Magnet's WORLD Y stays at targetY throughout the entire cast & sink
-    // - Only Z changes: starts high (avatar), hits water (Z=WATER_DEPTH), sinks to riverbed (Z=0)
-    // - Screen Y = worldY - Z (orthographic projection)
-    // ===========================================
-    const waterHitX = targetX;
-    const waterHitY = targetY; // World Y is always the click position!
-    const waterHitScreenY = targetY - WATER_DEPTH; // Screen position when Z=WATER_DEPTH
-
-    // ===========================================
-    // VISUAL DEBUG: Show key magnet positions
-    // ===========================================
-    // Avatar has a FIXED height - it doesn't change based on where you click
-    // The pier/walkway is at a fixed Z above the water
-    // AVATAR_HEIGHT = WATER_DEPTH * 3 (~290px if depth is 97px)
-    const avatarScreenY = targetY - AVATAR_HEIGHT; // Screen Y at avatar's Z height
-
-    // GREEN circle = avatar HEIGHT projected onto the target column
-    // Shows where Z=AVATAR_HEIGHT would appear on screen at the target's X position
-    const debugMarkerAvatar = new PIXI.Graphics();
-    debugMarkerAvatar.circle(0, 0, 12).stroke({ width: 3, color: 0x00ff00 });
-    debugMarkerAvatar.circle(0, 0, 3).fill({ color: 0x00ff00 });
-    debugMarkerAvatar.x = targetX; // Same column as target!
-    debugMarkerAvatar.y = avatarScreenY; // Screen Y at avatar's Z height
-    debugMarkerAvatar.zIndex = 9998;
-    app.stage.addChild(debugMarkerAvatar);
-
-    // YELLOW circle = where magnet appears on SCREEN when hitting water surface
-    const debugMarkerWaterHit = new PIXI.Graphics();
-    debugMarkerWaterHit.circle(0, 0, 15).stroke({ width: 3, color: 0xffff00 });
-    debugMarkerWaterHit.circle(0, 0, 3).fill({ color: 0xffff00 });
-    debugMarkerWaterHit.x = waterHitX;
-    debugMarkerWaterHit.y = waterHitScreenY; // Screen Y when at water surface
-    debugMarkerWaterHit.zIndex = 9998;
-    app.stage.addChild(debugMarkerWaterHit);
-
-    // MAGENTA circle = target riverbed position (where click was, Z=0)
-    const debugMarkerTarget = new PIXI.Graphics();
-    debugMarkerTarget.circle(0, 0, 10).stroke({ width: 3, color: 0xff00ff });
-    debugMarkerTarget.circle(0, 0, 3).fill({ color: 0xff00ff });
-    debugMarkerTarget.x = targetX;
-    debugMarkerTarget.y = targetY;
-    debugMarkerTarget.zIndex = 9998;
-    app.stage.addChild(debugMarkerTarget);
-
-    console.log(
-      `[CAST DEBUG] AVATAR_HEIGHT=${AVATAR_HEIGHT.toFixed(0)}, WATER_DEPTH=${WATER_DEPTH.toFixed(0)}, targetY=${targetY.toFixed(0)}`,
-    );
-
-    const debugLabelStyle = { fontSize: 12, fill: 0xffffff };
-
-    const labelGreen = new PIXI.Text({
-      text: `AVATAR (Z=${AVATAR_HEIGHT.toFixed(0)})`,
-      style: debugLabelStyle,
+    // Create debug text for magnet world coordinates
+    const magnetDebugText = new PIXI.Text({
+      text: "",
+      style: {
+        fontFamily: "monospace",
+        fontSize: 12,
+        fill: 0xffff00,
+        stroke: { color: 0x000000, width: 3 },
+      },
     });
-    labelGreen.x = startX + 20;
-    labelGreen.y = avatarScreenY - 10;
-    debugMarkerAvatar.addChild(labelGreen);
+    magnetDebugText.zIndex = 10000;
+    app.stage.addChild(magnetDebugText);
 
-    const labelYellow = new PIXI.Text({
-      text: `WATER SURFACE (Z=${WATER_DEPTH.toFixed(0)})`,
-      style: debugLabelStyle,
-    });
-    labelYellow.x = waterHitX + 20;
-    labelYellow.y = waterHitScreenY - 10;
-    debugMarkerWaterHit.addChild(labelYellow);
-
-    const labelMagenta = new PIXI.Text({
-      text: `RIVERBED (Z=0)`,
-      style: debugLabelStyle,
-    });
-    labelMagenta.x = targetX + 20;
-    labelMagenta.y = targetY - 10;
-    debugMarkerTarget.addChild(labelMagenta);
-
-    // Calculate throw arc parameters
-    const distance = Math.sqrt(
-      (waterHitX - startX) ** 2 + (waterHitY - startY) ** 2,
-    );
-    const throwAngle = Math.atan2(waterHitY - startY, waterHitX - startX);
-
-    // Animation parameters - throw duration scales with distance
-    // Faster, snappier throws that feel more like real physics
-    // Short throw (~200px): ~500ms, Long throw (~600px): ~900ms
-    const throwDuration = Math.max(400, 350 + distance * 0.9);
-
-    // Sink duration scales with water depth (distance from water surface to riverbed)
-    const waterDepth = targetY - waterHitY;
-    const sinkDuration = Math.max(400, 300 + waterDepth * 2); // 400-800ms based on depth
-
-    const settleDuration = 100; // Brief settle for rope physics (was 400ms - too long)
+    // ===========================================
+    // ANIMATION PARAMETERS
+    // ===========================================
+    // Throw timing: slow, deliberate lob for realistic fishing cast
+    // Base 800ms + 1.5ms per world unit of horizontal distance
+    // Example: 100 units = 950ms, 200 units = 1100ms, 400 units = 1400ms
+    const throwDuration = Math.max(800, 800 + horizontalDistance * 1.5);
+    const settleDuration = 200;
     const startTime = performance.now();
 
     let phase = "throwing"; // 'throwing' -> 'sinking' -> 'settling' -> 'done'
     let phaseStartTime = 0;
-    let magnetX = startX;
-    let magnetY = startY;
-    let magnetZ = WATER_DEPTH + 50; // Start at avatar height (above water surface)
 
-    // Track previous position for velocity calculation
-    let prevMagnetY = magnetY;
-    let prevMagnetZ = magnetZ;
+    // Current magnet position in world space
+    let magnetWorld = { ...avatarWorld };
+
+    // Sinking physics state
+    let sinkVelocityZ = 0;
     let prevTime = startTime;
 
-    // Sinking physics state (set when entering water)
-    let sinkVelocityY = 0;
-    let sinkVelocityZ = 0;
+    // Tension animation: 95 (throw start) -> 15 (water) -> 10 (settled)
+    let currentTension = 95;
+    const deltaTime = 1 / 60;
 
-    // Tension animation: 40 (throw) -> 25 (surface) -> 15 (sinking) -> 10 (settled)
-    let currentTension = 40;
-
-    const deltaTime = 1 / 60; // Approximate frame time
+    // Water surface screen Y for rendering effects
+    const waterSurfaceScreenY = worldToScreen(
+      { x: 0, y: WORLD_Y.WATER_NEAR, z: WORLD_Z.WATER_SURFACE },
+      viewport,
+    ).y;
 
     const animate = (currentTime) => {
       if (!app) {
-        if (line.parent) {
-          line.parent.removeChild(line);
-        }
+        if (line.parent) line.parent.removeChild(line);
         line.destroy();
-        if (magnetSprite.parent) {
-          magnetSprite.parent.removeChild(magnetSprite);
-        }
+        if (magnetSprite.parent) magnetSprite.parent.removeChild(magnetSprite);
         magnetSprite.destroy();
-        resolve({
-          line: null,
-          playerX: startX,
-          playerY: startY,
-          finalTension: 0,
-        });
+        if (magnetDebugText.parent)
+          magnetDebugText.parent.removeChild(magnetDebugText);
+        magnetDebugText.destroy();
+        resolve({ line: null, playerX: 0, playerY: 0, finalTension: 0 });
         return;
       }
 
       const elapsed = currentTime - startTime;
 
       if (phase === "throwing") {
-        // PHASE 1: Throw magnet in arc from player to water surface
+        // PHASE 1: Throw magnet in arc from avatar to water surface
         const progress = Math.min(elapsed / throwDuration, 1);
 
-        // Animate tension: 95 -> 15 as rope extends (high tension during throw, settling as it lands)
-        currentTension = 95 - 80 * progress; // 95 at start, 15 at water surface
-        currentTension = 95 - 80 * progress; // 95 at start, 15 at water surface
+        // Animate tension: 95 -> 15 as rope extends
+        currentTension = 95 - 80 * progress;
         if (gameStore) {
           gameStore.getState().updateCastTension(currentTension);
         }
 
-        // PROJECTILE MOTION for natural throw feel
-        // The throw goes from avatar (screen position) to water surface (screen position)
-        // Water surface screen position = targetY - WATER_DEPTH
+        // Update session phase progress
+        if (sessionStore) {
+          sessionStore.getState().setPhaseProgress(progress * 0.5); // 0-50% during throw
+        }
 
-        const throwEndScreenY = waterHitScreenY; // Where magnet appears when hitting water
+        // Interpolate world position from avatar to water hit point
+        // X and Y interpolate linearly, Z follows arc
+        const throwProgress = 1 - Math.pow(1 - progress, 1.5); // Ease-out
 
-        // Horizontal: mostly constant velocity with slight ease-out (air resistance)
-        const horizontalEase = 1 - Math.pow(1 - progress, 1.5); // Gentle ease-out
-        magnetX = startX + (waterHitX - startX) * horizontalEase;
+        magnetWorld.x = lerp(avatarWorld.x, waterHitWorld.x, throwProgress);
+        magnetWorld.y = lerp(avatarWorld.y, waterHitWorld.y, throwProgress);
 
-        // For Y during throw, interpolate screen position from avatar to water surface
-        const screenY = startY + (throwEndScreenY - startY) * horizontalEase;
+        // Z: arc from avatar hand to water surface
+        // Add parabolic arc for natural lob feel - goes UP first before descending
+        const baseZ = lerp(avatarWorld.z, waterHitWorld.z, progress);
+        const arcHeight = 2.0; // Arc height in world units (increased for visible lob)
+        const arcOffset = Math.sin(progress * Math.PI) * arcHeight;
+        magnetWorld.z = baseZ + arcOffset;
 
-        // Vertical (Z): True parabolic arc using projectile motion
-        // Arc peaks around 30-40% through the throw (asymmetric - faster fall)
-        const peakTime = 0.35; // Where in the throw the arc peaks
-        const arcHeight = Math.min(100, 30 + distance * 0.12); // Height scales with distance
+        // Update magnet store with current position (automatically tracks peaks)
+        magnetStore.updateMagnetPosition(
+          magnetWorld.x,
+          magnetWorld.y,
+          magnetWorld.z,
+        );
 
-        // Parabolic arc: z = -4h(t - peak)² + h, normalized so it's 0 at start and end
-        // This creates steeper descent (gravity effect) than ascent
-        const normalizedT = progress;
-        const parabola =
-          -4 * arcHeight * Math.pow(normalizedT - peakTime, 2) +
-          arcHeight * (1 - Math.pow(peakTime * 2, 2)); // Offset to start at 0
-
-        // Simpler approach: use a skewed sine wave that peaks earlier
-        // sin(π * t^0.7) peaks around t=0.35 instead of t=0.5
-        const skewedProgress = Math.pow(progress, 0.7);
-        const arcOffset = Math.sin(skewedProgress * Math.PI) * arcHeight;
-
-        // Apply arc offset to screen Y (negative because arc goes UP, which is lower screen Y)
-        const finalScreenY = screenY - arcOffset;
-
-        // Convert screen position back to world coordinates for physics
-        // Avatar is at fixed Z = AVATAR_HEIGHT
-        // Magnet starts at avatar (Z = AVATAR_HEIGHT), ends at water surface (Z = WATER_DEPTH)
-        magnetZ = AVATAR_HEIGHT + (WATER_DEPTH - AVATAR_HEIGHT) * progress; // Interpolate from AVATAR_HEIGHT to WATER_DEPTH
-        magnetY = finalScreenY + magnetZ; // worldY = screenY + Z
-
-        // Rope length is fixed (set at cast start) - tension controls slack
+        // Update rope physics
         rope3D.setTension(currentTension);
+        rope3D.update(deltaTime, avatarWorld, magnetWorld);
 
-        // Update 3D rope physics
-        const avatarWorldY = startY + AVATAR_HEIGHT;
-        const avatarPos3D = { x: startX, y: avatarWorldY, z: AVATAR_HEIGHT };
-        const magnetPos3D = { x: magnetX, y: magnetY, z: magnetZ };
-        rope3D.update(deltaTime, avatarPos3D, magnetPos3D);
+        // Render rope
+        render3DRopeWithViewport(line, rope3D, viewport, waterSurfaceScreenY);
 
-        // Render the rope
-        render3DRope(line, rope3D, waterSurfaceScreenY);
+        // Update magnet sprite screen position
+        const magnetScreen = worldToScreen(magnetWorld, viewport);
+        magnetSprite.x = magnetScreen.x - magnetSprite.width / 2;
+        magnetSprite.y = magnetScreen.y - magnetSprite.height / 2;
 
-        // Update magnet sprite position (use finalScreenY directly)
-        // Offset by half width/height to center (Graphics has no anchor)
-        magnetSprite.x = magnetX - magnetSprite.width / 2;
-        magnetSprite.y = finalScreenY - magnetSprite.height / 2;
+        // Update debug text with world coordinates and peaks from store
+        const peaks = magnetStore.getPeakValues();
+        magnetDebugText.text = `Magnet World:
+X: ${magnetWorld.x.toFixed(2)} (max: ${peaks.maxX.toFixed(2)})
+Y: ${magnetWorld.y.toFixed(2)} (max: ${peaks.maxY.toFixed(2)})
+Z: ${magnetWorld.z.toFixed(2)} (max: ${peaks.maxZ.toFixed(2)})`;
+        magnetDebugText.x = 10;
+        magnetDebugText.y = app.screen.height - 80;
 
         // Track velocity for water entry
-        const dt = (currentTime - prevTime) / 1000; // seconds
+        const dt = (currentTime - prevTime) / 1000;
         if (dt > 0) {
-          sinkVelocityY = (magnetY - prevMagnetY) / dt;
-          sinkVelocityZ = (magnetZ - prevMagnetZ) / dt;
+          sinkVelocityZ = -2; // Initial sink velocity (world units/sec)
         }
-        prevMagnetY = magnetY;
-        prevMagnetZ = magnetZ;
         prevTime = currentTime;
 
         if (progress >= 1) {
-          // Magnet hit water surface - transition to sinking
-          // Log actual vs expected distance for debugging
-          const actualDist = rope3D.getEndpointDistance();
-          const ropeLen = rope3D.getTotalLength();
-          console.log(`[CAST] Throw complete - Endpoint: ${actualDist.toFixed(0)}px, Rope: ${ropeLen.toFixed(0)}px, Tension: ${currentTension.toFixed(0)}`);
-          
+          // Magnet hit water surface
+          console.log(
+            `[CAST] Magnet hit water at world (${magnetWorld.x.toFixed(2)}, ${magnetWorld.y.toFixed(2)}, ${magnetWorld.z.toFixed(2)})`,
+          );
           phase = "sinking";
           phaseStartTime = currentTime;
-          magnetX = waterHitX;
-          magnetY = targetY; // World Y = click position (constant during sink)
-          magnetZ = WATER_DEPTH; // At water surface
-
-          // SPLASH EFFECT: Ensure entry velocity is HIGHER than terminal velocity
-          // so the magnet visibly decelerates when hitting water (the "plop" effect)
-          const splashEntryZ = -300; // Fast sinking entry (terminal = -80)
-          sinkVelocityZ = Math.min(sinkVelocityZ, splashEntryZ); // More negative = faster
-
-          // Log entry velocity for debugging
-          console.log(
-            `[CAST] Magnet hit water at screenY=${(targetY - WATER_DEPTH).toFixed(0)} | Entry Z velocity: ${sinkVelocityZ.toFixed(0)} px/s`,
-          );
+          magnetWorld.z = WORLD_Z.WATER_SURFACE;
+          sinkVelocityZ = -3; // Fast initial sink (world units/sec)
         }
       }
 
       if (phase === "sinking") {
         // PHASE 2: Sink from water surface to riverbed
-        // With the corrected model, worldY stays constant at targetY
-        // Only Z changes from WATER_DEPTH to 0
-        const dt = Math.min((currentTime - prevTime) / 1000, 0.05); // Cap at 50ms to prevent explosions
-
-        // Debug: log velocities
-        console.log(
-          `[SINK] dt=${(dt * 1000).toFixed(1)}ms | velZ=${sinkVelocityZ.toFixed(0)} | posZ=${magnetZ.toFixed(0)} | screenY=${(magnetY - magnetZ).toFixed(0)}`,
-        );
-
-        // Water drag - aggressively slows incoming velocity
-        // Higher = faster deceleration to terminal velocity
-        const dragCoeff = 40;
-
-        // Fixed terminal velocity for Z (sinking speed)
-        const terminalVelocityZ = -80; // pixels/sec falling (negative Z = down in height)
-
-        // Apply drag: velocity approaches terminal velocity
-        sinkVelocityZ += (terminalVelocityZ - sinkVelocityZ) * dragCoeff * dt;
-
-        // Update Z position using velocity (Y stays constant at targetY)
-        magnetZ += sinkVelocityZ * dt;
-        magnetX = waterHitX; // Stay at same X
-        magnetY = targetY; // World Y is always target
-
-        // Clamp Z to riverbed (Z=0)
-        magnetZ = Math.max(magnetZ, 0);
-
+        const dt = Math.min((currentTime - prevTime) / 1000, 0.05);
         prevTime = currentTime;
 
-        // Calculate progress for tension (Z goes from WATER_DEPTH to 0)
-        const sinkProgress = Math.min((WATER_DEPTH - magnetZ) / WATER_DEPTH, 1);
+        // Water drag slows sinking
+        const terminalVelocityZ = -0.8; // Terminal velocity (world units/sec)
+        const dragCoeff = 8;
+        sinkVelocityZ += (terminalVelocityZ - sinkVelocityZ) * dragCoeff * dt;
 
-        // Animate tension: 25 -> 15 as magnet sinks
-        currentTension = 25 - 10 * sinkProgress;
+        // Update Z position
+        magnetWorld.z += sinkVelocityZ * dt;
+        magnetWorld.z = Math.max(magnetWorld.z, WORLD_Z.RIVERBED);
+
+        // X and Y stay at target
+        magnetWorld.x = targetWorld.x;
+        magnetWorld.y = targetWorld.y;
+
+        // Update magnet store with current position (automatically tracks peaks)
+        magnetStore.updateMagnetPosition(
+          magnetWorld.x,
+          magnetWorld.y,
+          magnetWorld.z,
+        );
+
+        // Calculate progress for tension
+        const sinkProgress =
+          1 -
+          (magnetWorld.z - WORLD_Z.RIVERBED) /
+            (WORLD_Z.WATER_SURFACE - WORLD_Z.RIVERBED);
+
+        // Animate tension: 15 -> 10 as magnet sinks
+        currentTension = 15 - 5 * sinkProgress;
         if (gameStore) {
           gameStore.getState().updateCastTension(currentTension);
         }
 
-        // Update 3D rope physics - pass 3D coordinates directly
-        // Avatar world position: screenY = startY, so worldY = startY + AVATAR_HEIGHT
-        const avatarWorldY = startY + AVATAR_HEIGHT;
-        const avatarPos3D = { x: startX, y: avatarWorldY, z: AVATAR_HEIGHT };
-        const magnetPos3D = { x: magnetX, y: magnetY, z: magnetZ };
-        rope3D.setTension(currentTension); // Slack responds to tension
-        rope3D.update(deltaTime, avatarPos3D, magnetPos3D);
+        // Update session phase progress
+        if (sessionStore) {
+          sessionStore.getState().setPhaseProgress(0.5 + sinkProgress * 0.4); // 50-90%
+        }
 
-        // Render rope with underwater opacity
-        render3DRope(line, rope3D, waterSurfaceY);
+        // Update rope physics
+        rope3D.setTension(currentTension);
+        rope3D.update(deltaTime, avatarWorld, magnetWorld);
 
-        // Update magnet sprite position (screen Y = worldY - Z = targetY - Z)
-        magnetSprite.x = magnetX - magnetSprite.width / 2;
-        magnetSprite.y = targetY - magnetZ - magnetSprite.height / 2;
+        // Render rope
+        render3DRopeWithViewport(line, rope3D, viewport, waterSurfaceScreenY);
 
-        if (magnetZ <= 0) {
-          // Magnet reached riverbed!
+        // Update magnet sprite
+        const magnetScreen = worldToScreen(magnetWorld, viewport);
+        magnetSprite.x = magnetScreen.x - magnetSprite.width / 2;
+        magnetSprite.y = magnetScreen.y - magnetSprite.height / 2;
+
+        // Update debug text with world coordinates and peaks from store
+        const peaks = magnetStore.getPeakValues();
+        magnetDebugText.text = `Magnet World:
+X: ${magnetWorld.x.toFixed(2)} (max: ${peaks.maxX.toFixed(2)})
+Y: ${magnetWorld.y.toFixed(2)} (max: ${peaks.maxY.toFixed(2)})
+Z: ${magnetWorld.z.toFixed(2)} (max: ${peaks.maxZ.toFixed(2)})`;
+        magnetDebugText.x = 10;
+        magnetDebugText.y = app.screen.height - 80;
+
+        if (magnetWorld.z <= WORLD_Z.RIVERBED) {
+          console.log(
+            `[CAST] Magnet reached riverbed at world (${magnetWorld.x.toFixed(2)}, ${magnetWorld.y.toFixed(2)}, ${magnetWorld.z.toFixed(2)})`,
+          );
           phase = "settling";
           phaseStartTime = currentTime;
-          magnetX = targetX;
-          magnetY = targetY;
-          magnetZ = 0; // At riverbed
-
-          console.log(
-            `[CAST] Magnet reached riverbed at (${targetX.toFixed(0)}, ${targetY.toFixed(0)})`,
+          magnetWorld.z = WORLD_Z.RIVERBED;
+          magnetStore.setMagnetPhase("settling");
+          magnetStore.updateMagnetPosition(
+            magnetWorld.x,
+            magnetWorld.y,
+            magnetWorld.z,
           );
-          // Fall through to settling phase immediately (no frame delay)
         }
       }
 
@@ -497,26 +440,37 @@ export function animateCastLine(
         const settleElapsed = currentTime - phaseStartTime;
         const settleProgress = Math.min(settleElapsed / settleDuration, 1);
 
-        // Animate tension: 15 -> 10 as rope settles
-        currentTension = 15 - 5 * settleProgress;
+        // Final tension settling
+        currentTension = 10;
         if (gameStore) {
           gameStore.getState().updateCastTension(currentTension);
         }
 
-        // Update 3D rope physics - magnet at riverbed (Z=0)
-        // Avatar world position: screenY = startY, so worldY = startY + AVATAR_HEIGHT
-        const avatarWorldY = startY + AVATAR_HEIGHT;
-        const avatarPos3D = { x: startX, y: avatarWorldY, z: AVATAR_HEIGHT };
-        const magnetPos3D = { x: targetX, y: targetY, z: 0 };
-        rope3D.setTension(currentTension); // Slack responds to tension
-        rope3D.update(deltaTime, avatarPos3D, magnetPos3D);
+        // Update session phase progress
+        if (sessionStore) {
+          sessionStore.getState().setPhaseProgress(0.9 + settleProgress * 0.1); // 90-100%
+        }
+
+        // Update rope physics
+        rope3D.setTension(currentTension);
+        rope3D.update(deltaTime, avatarWorld, magnetWorld);
 
         // Render rope
-        render3DRope(line, rope3D, waterSurfaceY);
+        render3DRopeWithViewport(line, rope3D, viewport, waterSurfaceScreenY);
 
-        // Update magnet sprite position (screen Y = worldY - Z)
-        magnetSprite.x = magnetX - magnetSprite.width / 2;
-        magnetSprite.y = magnetY - magnetZ - magnetSprite.height / 2;
+        // Update magnet sprite
+        const magnetScreen = worldToScreen(magnetWorld, viewport);
+        magnetSprite.x = magnetScreen.x - magnetSprite.width / 2;
+        magnetSprite.y = magnetScreen.y - magnetSprite.height / 2;
+
+        // Update debug text with world coordinates and peaks from store
+        const peaks = magnetStore.getPeakValues();
+        magnetDebugText.text = `Magnet World:
+X: ${magnetWorld.x.toFixed(2)} (max: ${peaks.maxX.toFixed(2)})
+Y: ${magnetWorld.y.toFixed(2)} (max: ${peaks.maxY.toFixed(2)})
+Z: ${magnetWorld.z.toFixed(2)} (max: ${peaks.maxZ.toFixed(2)})`;
+        magnetDebugText.x = 10;
+        magnetDebugText.y = app.screen.height - 80;
 
         if (settleProgress >= 1) {
           // Done - clean up cast magnet sprite (drag phase has its own)
@@ -525,26 +479,38 @@ export function animateCastLine(
           }
           magnetSprite.destroy();
 
+          // Clean up debug text
+          if (magnetDebugText.parent) {
+            app.stage.removeChild(magnetDebugText);
+          }
+          magnetDebugText.destroy();
+
+          // Clean up debug graphics
+          if (debugLines.parent) {
+            app.stage.removeChild(debugLines);
+          }
+          debugLines.destroy();
+
           console.log(
             `[CAST] Animation complete, tension: ${currentTension.toFixed(1)}`,
           );
 
-          // Update phase progress in sessionStore
-          if (sessionStore) {
-            sessionStore.getState().setPhaseProgress(1.0);
-          }
+          // Store the avatar screen position for rope rendering during drag
+          const avatarScreenPos = worldToScreen(avatarWorld, viewport);
 
           resolve({
             line,
-            playerX: startX,
-            playerY: startY,
+            playerX: avatarScreenPos.x,
+            playerY: avatarScreenPos.y,
             finalTension: currentTension,
+            viewport, // Pass viewport for drag phase
+            avatarWorld, // Pass avatar world position
+            targetWorld, // Pass target world position
           });
-          return; // Don't call requestAnimationFrame again
+          return;
         }
       }
 
-      // Only request next frame if we haven't completed
       requestAnimationFrame(animate);
     };
 
@@ -553,7 +519,50 @@ export function animateCastLine(
 }
 
 /**
- * Render 3D rope with underwater opacity
+ * Render 3D rope with viewport projection and underwater opacity
+ * @param {PIXI.Graphics} line - Graphics object to draw rope on
+ * @param {Rope3D} rope3D - 3D rope physics object
+ * @param {Object} viewport - Viewport configuration
+ * @param {number} waterSurfaceScreenY - Screen Y coordinate of water surface
+ */
+function render3DRopeWithViewport(line, rope3D, viewport, waterSurfaceScreenY) {
+  if (!line || !rope3D || line.destroyed) {
+    return;
+  }
+
+  // Get world-space points from rope
+  const worldPoints = rope3D.points;
+
+  // Project each point to screen space
+  const screenPoints = worldPoints.map((point) =>
+    worldToScreen(point.pos, viewport),
+  );
+
+  if (screenPoints.length < 2) {
+    return;
+  }
+
+  line.clear();
+  line.setStrokeStyle({ width: 3, color: 0x8b4513 });
+  line.moveTo(screenPoints[0].x, screenPoints[0].y);
+
+  for (let i = 1; i < screenPoints.length; i++) {
+    const point = screenPoints[i];
+
+    // Fade underwater portions
+    if (point.y > waterSurfaceScreenY) {
+      line.setStrokeStyle({ width: 3, color: 0x8b4513, alpha: 0.6 });
+    }
+
+    line.lineTo(point.x, point.y);
+  }
+
+  line.stroke();
+}
+
+/**
+ * Render 3D rope with underwater opacity (legacy - uses rope's built-in projection)
+ * @deprecated Use render3DRopeWithViewport instead
  * @param {PIXI.Graphics} line - Graphics object to draw rope on
  * @param {Rope3D} rope3D - 3D rope physics object
  * @param {number} waterSurfaceY - Y coordinate of water surface
@@ -566,14 +575,9 @@ function render3DRope(line, rope3D, waterSurfaceY) {
   // Get screen-projected points from 3D rope
   const screenPoints = rope3D.getScreenPoints();
 
-  console.log(
-    `[RENDER] Rendering ${screenPoints.length} rope points, first: (${screenPoints[0]?.x.toFixed(1)}, ${screenPoints[0]?.y.toFixed(1)}), last: (${screenPoints[screenPoints.length - 1]?.x.toFixed(1)}, ${screenPoints[screenPoints.length - 1]?.y.toFixed(1)})`,
-  );
-
   line.clear();
 
   if (screenPoints.length < 2) {
-    console.warn("[RENDER] Not enough points to render rope");
     return;
   }
 
@@ -589,7 +593,7 @@ function render3DRope(line, rope3D, waterSurfaceY) {
 
     // Fade underwater portions
     if (point.y > waterSurfaceY) {
-      line.setStrokeStyle({ width: 3, color: 0x8b4513, alpha: 0.6 }); // More transparent underwater
+      line.setStrokeStyle({ width: 3, color: 0x8b4513, alpha: 0.6 });
     }
 
     line.lineTo(point.x, point.y);
@@ -648,8 +652,12 @@ export function animateReelIn(
 
     const deltaTime = 1 / 60; // Approximate frame time
 
-    // Water surface for rendering
-    const waterSurfaceY = app.screen.height * 0.3;
+    // Water surface from world constants
+    const viewport = createViewport(app.screen.width, app.screen.height);
+    const waterSurfaceY = worldToScreen(
+      { x: 0, y: WORLD_Y.WATER_NEAR, z: WORLD_Z.WATER_SURFACE },
+      viewport,
+    ).y;
 
     const animate = (currentTime) => {
       if (!app) {
@@ -688,11 +696,21 @@ export function animateReelIn(
         magnetY = jerkEndY + (playerY - jerkEndY) * reelEase;
       }
 
-      // Update 3D rope physics
-      const avatarPos = getAvatarPosition(playerX, playerY);
-      const magnetPos = getMagnetPosition(magnetX, magnetY, "drag", 0); // At surface during reel
+      // Update 3D rope physics using world coordinates
+      // For reel-in, we use the legacy functions since we're working with screen positions
+      // TODO: Refactor reel-in to use world coordinates properly
+      const avatarWorld = {
+        x: playerX,
+        y: WORLD_Y.AVATAR,
+        z: WORLD_Z.AVATAR_HAND,
+      };
+      const magnetWorld = {
+        x: magnetX,
+        y: magnetY, // This is still in screen-ish space - needs proper refactoring
+        z: WORLD_Z.RIVERBED, // Assume on riverbed during reel
+      };
       rope3D.setTension(80); // High tension during reel (taut rope)
-      rope3D.update(deltaTime, avatarPos, magnetPos);
+      rope3D.update(deltaTime, avatarWorld, magnetWorld);
 
       // Render rope
       render3DRope(line, rope3D, waterSurfaceY);
@@ -726,7 +744,7 @@ export function animateReelIn(
  * Render rope with water surface effects
  * Exported for use during drag phase
  */
-export function renderRope(graphics, rope, waterSurfaceY) {
+export function renderRope(graphics, rope) {
   // Guard against destroyed or null graphics during async cleanup
   if (!graphics || graphics.destroyed) return;
 
@@ -795,7 +813,12 @@ export function createRipple(app, x, y) {
 export function createBubbles(app, x, y, duration = 500) {
   if (!app) return;
 
-  const waterSurfaceY = app.screen.height * 0.3; // Water surface
+  // Water surface from world constants
+  const viewport = createViewport(app.screen.width, app.screen.height);
+  const waterSurfaceY = worldToScreen(
+    { x: 0, y: WORLD_Y.WATER_NEAR, z: WORLD_Z.WATER_SURFACE },
+    viewport,
+  ).y;
   const bubbleCount = 8;
   const bubbles = [];
 
