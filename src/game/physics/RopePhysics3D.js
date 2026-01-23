@@ -130,26 +130,33 @@ export class Rope3D {
     this.tension = Math.max(0, Math.min(100, tension));
 
     // Calculate segment length based on tension
-    // At tension 0: use base length * 1.1 (10% extra slack - subtle sag)
-    // At tension 100: use base length * 1.0 (taut, no slack)
-    // Linear interpolation between
-    const slackMultiplier = 1.05 - (this.tension / 100) * 0.1; // 1.1 at 0, 1.0 at 100
+    // With ground collision, we need MORE slack for natural drape
+    // At tension 0: use base length * 1.3 (30% extra slack - significant sag with ground contact)
+    // At tension 50: use base length * 1.15 (15% extra slack - moderate drape)
+    // At tension 100: use base length * 1.0 (taut, minimal sag)
+    // Non-linear curve: more slack at low tension for natural catenary
+    const tensionRatio = this.tension / 100;
+    const slackMultiplier = 1.0 + (1.0 - tensionRatio) * 0.3; // 1.3 at 0%, 1.0 at 100%
     const oldLength = this.segmentLength;
     this.segmentLength = this.baseSegmentLength * slackMultiplier;
 
-    // Log significant changes
-    if (Math.abs(oldTension - this.tension) > 5) {
-      // Also calculate and log actual rope length
-      const actualLength = this.getTotalLength();
-      const expectedLength =
-        this.baseSegmentLength * (this.points.length - 1) * slackMultiplier;
-      console.log(
-        `[ROPE] Tension: ${oldTension.toFixed(0)} → ${this.tension.toFixed(0)}, SegmentLength: ${oldLength.toFixed(1)} → ${this.segmentLength.toFixed(1)} (base: ${this.baseSegmentLength.toFixed(1)}, mult: ${slackMultiplier.toFixed(2)})`,
-      );
-      console.log(
-        `[ROPE] Actual total length: ${actualLength.toFixed(1)}px, Expected: ${expectedLength.toFixed(1)}px, Endpoint distance: ${this.getEndpointDistance().toFixed(1)}px`,
-      );
-    }
+    // ENHANCED LOGGING - Always log for debugging
+    const endpointDistance = this.getEndpointDistance();
+    const actualLength = this.getTotalLength();
+    const expectedLength =
+      this.baseSegmentLength * (this.points.length - 1) * slackMultiplier;
+    const slackAmount = actualLength - endpointDistance;
+    const slackPercent = (slackAmount / endpointDistance) * 100;
+
+    console.log(
+      `[ROPE TENSION] ${oldTension.toFixed(0)}→${this.tension.toFixed(0)}% | Multiplier: ${slackMultiplier.toFixed(3)}x`,
+    );
+    console.log(
+      `[ROPE LENGTH] Endpoint: ${endpointDistance.toFixed(1)} | Actual: ${actualLength.toFixed(1)} | Expected: ${expectedLength.toFixed(1)} | Segments: ${this.points.length}`,
+    );
+    console.log(
+      `[ROPE SLACK] Amount: ${slackAmount.toFixed(1)} units (${slackPercent.toFixed(1)}% of straight line) | Segment: ${oldLength.toFixed(2)}→${this.segmentLength.toFixed(2)}`,
+    );
   }
 
   /**
@@ -200,12 +207,30 @@ export class Rope3D {
     this.points[lastIdx].pos = { ...magnetPos };
     this.points[lastIdx].oldPos = { ...magnetPos };
 
+    // Calculate current endpoint distance for logging
+    const dx = magnetPos.x - avatarPos.x;
+    const dy = magnetPos.y - avatarPos.y;
+    const dz = magnetPos.z - avatarPos.z;
+    const endpointDist = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
     // Physics update for unpinned points
     this.points.forEach((point) => point.update(deltaTime));
 
     // Constraint solving (more iterations = stiffer rope)
     for (let iteration = 0; iteration < 8; iteration++) {
       this.applyConstraints();
+      this.applyGroundCollision(); // Prevent rope from going below riverbed
+    }
+
+    // LOG: Rope state after physics (only every 10 frames to reduce spam)
+    if (Math.random() < 0.1) {
+      const actualLength = this.getTotalLength();
+      const slackAmount = actualLength - endpointDist;
+      const slackPercent = (slackAmount / endpointDist) * 100;
+
+      console.log(
+        `[ROPE STATE] Length: ${actualLength.toFixed(2)} | Endpoint: ${endpointDist.toFixed(2)} | Slack: ${slackAmount.toFixed(2)} (${slackPercent.toFixed(1)}%) | BaseSegment: ${this.baseSegmentLength.toFixed(2)} | CurrentSegment: ${this.segmentLength.toFixed(2)} | Tension: ${this.tension}%`,
+      );
     }
 
     // Clamp excessive velocities to prevent physics explosions
@@ -266,6 +291,40 @@ export class Rope3D {
         p2.pos.x -= offsetX;
         p2.pos.y -= offsetY;
         p2.pos.z -= offsetZ;
+      }
+    }
+  }
+
+  /**
+   * Apply ground collision constraint
+   * Prevents rope points from going below riverbed (Z=0)
+   */
+  applyGroundCollision() {
+    const RIVERBED_Z = 0;
+    const FRICTION = 0.5; // Friction coefficient when dragging on ground
+
+    for (let i = 0; i < this.points.length; i++) {
+      const point = this.points[i];
+
+      // Skip pinned endpoints (they're controlled by game state)
+      if (point.pinned) continue;
+
+      // Check if point is below ground
+      if (point.pos.z < RIVERBED_Z) {
+        // Clamp position to ground level
+        point.pos.z = RIVERBED_Z;
+
+        // Apply friction to horizontal velocity when in contact with ground
+        // This prevents rope from sliding too much on the riverbed
+        const vx = point.pos.x - point.oldPos.x;
+        const vy = point.pos.y - point.oldPos.y;
+
+        // Reduce horizontal velocity by friction factor
+        point.oldPos.x = point.pos.x - vx * FRICTION;
+        point.oldPos.y = point.pos.y - vy * FRICTION;
+
+        // Zero out vertical velocity (no bouncing)
+        point.oldPos.z = point.pos.z;
       }
     }
   }

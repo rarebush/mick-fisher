@@ -58,15 +58,15 @@
 All spatial calculations derive from this module:
 
 ```javascript
-import { 
-  WORLD_Z,              // Height levels
-  WORLD_Y,              // Depth ranges
-  createViewport,       // Viewport scaling
-  projectToScreen,      // 3D → 2D projection
-  screenToWorld,        // 2D → 3D (given Z)
-  worldToScreen,        // Simplified projection
+import {
+  WORLD_Z, // Height levels
+  WORLD_Y, // Depth ranges
+  createViewport, // Viewport scaling
+  projectToScreen, // 3D → 2D projection
+  screenToWorld, // 2D → 3D (given Z)
+  worldToScreen, // Simplified projection
   getSurfaceScreenBounds, // Get screen bounds for horizontal surfaces
-} from './game/mechanics/worldConstants.js';
+} from "./game/mechanics/worldConstants.js";
 ```
 
 **Usage Examples:**
@@ -94,19 +94,19 @@ const worldPos = screenToWorld(clickX, clickY, WORLD_Z.RIVERBED, viewport);
 Manages magnet from spawn through all phases:
 
 ```javascript
-import useMagnetStore from './game/state/magnetStore.js';
+import useMagnetStore from "./game/state/magnetStore.js";
 
 const magnetStore = useMagnetStore.getState();
 
 // Lifecycle methods
-magnetStore.spawnMagnet(avatarX);           // Start of cast
-magnetStore.updateMagnetPosition(x, y, z);  // Position updates (auto-tracks peaks)
-magnetStore.setMagnetPhase('dragging');     // Phase transitions
-magnetStore.despawnMagnet();                // End of retrieve/failure
+magnetStore.spawnMagnet(avatarX); // Start of cast
+magnetStore.updateMagnetPosition(x, y, z); // Position updates (auto-tracks peaks)
+magnetStore.setMagnetPhase("dragging"); // Phase transitions
+magnetStore.despawnMagnet(); // End of retrieve/failure
 
 // Query methods
-const pos = magnetStore.getMagnetWorld();   // { x, y, z } or null
-const peaks = magnetStore.getPeakValues();  // { maxX, maxY, maxZ, ... }
+const pos = magnetStore.getMagnetWorld(); // { x, y, z } or null
+const peaks = magnetStore.getPeakValues(); // { maxX, maxY, maxZ, ... }
 const active = magnetStore.isMagnetActive(); // boolean
 ```
 
@@ -486,22 +486,22 @@ Why this projection?
 ```javascript
 // Z-axis heights (abstract units)
 export const WORLD_Z = {
-  RIVERBED: 0,         // Ground level where items rest
-  WATER_SURFACE: 1,    // Top of water layer
-  WALKWAY: 3,          // Pier/walkway surface
-  AVATAR_HAND: 4.2,    // Avatar's hand holding rod
+  RIVERBED: 0, // Ground level where items rest
+  WATER_SURFACE: 1, // Top of water layer
+  WALKWAY: 3, // Pier/walkway surface
+  AVATAR_HAND: 4.2, // Avatar's hand holding rod
 };
 
 // Y-axis depths (abstract units)
 export const WORLD_Y = {
-  WALKWAY_BACK: -4,    // Back edge of walkway (extends toward camera)
-  WALKWAY_FRONT: 0,    // Front edge where avatar stands
-  AVATAR: 0,           // Avatar position
-  WALL_EDGE: 0,        // Vertical wall at Y=0
-  WATER_NEAR: 0,       // Water starts at wall base
-  WATER_FAR: 6,        // Far edge of water
-  RIVERBED_NEAR: 0,    // Riverbed starts at wall base
-  RIVERBED_FAR: 6,     // Far edge of riverbed
+  WALKWAY_BACK: -4, // Back edge of walkway (extends toward camera)
+  WALKWAY_FRONT: 0, // Front edge where avatar stands
+  AVATAR: 0, // Avatar position
+  WALL_EDGE: 0, // Vertical wall at Y=0
+  WATER_NEAR: 0, // Water starts at wall base
+  WATER_FAR: 6, // Far edge of water
+  RIVERBED_NEAR: 0, // Riverbed starts at wall base
+  RIVERBED_FAR: 6, // Far edge of riverbed
 };
 ```
 
@@ -531,8 +531,18 @@ const walkwayY = walkwayBounds.top;
 const walkwayHeight = walkwayBounds.bottom - walkwayBounds.top;
 
 // Wall: VERTICAL surface at Y=0, spanning Z from 3 to 0
-const wallTop = projectToScreen(0, WORLD_Y.WALL_EDGE, WORLD_Z.WALKWAY, viewport);
-const wallBottom = projectToScreen(0, WORLD_Y.WALL_EDGE, WORLD_Z.RIVERBED, viewport);
+const wallTop = projectToScreen(
+  0,
+  WORLD_Y.WALL_EDGE,
+  WORLD_Z.WALKWAY,
+  viewport,
+);
+const wallBottom = projectToScreen(
+  0,
+  WORLD_Y.WALL_EDGE,
+  WORLD_Z.RIVERBED,
+  viewport,
+);
 const wallY = wallTop.y;
 const wallHeight = wallBottom.y - wallTop.y;
 
@@ -546,6 +556,7 @@ const riverbedBounds = getSurfaceScreenBounds(WORLD_Z.RIVERBED, viewport);
 **No Inter-Layer Dependencies:**
 
 Each layer is positioned independently using pure projection:
+
 - Walkway doesn't depend on wall position
 - Water doesn't depend on riverbed position
 - Wall height calculated from Z-span (3 to 0), not from other layers
@@ -554,12 +565,12 @@ Each layer is positioned independently using pure projection:
 
 ```javascript
 export const RENDER_LAYERS = {
-  WALKWAY: 0,            // Back layer (backdrop)
-  AVATAR: 1,             // Avatar on walkway
-  WALL_FACE: 2,          // Vertical wall
-  RIVERBED: 3,           // River bottom
-  ITEMS_ON_RIVERBED: 4,  // Items resting on bed
-  WATER_SURFACE: 5,      // Semi-transparent water overlay
+  WALKWAY: 0, // Back layer (backdrop)
+  AVATAR: 1, // Avatar on walkway
+  WALL_FACE: 2, // Vertical wall
+  RIVERBED: 3, // River bottom
+  ITEMS_ON_RIVERBED: 4, // Items resting on bed
+  WATER_SURFACE: 5, // Semi-transparent water overlay
   // Magnet layer is dynamic based on Z position
 };
 ```
@@ -567,6 +578,7 @@ export const RENDER_LAYERS = {
 **Visual Documentation:**
 
 See `documentation/game design/diagram.svg` for annotated visual reference showing:
+
 - Z-height levels
 - Y-depth ranges for each surface
 - Projection formula
@@ -581,7 +593,7 @@ Magnet position and state were previously scattered across multiple files. Now c
 **Magnet Lifecycle:**
 
 ```javascript
-import useMagnetStore from './state/magnetStore.js';
+import useMagnetStore from "./state/magnetStore.js";
 
 const magnetStore = useMagnetStore.getState();
 
@@ -596,7 +608,7 @@ magnetStore.updateMagnetPosition(newX, newY, newZ);
 // Automatically tracks peak values (max/min for each axis)
 
 // 3. Phase transitions
-magnetStore.setMagnetPhase('sinking');   // or 'dragging', 'lifting'
+magnetStore.setMagnetPhase("sinking"); // or 'dragging', 'lifting'
 
 // 4. Retrieve complete or failure - despawn
 magnetStore.despawnMagnet();
@@ -648,10 +660,10 @@ const magnetWorld = magnetStore.getMagnetWorld();
 rope.update(deltaTime, avatarWorld, magnetWorld);
 
 // Get rope points in world space
-const worldPoints = rope.points.map(p => p.pos);
+const worldPoints = rope.points.map((p) => p.pos);
 
 // Project to screen for rendering
-const screenPoints = worldPoints.map(p => worldToScreen(p, viewport));
+const screenPoints = worldPoints.map((p) => worldToScreen(p, viewport));
 ```
 
 **Drag Mechanics:**
@@ -660,16 +672,25 @@ All position calculations in world space:
 
 ```javascript
 // Cast position stored as screen coords, convert to world
-const castWorld = screenToWorld(castScreenX, castScreenY, WORLD_Z.RIVERBED, viewport);
+const castWorld = screenToWorld(
+  castScreenX,
+  castScreenY,
+  WORLD_Z.RIVERBED,
+  viewport,
+);
 
 // Avatar target position
-const avatarWorld = { x: screenWidth/2, y: WORLD_Y.AVATAR, z: WORLD_Z.RIVERBED };
+const avatarWorld = {
+  x: screenWidth / 2,
+  y: WORLD_Y.AVATAR,
+  z: WORLD_Z.RIVERBED,
+};
 
 // Interpolate in world space
 const itemWorld = {
   x: lerp(castWorld.x, avatarWorld.x, progress),
   y: lerp(castWorld.y, avatarWorld.y, progress),
-  z: WORLD_Z.RIVERBED,  // Always on riverbed during drag
+  z: WORLD_Z.RIVERBED, // Always on riverbed during drag
 };
 
 // Update magnetStore

@@ -47,7 +47,7 @@ export function getItemWorldPosition(app, sessionStore) {
 
   // Avatar position (where item is dragged toward)
   const avatarWorld = {
-    x: app.screen.width / 2,
+    x: 0, // Avatar at world center
     y: WORLD_Y.AVATAR,
     z: WORLD_Z.RIVERBED, // Item approaches at riverbed level
   };
@@ -132,9 +132,9 @@ export function updateRopePhysics(
     `[ROPE] Physics update in phase: ${phase}, deltaTime: ${deltaTime.toFixed(3)}s`,
   );
 
-  // Avatar world position (fixed)
+  // Avatar world position (fixed at world center)
   const avatarWorld = {
-    x: playerX,
+    x: 0, // Avatar at world center
     y: WORLD_Y.AVATAR,
     z: WORLD_Z.AVATAR_HAND,
   };
@@ -167,20 +167,44 @@ export function updateRopePhysics(
 
   if (!magnetWorld) return null;
 
+  // Calculate 3D distance for validation
+  const dx = magnetWorld.x - avatarWorld.x;
+  const dy = magnetWorld.y - avatarWorld.y;
+  const dz = magnetWorld.z - avatarWorld.z;
+  const distance3D = Math.sqrt(dx * dx + dy * dy + dz * dz);
+  const distanceXY = Math.sqrt(dx * dx + dy * dy); // Horizontal distance
+  const distanceZ = Math.abs(dz); // Vertical distance
+
   // During drag, update rope length based on current 3D distance
   // As we reel in, the rope gets shorter
   if (dragState.active) {
-    const dx = magnetWorld.x - avatarWorld.x;
-    const dy = magnetWorld.y - avatarWorld.y;
-    const dz = magnetWorld.z - avatarWorld.z;
-    const currentDistance = Math.sqrt(dx * dx + dy * dy + dz * dz);
     const numSegments = rope.points.length - 1;
-    const newBaseSegmentLength = currentDistance / numSegments;
+    const newBaseSegmentLength = distance3D / numSegments;
+
+    // Update base segment length (the "taut" length at 100% tension)
     rope.baseSegmentLength = newBaseSegmentLength;
+
+    console.log(
+      `[ROPE DRAG] 3D Distance: ${distance3D.toFixed(2)} | Horizontal (XY): ${distanceXY.toFixed(2)} | Vertical (Z): ${distanceZ.toFixed(2)} | BaseSegment: ${newBaseSegmentLength.toFixed(3)}`,
+    );
   }
 
-  // Update rope tension AFTER setting base length
+  // Update rope tension - this will recalculate segmentLength from baseSegmentLength
   rope.setTension(tension);
+
+  // VALIDATION: Check actual rope length vs expected
+  const actualRopeLength = rope.getTotalLength();
+  const expectedRopeLength =
+    rope.baseSegmentLength *
+    (rope.points.length - 1) *
+    (rope.segmentLength / rope.baseSegmentLength);
+  const tensionRatio = tension / 100;
+  const slackMultiplier = 1.0 + (1.0 - tensionRatio) * 0.3;
+  const expectedAtTension = distance3D * slackMultiplier;
+
+  console.log(
+    `[ROPE VALIDATION] Tension: ${tension.toFixed(0)}% | 3D Dist: ${distance3D.toFixed(2)} | Actual Length: ${actualRopeLength.toFixed(2)} | Expected@Tension: ${expectedAtTension.toFixed(2)} | Ratio: ${(actualRopeLength / distance3D).toFixed(2)}x`,
+  );
 
   // Project magnet world position to screen for logging
   const magnetScreen = worldToScreen(magnetWorld, viewport);

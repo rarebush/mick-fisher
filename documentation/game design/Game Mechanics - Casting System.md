@@ -83,8 +83,9 @@ _Note: Depletion & spawn timer system is planned for Phase 2+ - see Phase 2+ Fea
    - Final position: `{ x: targetX, y: targetY, z: 0 }`
 
 **Total Arc Animation Time:**
+
 - Close casts (Q1-Q3): ~950ms
-- Medium casts (Q4-Q6): ~1100ms  
+- Medium casts (Q4-Q6): ~1100ms
 - Far casts (Q7-Q9): ~1400ms
 
 **Phase 2: Item Detection & Transition**
@@ -120,7 +121,12 @@ const castScreenY = clickEvent.y;
 
 // Convert to world position on riverbed (Z=0)
 const viewport = createViewport(screenWidth, screenHeight);
-const castWorld = screenToWorld(castScreenX, castScreenY, WORLD_Z.RIVERBED, viewport);
+const castWorld = screenToWorld(
+  castScreenX,
+  castScreenY,
+  WORLD_Z.RIVERBED,
+  viewport,
+);
 // Returns: { x: castScreenX, y: worldY, z: 0 }
 
 // Spawn magnet at avatar hand
@@ -133,7 +139,7 @@ magnetStore.updateMagnetPosition(arcX, arcY, arcZ);
 // Automatically tracks peaks for debugging
 
 // Transition to drag - magnet already at target world position
-magnetStore.setMagnetPhase('dragging');
+magnetStore.setMagnetPhase("dragging");
 // Item world position: { x: castWorld.x, y: castWorld.y, z: 0 }
 ```
 

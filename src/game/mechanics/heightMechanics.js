@@ -111,8 +111,11 @@ export function getAvatarPosition(screenX, screenY, viewport = null) {
   const z = HEIGHTS.AVATAR_HAND;
   const worldY = WORLD_Y.AVATAR;
 
+  // Convert screen X to world units if viewport provided
+  const worldX = viewport ? screenX / viewport.pixelsPerUnit : screenX;
+
   return {
-    x: screenX,
+    x: worldX,
     y: worldY,
     z: z,
   };

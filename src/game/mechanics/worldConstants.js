@@ -3,16 +3,23 @@
  * Single source of truth for world space dimensions
  *
  * COORDINATE SYSTEM:
- * - World X: Horizontal position (left/right) - passes through to screen unchanged
- * - World Y: Depth (distance from avatar toward the river)
- * - World Z: Height (vertical elevation)
+ * - World X: Horizontal position (left/right) in world units
+ * - World Y: Depth (distance from avatar toward the river) in world units
+ * - World Z: Height (vertical elevation) in world units
  *
  * PROJECTION FORMULA:
- *   screenX = worldX
- *   screenY = worldY - worldZ
+ *   screenX = worldX * pixelsPerUnit + screenWidth / 2
+ *   screenY = (worldY - worldZ) * pixelsPerUnit + screenYOffset
  *
- * All world dimensions are defined in abstract units.
- * The viewport scale converts world units to screen pixels.
+ * IMPORTANT: ALL three coordinates (X, Y, Z) use the same world unit system.
+ * The pixelsPerUnit scale factor (typically ~85.6) converts world units to screen pixels.
+ * World X=0 is at the center of the screen (avatar position).
+ * This ensures 3D distance calculations (sqrt(dx² + dy² + dz²)) are correct.
+ *
+ * Example with pixelsPerUnit = 85.6, screenWidth = 854px:
+ *   - World position (0, 1.5, 4.2) → Screen position (427px, -146.52px) [center]
+ *   - World position (-5, 0, 0) → Screen position (0px, 408px) [left edge]
+ *   - World position (+5, 0, 0) → Screen position (854px, 408px) [right edge]
  */
 
 // =============================================================================
@@ -50,6 +57,35 @@ export const WORLD_Y = {
 };
 
 // =============================================================================
+// WORLD WIDTH (X-axis) - Abstract units
+// Calculated based on screen aspect ratio to maintain proportions
+// =============================================================================
+
+/**
+ * Calculate world X bounds based on screen aspect ratio
+ * Ensures world space has consistent proportions regardless of screen size
+ * @param {number} screenWidth - Screen width in pixels
+ * @param {number} screenHeight - Screen height in pixels
+ * @param {number} pixelsPerUnit - Scale factor (pixels per world unit)
+ * @returns {{min: number, max: number, center: number}} World X boundaries
+ */
+export function getWorldXBounds(screenWidth, screenHeight, pixelsPerUnit) {
+  // World width in units based on screen aspect ratio
+  const worldWidth = screenWidth / pixelsPerUnit;
+
+  // Center the world space at X=0 (avatar in middle)
+  const worldXMin = -worldWidth / 2;
+  const worldXMax = worldWidth / 2;
+
+  return {
+    min: worldXMin,
+    max: worldXMax,
+    center: 0,
+    width: worldWidth,
+  };
+}
+
+// =============================================================================
 // VIEWPORT CONFIGURATION
 // Defines how world units map to screen pixels
 // =============================================================================
@@ -82,12 +118,23 @@ export function createViewport(screenWidth, screenHeight) {
   const screenYOffset =
     -topOfSceneWorldY * pixelsPerUnit + (screenHeight * padding) / 2;
 
+  // Calculate world X bounds based on screen aspect ratio
+  const worldXBounds = getWorldXBounds(
+    screenWidth,
+    screenHeight,
+    pixelsPerUnit,
+  );
+
   return {
     screenWidth,
     screenHeight,
     pixelsPerUnit,
     screenYOffset,
     // World bounds for reference
+    worldXMin: worldXBounds.min,
+    worldXMax: worldXBounds.max,
+    worldXCenter: worldXBounds.center,
+    worldXWidth: worldXBounds.width,
     worldYMin: WORLD_Y.AVATAR,
     worldYMax: WORLD_Y.RIVERBED_FAR,
     worldZMin: WORLD_Z.RIVERBED,
@@ -102,7 +149,7 @@ export function createViewport(screenWidth, screenHeight) {
 
 /**
  * Project a 3D world position to 2D screen position
- * @param {number} worldX - World X coordinate
+ * @param {number} worldX - World X coordinate (in world units)
  * @param {number} worldY - World Y coordinate (depth)
  * @param {number} worldZ - World Z coordinate (height)
  * @param {Object} viewport - Viewport configuration from createViewport()
@@ -110,7 +157,7 @@ export function createViewport(screenWidth, screenHeight) {
  */
 export function projectToScreen(worldX, worldY, worldZ, viewport) {
   return {
-    x: worldX, // X passes through unchanged (assuming world X is in pixels)
+    x: worldX * viewport.pixelsPerUnit + viewport.screenWidth / 2, // World center (X=0) maps to screen center
     y: (worldY - worldZ) * viewport.pixelsPerUnit + viewport.screenYOffset,
   };
 }
@@ -127,8 +174,8 @@ export function worldToScreen(worldPos, viewport) {
 
 /**
  * Convert screen position to world position on a specific surface (known Z)
- * @param {number} screenX - Screen X coordinate
- * @param {number} screenY - Screen Y coordinate
+ * @param {number} screenX - Screen X coordinate (in pixels)
+ * @param {number} screenY - Screen Y coordinate (in pixels)
  * @param {number} worldZ - Known world Z (which surface we're clicking on)
  * @param {Object} viewport - Viewport configuration
  * @returns {{x: number, y: number, z: number}} World coordinates
@@ -141,7 +188,7 @@ export function screenToWorld(screenX, screenY, worldZ, viewport) {
     (screenY - viewport.screenYOffset) / viewport.pixelsPerUnit + worldZ;
 
   return {
-    x: screenX, // X passes through unchanged
+    x: (screenX - viewport.screenWidth / 2) / viewport.pixelsPerUnit, // Screen center maps to world center (X=0)
     y: worldY,
     z: worldZ,
   };

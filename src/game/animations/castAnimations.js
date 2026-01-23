@@ -67,12 +67,15 @@ export function animateCastLine(
     console.log(
       `[CAST] Viewport: ${viewport.pixelsPerUnit.toFixed(1)} px/unit, offset: ${viewport.screenYOffset.toFixed(1)}`,
     );
+    console.log(
+      `[CAST] World bounds: X [${viewport.worldXMin.toFixed(2)}, ${viewport.worldXMax.toFixed(2)}] (${viewport.worldXWidth.toFixed(2)} units), Y [${viewport.worldYMin}, ${viewport.worldYMax}], Z [${viewport.worldZMin}, ${viewport.worldZMax}]`,
+    );
 
     // ===========================================
     // AVATAR POSITION (fixed in world space)
     // ===========================================
     const avatarWorld = {
-      x: app.screen.width / 2, // Center of screen
+      x: 0, // Avatar at world center
       y: WORLD_Y.AVATAR, // Front of scene (Y=0)
       z: WORLD_Z.AVATAR_HAND, // Hand height (Z=4.2)
     };
@@ -187,16 +190,16 @@ export function animateCastLine(
 
     const segments = calculateRopeSegments(distance3D, viewport);
 
-    // Create rope from avatar to target (final position)
+    // Create rope from avatar to target (final position) with correct length
     const rope3D = new Rope3D(segments, avatarWorld, targetWorld);
 
-    // Set base segment length for taut rope
+    // Set base segment length for the full throw distance
     const tautSegmentLength = distance3D / (segments - 1);
     rope3D.segmentLength = tautSegmentLength;
     rope3D.baseSegmentLength = tautSegmentLength;
 
     console.log(
-      `[CAST] Rope: ${segments} segments, distance: ${distance3D.toFixed(2)} world units, segment: ${tautSegmentLength.toFixed(2)}`,
+      `[CAST] Rope: ${segments} segments, distance: ${distance3D.toFixed(2)} units, segment: ${tautSegmentLength.toFixed(2)}`,
     );
     console.log(
       `[CAST] Horizontal distance: ${horizontalDistance.toFixed(2)} units, throw duration will be: ${Math.max(300, 250 + horizontalDistance * 0.5).toFixed(0)}ms`,
@@ -316,9 +319,27 @@ export function animateCastLine(
           magnetWorld.z,
         );
 
-        // Update rope physics
+        // Calculate actual 3D distance for validation
+        const dx = magnetWorld.x - avatarWorld.x;
+        const dy = magnetWorld.y - avatarWorld.y;
+        const dz = magnetWorld.z - avatarWorld.z;
+        const currentDist3D = Math.sqrt(dx * dx + dy * dy + dz * dz);
+
+        // Update rope physics - rope was created with full length, tension controls slack
         rope3D.setTension(currentTension);
         rope3D.update(deltaTime, avatarWorld, magnetWorld);
+
+        // VALIDATION: Log rope length vs 3D distance (sample 10% of frames)
+        if (Math.random() < 0.1) {
+          const actualRopeLength = rope3D.getTotalLength();
+          const tensionRatio = currentTension / 100;
+          const slackMultiplier = 1.0 + (1.0 - tensionRatio) * 0.3;
+          const expectedLength =
+            rope3D.baseSegmentLength * (rope3D.points.length - 1);
+          console.log(
+            `[CAST ROPE] 3D Dist: ${currentDist3D.toFixed(2)} | Base: ${expectedLength.toFixed(2)} | Actual: ${actualRopeLength.toFixed(2)} | Expected@${currentTension.toFixed(0)}%: ${(expectedLength * slackMultiplier).toFixed(2)} | Ratio: ${(actualRopeLength / expectedLength).toFixed(2)}x`,
+          );
+        }
 
         // Render rope
         render3DRopeWithViewport(line, rope3D, viewport, waterSurfaceScreenY);

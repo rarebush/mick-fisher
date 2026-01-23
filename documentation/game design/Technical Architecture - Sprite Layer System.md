@@ -65,7 +65,12 @@ const viewport = createViewport(app.screen.width, app.screen.height);
 const walkwayBounds = getSurfaceScreenBounds(WORLD_Z.WALKWAY, viewport);
 
 const walkwayLayer = new PIXI.Graphics();
-walkwayLayer.rect(0, walkwayBounds.top, width, walkwayBounds.bottom - walkwayBounds.top);
+walkwayLayer.rect(
+  0,
+  walkwayBounds.top,
+  width,
+  walkwayBounds.bottom - walkwayBounds.top,
+);
 walkwayLayer.fill({ color: 0x7f8c8d }); // Walkway color
 ```
 
@@ -87,8 +92,18 @@ walkwayLayer.fill({ color: 0x7f8c8d }); // Walkway color
 **Implementation**:
 
 ```javascript
-const wallTop = projectToScreen(0, WORLD_Y.WALL_EDGE, WORLD_Z.WALKWAY, viewport);
-const wallBottom = projectToScreen(0, WORLD_Y.WALL_EDGE, WORLD_Z.RIVERBED, viewport);
+const wallTop = projectToScreen(
+  0,
+  WORLD_Y.WALL_EDGE,
+  WORLD_Z.WALKWAY,
+  viewport,
+);
+const wallBottom = projectToScreen(
+  0,
+  WORLD_Y.WALL_EDGE,
+  WORLD_Z.RIVERBED,
+  viewport,
+);
 
 const wallLayer = new PIXI.Graphics();
 wallLayer.rect(0, wallTop.y, width, wallBottom.y - wallTop.y);
@@ -109,7 +124,12 @@ wallLayer.fill({ color: 0x6c5b4a }); // Wall color
 const riverbedBounds = getSurfaceScreenBounds(WORLD_Z.RIVERBED, viewport);
 
 const riverbedLayer = new PIXI.Graphics();
-riverbedLayer.rect(0, riverbedBounds.top, width, riverbedBounds.bottom - riverbedBounds.top);
+riverbedLayer.rect(
+  0,
+  riverbedBounds.top,
+  width,
+  riverbedBounds.bottom - riverbedBounds.top,
+);
 riverbedLayer.fill({ color: 0x5c4d3d }); // Riverbed color
 ```
 
@@ -152,7 +172,12 @@ itemLayer.children.sort((a, b) => a.worldY - b.worldY);
 const waterBounds = getSurfaceScreenBounds(WORLD_Z.WATER_SURFACE, viewport);
 
 const waterLayer = new PIXI.Graphics();
-waterLayer.rect(0, waterBounds.top, width, waterBounds.bottom - waterBounds.top);
+waterLayer.rect(
+  0,
+  waterBounds.top,
+  width,
+  waterBounds.bottom - waterBounds.top,
+);
 waterLayer.fill({ color: 0x3498db, alpha: 0.4 }); // Translucent water
 ```
 
@@ -186,7 +211,7 @@ const magnetWorld = useMagnetStore.getState().getMagnetWorld();
 
 if (magnetWorld) {
   const magnetScreen = worldToScreen(magnetWorld, viewport);
-  
+
   magnetSprite.x = magnetScreen.x;
   magnetSprite.y = magnetScreen.y;
   magnetSprite.zIndex = getMagnetRenderLayer(magnetWorld.z);
@@ -220,9 +245,9 @@ uiLayer.addChild(debugText);
 **UPDATED:** Layers positioned using world-space projection:
 
 ```javascript
-import { 
-  WORLD_Z, 
-  createViewport, 
+import {
+  WORLD_Z,
+  createViewport,
   getSurfaceScreenBounds,
   projectToScreen,
   WORLD_Y,
@@ -231,7 +256,7 @@ import {
 setupScene() {
   // Create viewport for projection
   const viewport = createViewport(
-    this.app.screen.width, 
+    this.app.screen.width,
     this.app.screen.height
   );
 
@@ -295,28 +320,28 @@ import { worldToScreen, createViewport } from '../mechanics/worldConstants.js';
 
 updateSprites() {
   const viewport = createViewport(
-    this.app.screen.width, 
+    this.app.screen.width,
     this.app.screen.height
   );
-  
+
   // Get magnet world position from central store
   const magnetWorld = useMagnetStore.getState().getMagnetWorld();
-  
+
   if (magnetWorld) {
     // Create/update magnet sprite
     if (!this.magnetSprite) {
       this.magnetSprite = createMagnetSprite();
       this.app.stage.addChild(this.magnetSprite);
     }
-    
+
     // Project world position to screen
     const magnetScreen = worldToScreen(magnetWorld, viewport);
     this.magnetSprite.x = magnetScreen.x;
     this.magnetSprite.y = magnetScreen.y;
-    
+
     // Dynamic Z-based layer assignment
     this.magnetSprite.zIndex = getMagnetRenderLayer(magnetWorld.z);
-    
+
     // Store world position for depth sorting if needed
     this.magnetSprite.worldY = magnetWorld.y;
     this.magnetSprite.worldZ = magnetWorld.z;
