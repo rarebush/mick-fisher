@@ -6,171 +6,324 @@ The game uses a layer-based rendering system to organize sprites and tiles for p
 
 ## Layer Structure
 
+**UPDATED (January 2026):** Layers now positioned using world-space projection from `worldConstants.js`. See [Technical Architecture](Technical%20Architecture.md#world-space-coordinate-system--projection) for coordinate system details.
+
 Layers are implemented as PixiJS Containers added to the stage in back-to-front order. Each layer serves a specific purpose:
 
 ```
 ┌─────────────────────────────────────┐
-│ UI Layer                            │ ← Grid lines, notifications, HUD
+│ UI Layer (Z-index based)            │ ← Grid lines, notifications, HUD
 ├─────────────────────────────────────┤
-│ Gameplay Layer                      │ ← Magnet, caught items, fishing line
+│ Magnet (dynamic Z-based)            │ ← Position determines layer
 ├─────────────────────────────────────┤
-│ Object Layer                        │ ← Trees, rocks, debris, decorations
+│ Water Surface (Z=1)                 │ ← Semi-transparent overlay
 ├─────────────────────────────────────┤
-│ Terrain Layer                       │ ← Ground tiles, river walls, shore
+│ Items on Riverbed (Z=0)             │ ← Item sprites
 ├─────────────────────────────────────┤
-│ Background Layer                    │ ← Animated water tiles
+│ Riverbed (Z=0)                      │ ← River bottom surface
+├─────────────────────────────────────┤
+│ Wall Face (Z spans 3→0)             │ ← Vertical wall
+├─────────────────────────────────────┤
+│ Avatar (Z=3)                        │ ← Avatar on walkway
+├─────────────────────────────────────┤
+│ Walkway (Z=3)                       │ ← Pier/walkway surface (backdrop)
 └─────────────────────────────────────┘
+
+World-Space Positioning:
+  All layers positioned via pure projection from world coordinates.
+  No inter-layer dependencies - each calculates position independently.
 ```
 
 ## Layer Definitions
 
-### 1. Background Layer
+**World-Space Architecture:** All layers are positioned using orthogonal projection from 3D world coordinates. See `worldConstants.js` for dimensions.
 
-- **Purpose**: Animated environmental backgrounds
-- **Contents**: Water tiles, sky, distant backgrounds
-- **Performance**: Can be animated or static
-- **Z-Index**: Lowest (renders first)
+### Projection Formula
 
-**Example**:
+```
+screenX = worldX
+screenY = worldY - worldZ
 
-```javascript
-this.backgroundLayer = new PIXI.Container();
-this.app.stage.addChild(this.backgroundLayer);
-
-// Add animated water tiles
-createTiledBackground(this.backgroundLayer, waterSheet, ...);
+Where:
+  worldX = horizontal position (passes through unchanged)
+  worldY = depth into scene (toward river)
+  worldZ = height/elevation
 ```
 
-### 2. Terrain Layer
+### 1. Walkway Layer (Z=3)
 
-- **Purpose**: Ground surfaces and structural elements
-- **Contents**: Shore tiles, river walls, ground tiles, walkable areas
-- **Performance**: Usually static (no animation)
-- **Features**: Can include collision boundaries
+- **Purpose**: Pier/walkway surface where avatar stands
+- **World Position**: Z=3, Y range [-4, 0]
+- **Screen Position**: Derived from `getSurfaceScreenBounds(WORLD_Z.WALKWAY, viewport)`
+- **Performance**: Static background layer
+- **Features**: Extends behind avatar for backdrop fill
 
-**Example**:
-
-```javascript
-this.terrainLayer = new PIXI.Container();
-this.app.stage.addChild(this.terrainLayer);
-
-// Add river walls
-const wall = new PIXI.Sprite(wallTexture);
-wall.x = riverEdgeX;
-wall.y = riverEdgeY;
-this.terrainLayer.addChild(wall);
-
-// Add shore/ground tiles
-createTiledBackground(this.terrainLayer, groundSheet, ...);
-```
-
-### 3. Object Layer
-
-- **Purpose**: Environmental objects and decorations
-- **Contents**: Trees, rocks, bushes, debris, environmental storytelling
-- **Performance**: Static or minimal animation (wind sway)
-- **Features**: Y-sorting for depth illusion
-
-**Example**:
+**Implementation**:
 
 ```javascript
-this.objectLayer = new PIXI.Container();
-this.app.stage.addChild(this.objectLayer);
+const viewport = createViewport(app.screen.width, app.screen.height);
+const walkwayBounds = getSurfaceScreenBounds(WORLD_Z.WALKWAY, viewport);
 
-// Add trees
-const tree = new PIXI.Sprite(treeTexture);
-tree.x = 200;
-tree.y = 150;
-this.objectLayer.addChild(tree);
-
-// Y-sort for depth (sprites at higher Y render in front)
-this.objectLayer.children.sort((a, b) => a.y - b.y);
+const walkwayLayer = new PIXI.Graphics();
+walkwayLayer.rect(0, walkwayBounds.top, width, walkwayBounds.bottom - walkwayBounds.top);
+walkwayLayer.fill({ color: 0x7f8c8d }); // Walkway color
 ```
 
-### 4. Gameplay Layer
+### 2. Avatar Layer (Z=3, hand at Z=4.2)
 
-- **Purpose**: Interactive game elements
-- **Contents**: Magnet sprite, caught items, fishing line, visual effects
-- **Performance**: Highly dynamic, updated every frame during gameplay
-- **Features**: Responds to game state changes
+- **Purpose**: Player character on walkway
+- **World Position**: Z=3 (feet), Z=4.2 (hand holding rod)
+- **Performance**: Minimal animation (arm movement)
+- **Z-Index**: Between walkway and wall
 
-**Example**:
+### 3. Wall Face Layer (Vertical surface, Y=0, Z spans 3→0)
+
+- **Purpose**: Vertical wall connecting walkway to water/riverbed
+- **World Position**: Vertical surface at Y=0, spanning Z from 3 (walkway) to 0 (riverbed)
+- **Screen Position**: Height = (WORLD_Z.WALKWAY - WORLD_Z.RIVERBED) × pixelsPerUnit
+- **Performance**: Static structure
+- **Special**: Unlike horizontal surfaces, wall has Z-span but minimal Y-depth
+
+**Implementation**:
 
 ```javascript
-this.gameplayLayer = new PIXI.Container();
-this.app.stage.addChild(this.gameplayLayer);
+const wallTop = projectToScreen(0, WORLD_Y.WALL_EDGE, WORLD_Z.WALKWAY, viewport);
+const wallBottom = projectToScreen(0, WORLD_Y.WALL_EDGE, WORLD_Z.RIVERBED, viewport);
 
-// Add magnet and items (created dynamically during gameplay)
-this.magnetSprite = createMagnetSprite();
-this.gameplayLayer.addChild(this.magnetSprite);
+const wallLayer = new PIXI.Graphics();
+wallLayer.rect(0, wallTop.y, width, wallBottom.y - wallTop.y);
+wallLayer.fill({ color: 0x6c5b4a }); // Wall color
 ```
 
-### 5. UI Layer
+### 4. Riverbed Layer (Z=0)
 
-- **Purpose**: User interface elements
-- **Contents**: Quadrant grid, text, notifications, HUD elements
+- **Purpose**: River bottom surface where items rest
+- **World Position**: Z=0, Y range [0, 6]
+- **Screen Position**: Derived from `getSurfaceScreenBounds(WORLD_Z.RIVERBED, viewport)`
+- **Performance**: Static (minimal animation)
+- **Features**: Texture patterns, pebbles, sand
+
+**Implementation**:
+
+```javascript
+const riverbedBounds = getSurfaceScreenBounds(WORLD_Z.RIVERBED, viewport);
+
+const riverbedLayer = new PIXI.Graphics();
+riverbedLayer.rect(0, riverbedBounds.top, width, riverbedBounds.bottom - riverbedBounds.top);
+riverbedLayer.fill({ color: 0x5c4d3d }); // Riverbed color
+```
+
+### 5. Items on Riverbed Layer (Z=0)
+
+- **Purpose**: Item sprites resting on riverbed
+- **World Position**: Z=0 (on riverbed), various X and Y positions
+- **Performance**: Dynamic - added/removed based on engaged items
+- **Features**: Y-sorting for depth (items further away render first)
+
+**Implementation**:
+
+```javascript
+// Item world position on riverbed
+const itemWorld = { x: 250, y: 3.5, z: WORLD_Z.RIVERBED };
+
+// Project to screen
+const itemScreen = worldToScreen(itemWorld, viewport);
+
+const itemSprite = createItemSprite(item);
+itemSprite.x = itemScreen.x;
+itemSprite.y = itemScreen.y;
+itemLayer.addChild(itemSprite);
+
+// Y-sort items by world Y (depth) for proper occlusion
+itemLayer.children.sort((a, b) => a.worldY - b.worldY);
+```
+
+### 6. Water Surface Layer (Z=1)
+
+- **Purpose**: Semi-transparent water overlay
+- **World Position**: Z=1, Y range [0, 6]
+- **Screen Position**: Derived from `getSurfaceScreenBounds(WORLD_Z.WATER_SURFACE, viewport)`
+- **Performance**: Animated (ripples, waves) or static with alpha
+- **Features**: Overlays riverbed with transparency, creating underwater effect
+
+**Implementation**:
+
+```javascript
+const waterBounds = getSurfaceScreenBounds(WORLD_Z.WATER_SURFACE, viewport);
+
+const waterLayer = new PIXI.Graphics();
+waterLayer.rect(0, waterBounds.top, width, waterBounds.bottom - waterBounds.top);
+waterLayer.fill({ color: 0x3498db, alpha: 0.4 }); // Translucent water
+```
+
+### 7. Magnet Layer (Dynamic Z-based positioning)
+
+- **Purpose**: Magnet sprite during cast/drag/lift phases
+- **World Position**: Variable - tracks `magnetStore.getMagnetWorld()`
+- **Screen Position**: Projected from world position each frame
+- **Performance**: Highly dynamic - position updates every frame
+- **Features**: Render layer changes based on Z height
+
+**Dynamic Layer Assignment**:
+
+```javascript
+function getMagnetRenderLayer(worldZ) {
+  if (worldZ > WORLD_Z.WATER_SURFACE) {
+    return 1.5; // In air: between avatar and wall
+  } else if (worldZ > WORLD_Z.RIVERBED) {
+    return 4.5; // In water: between items and water surface
+  } else {
+    return RENDER_LAYERS.ITEMS_ON_RIVERBED; // On riverbed
+  }
+}
+```
+
+**Implementation**:
+
+```javascript
+// Get magnet world position from central store
+const magnetWorld = useMagnetStore.getState().getMagnetWorld();
+
+if (magnetWorld) {
+  const magnetScreen = worldToScreen(magnetWorld, viewport);
+  
+  magnetSprite.x = magnetScreen.x;
+  magnetSprite.y = magnetScreen.y;
+  magnetSprite.zIndex = getMagnetRenderLayer(magnetWorld.z);
+}
+```
+
+### 8. UI Layer (Z-index based, not world-space)
+
+- **Purpose**: User interface elements (overlays screen)
+- **Contents**: Quadrant grid, text, notifications, debug display
 - **Performance**: Updated on state changes only
 - **Z-Index**: Highest (always on top)
+- **Special**: Not part of world space - positioned in screen coordinates
 
 **Example**:
 
 ```javascript
-this.uiLayer = new PIXI.Container();
-this.app.stage.addChild(this.uiLayer);
+const uiLayer = new PIXI.Container();
+uiLayer.zIndex = 10000; // Always on top
 
-// Add grid lines
-const gridLine = new PIXI.Graphics()
-  .moveTo(x1, y1)
-  .lineTo(x2, y2)
-  .stroke({ width: 1, color: 0xffffff, alpha: 0.2 });
-this.uiLayer.addChild(gridLine);
+// Debug text positioned in screen space (bottom-left corner)
+debugText.x = 10;
+debugText.y = app.screen.height - 80;
+uiLayer.addChild(debugText);
 ```
 
 ## Implementation Pattern
 
 ### Setup Phase
 
+**UPDATED:** Layers positioned using world-space projection:
+
 ```javascript
+import { 
+  WORLD_Z, 
+  createViewport, 
+  getSurfaceScreenBounds,
+  projectToScreen,
+  WORLD_Y,
+} from '../mechanics/worldConstants.js';
+
 setupScene() {
-  // 1. Create layer containers
-  this.backgroundLayer = new PIXI.Container();
-  this.terrainLayer = new PIXI.Container();
-  this.objectLayer = new PIXI.Container();
-  this.gameplayLayer = new PIXI.Container();
+  // Create viewport for projection
+  const viewport = createViewport(
+    this.app.screen.width, 
+    this.app.screen.height
+  );
+
+  // Get screen bounds for each surface
+  const walkwayBounds = getSurfaceScreenBounds(WORLD_Z.WALKWAY, viewport);
+  const waterBounds = getSurfaceScreenBounds(WORLD_Z.WATER_SURFACE, viewport);
+  const riverbedBounds = getSurfaceScreenBounds(WORLD_Z.RIVERBED, viewport);
+
+  // Wall is vertical surface - calculate from Z-span
+  const wallTop = projectToScreen(0, WORLD_Y.WALL_EDGE, WORLD_Z.WALKWAY, viewport);
+  const wallBottom = projectToScreen(0, WORLD_Y.WALL_EDGE, WORLD_Z.RIVERBED, viewport);
+
+  // Create layer graphics using projected bounds
+  this.walkwayLayer = this.createWalkwayLayer(walkwayBounds);
+  this.wallLayer = this.createWallLayer(wallTop.y, wallBottom.y - wallTop.y);
+  this.riverbedLayer = this.createRiverbedLayer(riverbedBounds);
+  this.waterLayer = this.createWaterLayer(waterBounds);
+  this.itemLayer = new PIXI.Container();
   this.uiLayer = new PIXI.Container();
 
-  // 2. Add to stage in order (back to front)
-  this.app.stage.addChild(this.backgroundLayer);
-  this.app.stage.addChild(this.terrainLayer);
-  this.app.stage.addChild(this.objectLayer);
-  this.app.stage.addChild(this.gameplayLayer);
-  this.app.stage.addChild(this.uiLayer);
+  // Add to stage in render order (back to front)
+  this.app.stage.addChild(this.walkwayLayer);  // RENDER_LAYERS.WALKWAY (0)
+  // Avatar added here (RENDER_LAYERS.AVATAR = 1)
+  this.app.stage.addChild(this.wallLayer);     // RENDER_LAYERS.WALL_FACE (2)
+  this.app.stage.addChild(this.riverbedLayer); // RENDER_LAYERS.RIVERBED (3)
+  this.app.stage.addChild(this.itemLayer);     // RENDER_LAYERS.ITEMS_ON_RIVERBED (4)
+  this.app.stage.addChild(this.waterLayer);    // RENDER_LAYERS.WATER_SURFACE (5)
+  // Magnet added dynamically with Z-based layer
+  this.app.stage.addChild(this.uiLayer);       // UI (zIndex: 10000)
 
-  // 3. Populate layers
-  this.setupWaterBackground();   // → backgroundLayer
-  this.setupTerrain();           // → terrainLayer
-  this.setupEnvironment();       // → objectLayer
-  this.drawQuadrantGrid();       // → uiLayer
+  // Enable sorting for dynamic Z-ordering
+  this.app.stage.sortableChildren = true;
 }
+
+createWalkwayLayer(bounds) {
+  const layer = new PIXI.Graphics();
+  layer.rect(0, bounds.top, this.app.screen.width, bounds.bottom - bounds.top);
+  layer.fill({ color: 0x7f8c8d });
+  layer.zIndex = RENDER_LAYERS.WALKWAY;
+  return layer;
+}
+
+createWallLayer(y, height) {
+  const layer = new PIXI.Graphics();
+  layer.rect(0, y, this.app.screen.width, height);
+  layer.fill({ color: 0x6c5b4a });
+  layer.zIndex = RENDER_LAYERS.WALL_FACE;
+  return layer;
+}
+
+// ... similar for other layers
 ```
 
 ### Dynamic Updates
 
+**UPDATED:** World-space position tracking with magnet store:
+
 ```javascript
-// Gameplay sprites are added/removed as needed
+import useMagnetStore from '../state/magnetStore.js';
+import { worldToScreen, createViewport } from '../mechanics/worldConstants.js';
+
 updateSprites() {
-  if (gamePhase === "dragging") {
+  const viewport = createViewport(
+    this.app.screen.width, 
+    this.app.screen.height
+  );
+  
+  // Get magnet world position from central store
+  const magnetWorld = useMagnetStore.getState().getMagnetWorld();
+  
+  if (magnetWorld) {
+    // Create/update magnet sprite
     if (!this.magnetSprite) {
       this.magnetSprite = createMagnetSprite();
-      this.gameplayLayer.addChild(this.magnetSprite);
+      this.app.stage.addChild(this.magnetSprite);
     }
-    // Update position
-    this.magnetSprite.x = newX;
-    this.magnetSprite.y = newY;
+    
+    // Project world position to screen
+    const magnetScreen = worldToScreen(magnetWorld, viewport);
+    this.magnetSprite.x = magnetScreen.x;
+    this.magnetSprite.y = magnetScreen.y;
+    
+    // Dynamic Z-based layer assignment
+    this.magnetSprite.zIndex = getMagnetRenderLayer(magnetWorld.z);
+    
+    // Store world position for depth sorting if needed
+    this.magnetSprite.worldY = magnetWorld.y;
+    this.magnetSprite.worldZ = magnetWorld.z;
   } else {
-    // Clean up when not in use
+    // Clean up when magnet not active
     if (this.magnetSprite) {
-      this.gameplayLayer.removeChild(this.magnetSprite);
+      this.app.stage.removeChild(this.magnetSprite);
       this.magnetSprite.destroy();
       this.magnetSprite = null;
     }
@@ -206,17 +359,37 @@ updateSprites() {
 
 ## Y-Sorting for Depth
 
-For top-down views, sprites should render based on their Y position to create depth illusion:
+**UPDATED:** Depth sorting now uses world Y coordinate:
+
+For items on the riverbed, sprites should render based on their world Y position (depth into scene):
 
 ```javascript
-// Sort object layer so sprites "behind" (lower Y) render first
-this.objectLayer.children.sort((a, b) => a.y - b.y);
+// Sort item layer so items "further away" (higher worldY) render first
+this.itemLayer.children.sort((a, b) => a.worldY - b.worldY);
 
-// Call after adding/moving sprites
-updateObjectDepth() {
-  this.objectLayer.children.sort((a, b) => a.y - b.y);
+// When adding item sprite, store world Y for sorting
+const itemWorld = { x: 250, y: 3.5, z: WORLD_Z.RIVERBED };
+const itemScreen = worldToScreen(itemWorld, viewport);
+
+const itemSprite = createItemSprite(item);
+itemSprite.x = itemScreen.x;
+itemSprite.y = itemScreen.y;
+itemSprite.worldY = itemWorld.y;  // Store for depth sorting
+
+this.itemLayer.addChild(itemSprite);
+
+// Resort after adding/moving sprites
+updateItemDepth() {
+  this.itemLayer.children.sort((a, b) => a.worldY - b.worldY);
 }
 ```
+
+**Why World Y for Sorting:**
+
+- Screen Y includes Z-offset (screenY = worldY - worldZ)
+- Items at same Z but different worldY should sort by worldY
+- Higher worldY = further into scene = should render first (behind)
+- World Y represents true depth in the 3D scene
 
 ## Location-Specific Layers
 

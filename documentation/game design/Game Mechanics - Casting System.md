@@ -54,50 +54,90 @@ _Note: Depletion & spawn timer system is planned for Phase 2+ - see Phase 2+ Fea
 
 **Click Interaction:**
 
-**Phase 1: Cast & Impact (1-2 seconds)**
+**UPDATED (January 2026):** Cast animations now use world-space projection with centralized magnet state management.
 
-1. Player clicks quadrant
-2. Cast animation plays (magnet throw arc)
-3. Magnet hits water surface
+**Phase 1: Cast Animation (Arc Trajectory)**
+
+1. Player clicks quadrant on riverbed (Z=0)
+2. Cast animation begins:
+   - Magnet spawns at avatar hand (Z=4.2, Y=0)
+   - `magnetStore.spawnMagnet(avatarX)` called
+   - Arc trajectory calculated with peak height of 2.0 world units
+   - Duration: 800ms base + 1.5ms per horizontal distance unit
+3. **Throwing Phase** (`magnetPhase = 'throwing'`):
+   - Magnet follows parabolic arc from hand to water surface
+   - Position tracked in magnetStore: `updateMagnetPosition(x, y, z)`
+   - Peak values automatically recorded (maxX, maxY, maxZ)
+   - Visual: Magnet sprite follows arc, rope connects to hand
+4. **Splash Phase**:
+   - Magnet reaches water surface (Z=1)
    - Audio: Splash sound
-   - Visual: Water impact ripples
-4. Magnet sinks animation (descent based on quadrant depth)
-   - Near quadrants: Quick sink (~0.5s)
-   - Far quadrants: Slower sink (~1.5s)
+   - Visual: Water impact ripples at surface position
+5. **Sinking Phase** (`magnetPhase = 'sinking'`):
+   - Magnet descends from water surface (Z=1) to riverbed (Z=0)
+   - Position interpolated: `z = lerp(WATER_SURFACE, RIVERBED, progress)`
+   - Visual: Bubbles, underwater effects
+6. **Settling Phase** (`magnetPhase = 'settling'`):
+   - Magnet rests on riverbed (Z=0) at cast position
+   - Brief pause (200ms) for suspense
+   - Final position: `{ x: targetX, y: targetY, z: 0 }`
 
-**Phase 2: Suspense Window (1.5 seconds)** 5. Settle animation plays:
+**Total Arc Animation Time:**
+- Close casts (Q1-Q3): ~950ms
+- Medium casts (Q4-Q6): ~1100ms  
+- Far casts (Q7-Q9): ~1400ms
 
-- Ripples dissipate outward
-- Magnet rests on bottom (implied, not visible)
-- Underwater ambience (muffled sounds, bubbles)
-- Tension builds: "Did I get something?"
+**Phase 2: Item Detection & Transition**
 
-6. Contact check occurs (hidden from player)
+7. Contact check occurs (instant, server-side feel):
    - RNG determines if item is present in quadrant
-   - If yes: Check if magnet made contact with item
+   - If yes: Check if magnet contacted item (placement quality)
+   - Magnet position stored in world space for drag mechanics
 
-**Phase 3: Result Reveal**
-7a. **Item Detected:**
+**Phase 3a: Item Detected - Drag Begins**
 
-- Subtle tug animation (line tension shifts)
-- Audio: Metallic contact sound (magnet adheres)
-- Visual: Ripple pattern changes (something moving below)
-- Transition to drag phase immediately
-- Player feels reward after suspense
+8. Immediate transition to drag phase:
+   - `magnetPhase = 'dragging'`
+   - Drag mechanics start (tension, slip calculations)
+   - Player sees tension bar, begins hold-to-drag
+   - Item position calculated in world space on riverbed (Z=0)
+   - As item approaches: `itemWorld.y` decreases (toward avatar at Y=0)
 
-7b. **Nothing Found:**
+**Phase 3b: Nothing Found**
 
-- Ripples fully dissipate
-- Audio: Disappointed ambient tone
-- Message fades in: "Nothing here..."
-- Button prompt: "Reel in" (returns magnet, no drag phase)
-- Player can immediately cast again
+8. Ripples dissipate
+   - Audio: Ambient water sounds
+   - Message: "Nothing here..."
+   - magnetStore.despawnMagnet() called
+   - Button prompt: "Reel in" or immediate recast available
 
-**Total Timing:**
+**World-Space Integration:**
 
-- Cast to result: ~2.5-4 seconds (varies by quadrant distance)
-- Suspense is key: creates micro-tension before every reveal
-- Successful casts feel more rewarding (you waited, you earned it)
+```javascript
+// Cast click on riverbed
+const castScreenX = clickEvent.x;
+const castScreenY = clickEvent.y;
+
+// Convert to world position on riverbed (Z=0)
+const viewport = createViewport(screenWidth, screenHeight);
+const castWorld = screenToWorld(castScreenX, castScreenY, WORLD_Z.RIVERBED, viewport);
+// Returns: { x: castScreenX, y: worldY, z: 0 }
+
+// Spawn magnet at avatar hand
+const avatarX = screenWidth / 2;
+magnetStore.spawnMagnet(avatarX);
+// Sets: magnetWorld = { x: avatarX, y: WORLD_Y.AVATAR, z: WORLD_Z.AVATAR_HAND }
+
+// During arc animation, update position each frame
+magnetStore.updateMagnetPosition(arcX, arcY, arcZ);
+// Automatically tracks peaks for debugging
+
+// Transition to drag - magnet already at target world position
+magnetStore.setMagnetPhase('dragging');
+// Item world position: { x: castWorld.x, y: castWorld.y, z: 0 }
+```
+
+**Suspense & Game Feel:**
 
 **Quadrant Selection Strategy:**
 

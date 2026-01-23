@@ -49,6 +49,67 @@
 - Community support from live-coding/algorave scene
 - Can create unique sounds per item/event without large audio asset library
 
+## Core Systems
+
+### World Constants (`worldConstants.js`)
+
+**Single source of truth for world dimensions and projection.**
+
+All spatial calculations derive from this module:
+
+```javascript
+import { 
+  WORLD_Z,              // Height levels
+  WORLD_Y,              // Depth ranges
+  createViewport,       // Viewport scaling
+  projectToScreen,      // 3D → 2D projection
+  screenToWorld,        // 2D → 3D (given Z)
+  worldToScreen,        // Simplified projection
+  getSurfaceScreenBounds, // Get screen bounds for horizontal surfaces
+} from './game/mechanics/worldConstants.js';
+```
+
+**Usage Examples:**
+
+```javascript
+// Get wall base position (where water/riverbed starts)
+const viewport = createViewport(app.screen.width, app.screen.height);
+const waterBounds = getSurfaceScreenBounds(WORLD_Z.WATER_SURFACE, viewport);
+const wallBaseY = waterBounds.top;
+
+// Check if click is on riverbed
+const riverbedBounds = getSurfaceScreenBounds(WORLD_Z.RIVERBED, viewport);
+if (clickY >= riverbedBounds.top && clickY <= riverbedBounds.bottom) {
+  // Valid cast location
+}
+
+// Convert click to world position on riverbed
+const worldPos = screenToWorld(clickX, clickY, WORLD_Z.RIVERBED, viewport);
+```
+
+### Magnet State Store (`magnetStore.js`)
+
+**Centralized magnet lifecycle and position tracking.**
+
+Manages magnet from spawn through all phases:
+
+```javascript
+import useMagnetStore from './game/state/magnetStore.js';
+
+const magnetStore = useMagnetStore.getState();
+
+// Lifecycle methods
+magnetStore.spawnMagnet(avatarX);           // Start of cast
+magnetStore.updateMagnetPosition(x, y, z);  // Position updates (auto-tracks peaks)
+magnetStore.setMagnetPhase('dragging');     // Phase transitions
+magnetStore.despawnMagnet();                // End of retrieve/failure
+
+// Query methods
+const pos = magnetStore.getMagnetWorld();   // { x, y, z } or null
+const peaks = magnetStore.getPeakValues();  // { maxX, maxY, maxZ, ... }
+const active = magnetStore.isMagnetActive(); // boolean
+```
+
 ## Project Structure (example)
 
 ```
@@ -392,143 +453,241 @@ this.holdDetectionTimeout = setTimeout(() => {
 
 ---
 
-## Coordinate System & Depth Model
+## World-Space Coordinate System & Projection
 
-### Dual-Plane Architecture (MVP Feature - Planned)
+### 3D World Space Architecture (IMPLEMENTED)
 
-**Problem Statement:**
+**Core Principle:**
 
-The game world conceptually operates in two distinct spatial planes:
+> "Build the world in world space, then project it to screen space."
 
-1. **Water Surface:** Where player sees ripples, bubbles, rope endpoint
-2. **River Bed:** Where items actually rest, depth varies by location
+The game operates in a true 3D world coordinate system that projects to 2D screen space using orthogonal projection. All game mechanics, physics, and positioning use world coordinates exclusively.
 
-Currently, casting animations use placeholder wait periods that create physics discontinuities. A proper depth model is needed to:
-
-- Eliminate arbitrary animation delays
-- Enable realistic depth variation between locations
-- Support future lift phase mechanics (Phase A/B timing based on depth)
-- Allow rope physics to naturally represent depth
-
-**Proposed Coordinate System:**
+**Coordinate System:**
 
 ```
-Screen Space (PixiJS Canvas):
-┌─────────────────────────────────────────┐
-│  Player/Shore (0, 80)                    │ ← Surface Plane Y=80
-│              ╲                           │
-│               ╲ Rope                     │
-│                ╲                         │
-│                 ╲                        │
-│  Water Surface   ● ← Cast Click         │ ← Y=80 (visual)
-│  (ripples here)  │                       │
-│                  │ Depth Offset          │
-│                  ↓ (varies by location)  │
-│                  ● Item Location         │ ← Y=80+depth (actual)
-│             River Bed                    │
-└─────────────────────────────────────────┘
+World Space Axes:
+- X: Horizontal position (left/right)
+- Y: Depth into the scene (toward the river, away from avatar)
+- Z: Height/elevation (vertical)
 
-Plane Translation:
-- Cast at (x, 80) → Item spawns at (x, 80+depth)
-- Depth varies: Shallow Creek (depth=50px), Deep River (depth=200px)
-- Rope length naturally shows depth: longer = deeper
+Orthogonal Projection Formula:
+  screenX = worldX
+  screenY = worldY - worldZ
+
+Why this projection?
+- Preserves horizontal positions (X passes through)
+- Creates isometric-like depth (higher Z = higher on screen)
+- Simple, fast, mathematically consistent
 ```
 
-**Coordinate Translation:**
+**World Dimensions (`worldConstants.js`):**
 
 ```javascript
-// When player casts at surface coordinates
-function handleCastClick(surfaceX, surfaceY) {
-  const currentLocation = locationStore.getCurrentLocation();
-  const depth = currentLocation.depth; // e.g., 150px
+// Z-axis heights (abstract units)
+export const WORLD_Z = {
+  RIVERBED: 0,         // Ground level where items rest
+  WATER_SURFACE: 1,    // Top of water layer
+  WALKWAY: 3,          // Pier/walkway surface
+  AVATAR_HAND: 4.2,    // Avatar's hand holding rod
+};
 
-  // Translate to river bed coordinates
-  const bedX = surfaceX;
-  const bedY = surfaceY + depth; // Item spawns below surface
-
-  // Spawn item at bed
-  spawnItem(bedX, bedY);
-
-  // Rope naturally connects surface (player) to bed (item)
-  // Rope length = distance from (playerX, 80) to (bedX, bedY)
-}
-
-// When saving engaged item position
-function saveEngagedItem(bedX, bedY) {
-  // Store actual bed coordinates
-  engagedItems.push({ x: bedX, y: bedY });
-}
-
-// When rendering bubbles (visual feedback only)
-function renderBubbles(bedX, bedY, surfaceY) {
-  // Animate bubbles from bed → surface
-  animateBubbleRise(bedX, bedY, bedX, surfaceY);
-
-  // Only show bubble sprite at surface (not during rise)
-  showBubbleSprite(bedX, surfaceY);
-}
+// Y-axis depths (abstract units)
+export const WORLD_Y = {
+  WALKWAY_BACK: -4,    // Back edge of walkway (extends toward camera)
+  WALKWAY_FRONT: 0,    // Front edge where avatar stands
+  AVATAR: 0,           // Avatar position
+  WALL_EDGE: 0,        // Vertical wall at Y=0
+  WATER_NEAR: 0,       // Water starts at wall base
+  WATER_FAR: 6,        // Far edge of water
+  RIVERBED_NEAR: 0,    // Riverbed starts at wall base
+  RIVERBED_FAR: 6,     // Far edge of riverbed
+};
 ```
 
-**Depth Variation by Location:**
+**Viewport System:**
 
-| Location Type  | Depth (px) | Rope Length @ 5m Distance | Visual Impact             |
-| -------------- | ---------- | ------------------------- | ------------------------- |
-| Shallow Creek  | 50px       | ~180px                    | Rope barely visible       |
-| Urban Canal    | 100px      | ~200px                    | Moderate slack            |
-| Deep River     | 200px      | ~280px                    | Significant depth visible |
-| Flooded Quarry | 300px      | ~360px                    | Very long rope            |
-
-**Rope Physics Integration:**
+The viewport manages conversion between world units and screen pixels:
 
 ```javascript
-// Cast animation sets rope endpoints
-const playerPos = { x: 200, y: 80 }; // Surface
-const itemPos = { x: 350, y: 80 + 150 }; // Bed (depth=150)
+const viewport = createViewport(screenWidth, screenHeight);
+// Returns: { pixelsPerUnit, screenYOffset, worldBounds... }
 
-// Rope physics naturally represents depth
-rope.setPlayerPosition(playerPos.x, playerPos.y);
-rope.setMagnetPosition(itemPos.x, itemPos.y);
-rope.update(); // Slack/sag based on actual distance
+// Project 3D world position → 2D screen position
+const screenPos = projectToScreen(worldX, worldY, worldZ, viewport);
 
-// No artificial "sinking" delay needed - rope just draws from surface to bed
+// Convert screen click → 3D world position (given known Z)
+const worldPos = screenToWorld(screenX, screenY, knownZ, viewport);
 ```
 
-**Lift Phase Integration (Future):**
+**Layer Positioning (Pure Projection):**
 
-During lift phases, depth affects mechanics:
+All environment layers positioned via world-space projection:
 
 ```javascript
-// Phase A (Hidden Lift): Item moves from bed toward surface
-const liftProgress = (depth - currentDepth) / depth; // 0-100%
-const phaseADuration = depth / 20; // Deeper = longer Phase A
+// Walkway: horizontal surface at Z=3, Y range [-4, 0]
+const walkwayBounds = getSurfaceScreenBounds(WORLD_Z.WALKWAY, viewport);
+const walkwayY = walkwayBounds.top;
+const walkwayHeight = walkwayBounds.bottom - walkwayBounds.top;
 
-// Phase B (Revealed Lift): Item breaks surface, skill phase begins
-if (currentDepth <= 0) {
-  transitionToPhaseB(); // Item visible, slip mechanics active
-}
+// Wall: VERTICAL surface at Y=0, spanning Z from 3 to 0
+const wallTop = projectToScreen(0, WORLD_Y.WALL_EDGE, WORLD_Z.WALKWAY, viewport);
+const wallBottom = projectToScreen(0, WORLD_Y.WALL_EDGE, WORLD_Z.RIVERBED, viewport);
+const wallY = wallTop.y;
+const wallHeight = wallBottom.y - wallTop.y;
 
-// Player plane (future): Above water surface for retrieval
-const playerHeight = -50; // 50px above water
-// Creates 3 planes: Player (-50) → Surface (80) → Bed (80+depth)
+// Water: horizontal surface at Z=1, Y range [0, 6]
+const waterBounds = getSurfaceScreenBounds(WORLD_Z.WATER_SURFACE, viewport);
+
+// Riverbed: horizontal surface at Z=0, Y range [0, 6]
+const riverbedBounds = getSurfaceScreenBounds(WORLD_Z.RIVERBED, viewport);
 ```
 
-**Implementation Status:**
+**No Inter-Layer Dependencies:**
 
-- **Current:** Placeholder 500ms wait removed; cast → drag transition is immediate
-- **Rope Physics:** Complete - supports arbitrary endpoint distances
-- **Next Steps:**
-  1. Add `depth` property to location data
-  2. Implement coordinate translation in cast mechanics
-  3. Update engaged item storage to use bed coordinates
-  4. Add bubble rise animations (bed → surface)
-  5. Integrate depth into lift phase timing
+Each layer is positioned independently using pure projection:
+- Walkway doesn't depend on wall position
+- Water doesn't depend on riverbed position
+- Wall height calculated from Z-span (3 to 0), not from other layers
+
+**Render Order:**
+
+```javascript
+export const RENDER_LAYERS = {
+  WALKWAY: 0,            // Back layer (backdrop)
+  AVATAR: 1,             // Avatar on walkway
+  WALL_FACE: 2,          // Vertical wall
+  RIVERBED: 3,           // River bottom
+  ITEMS_ON_RIVERBED: 4,  // Items resting on bed
+  WATER_SURFACE: 5,      // Semi-transparent water overlay
+  // Magnet layer is dynamic based on Z position
+};
+```
+
+**Visual Documentation:**
+
+See `documentation/game design/diagram.svg` for annotated visual reference showing:
+- Z-height levels
+- Y-depth ranges for each surface
+- Projection formula
+- Layer stacking order
+
+### Centralized Magnet State (`magnetStore.js`)
+
+**Problem Solved:**
+
+Magnet position and state were previously scattered across multiple files. Now centralized in a single Zustand store.
+
+**Magnet Lifecycle:**
+
+```javascript
+import useMagnetStore from './state/magnetStore.js';
+
+const magnetStore = useMagnetStore.getState();
+
+// 1. Cast begins - spawn magnet at avatar hand
+magnetStore.spawnMagnet(avatarWorldX);
+// Sets: magnetWorld = { x, y: WORLD_Y.AVATAR, z: WORLD_Z.AVATAR_HAND }
+//       magnetActive = true
+//       magnetPhase = 'throwing'
+
+// 2. During throw/drag/lift - update position
+magnetStore.updateMagnetPosition(newX, newY, newZ);
+// Automatically tracks peak values (max/min for each axis)
+
+// 3. Phase transitions
+magnetStore.setMagnetPhase('sinking');   // or 'dragging', 'lifting'
+
+// 4. Retrieve complete or failure - despawn
+magnetStore.despawnMagnet();
+// Clears all state, resets peaks
+```
+
+**Peak Value Tracking:**
+
+The store automatically tracks peak values throughout the cast:
+
+```javascript
+const peaks = magnetStore.getPeakValues();
+// Returns: { maxX, maxY, maxZ, minX, minY, minZ }
+
+// Used for debug visualization and analytics
+```
+
+**Debug Display:**
+
+Static debug widget in bottom-left corner shows real-time coordinates:
+
+```
+Magnet World:
+X: 350.25 (max: 425.50)
+Y: 2.10 (max: 5.80)
+Z: 0.00 (max: 4.20)
+```
+
+Displayed during both cast animation and drag phase - single source of truth.
+
+### Physics Integration
+
+**3D Rope Physics:**
+
+`RopePhysics3D.js` operates entirely in world space:
+
+```javascript
+// Avatar position (world space)
+const avatarWorld = {
+  x: screenWidth / 2,
+  y: WORLD_Y.AVATAR,
+  z: WORLD_Z.AVATAR_HAND,
+};
+
+// Magnet position from magnetStore (world space)
+const magnetWorld = magnetStore.getMagnetWorld();
+
+// Update rope physics in world space
+rope.update(deltaTime, avatarWorld, magnetWorld);
+
+// Get rope points in world space
+const worldPoints = rope.points.map(p => p.pos);
+
+// Project to screen for rendering
+const screenPoints = worldPoints.map(p => worldToScreen(p, viewport));
+```
+
+**Drag Mechanics:**
+
+All position calculations in world space:
+
+```javascript
+// Cast position stored as screen coords, convert to world
+const castWorld = screenToWorld(castScreenX, castScreenY, WORLD_Z.RIVERBED, viewport);
+
+// Avatar target position
+const avatarWorld = { x: screenWidth/2, y: WORLD_Y.AVATAR, z: WORLD_Z.RIVERBED };
+
+// Interpolate in world space
+const itemWorld = {
+  x: lerp(castWorld.x, avatarWorld.x, progress),
+  y: lerp(castWorld.y, avatarWorld.y, progress),
+  z: WORLD_Z.RIVERBED,  // Always on riverbed during drag
+};
+
+// Update magnetStore
+magnetStore.updateMagnetPosition(itemWorld.x, itemWorld.y, itemWorld.z);
+
+// Project to screen only for rendering
+const itemScreen = worldToScreen(itemWorld, viewport);
+```
 
 **Benefits:**
 
-- ✅ Eliminates animation discontinuities (no more freeze during transition)
-- ✅ Realistic depth variation between locations
-- ✅ Rope physics naturally show depth (no special cases)
-- ✅ Foundation for lift phase mechanics
-- ✅ Supports future 3-plane system (player/surface/bed)
+- ✅ Single source of truth for world dimensions
+- ✅ No magic numbers or hardcoded percentages
+- ✅ All physics calculations in consistent coordinate system
+- ✅ Easy to adjust world scale (change pixelsPerUnit)
+- ✅ Proper separation: world simulation vs screen rendering
+- ✅ Foundation for future 3D features (parallax, camera rotation)
+- ✅ Centralized magnet state prevents desync issues
+- ✅ Peak tracking enables analytics and debugging
 
 ---
