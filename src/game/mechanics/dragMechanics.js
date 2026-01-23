@@ -38,12 +38,9 @@ export function calculateTensionBuildRate(
   else if (itemWeight >= 10) weightMod = 1.0;
   else weightMod = 0.7;
 
-  // Diminishing returns based on current tension
-  let diminishingMod = 1.0;
-  if (currentTension >= 86) diminishingMod = 0.2;
-  else if (currentTension >= 61) diminishingMod = 0.5;
-  else if (currentTension >= 31) diminishingMod = 0.8;
-  else diminishingMod = 1.0;
+  // Diminishing returns based on current tension (smooth curve)
+  const t = Math.max(0, Math.min(100, currentTension)) / 100;
+  const diminishingMod = 1.0 - 0.8 * smoothstep(0.35, 0.95, t);
 
   return BASE_BUILD_RATE * weightMod * diminishingMod;
 }
@@ -68,14 +65,16 @@ export function processTap(currentTension) {
 export function calculateDragSpeed(tension, itemWeight = 10) {
   if (tension >= 100) return 0; // Ripped off
 
-  // Base speed from tension (documentation table)
-  let speedMultiplier = 0;
-  if (tension >= 86) speedMultiplier = 1.9;
-  else if (tension >= 71) speedMultiplier = 1.6;
-  else if (tension >= 51) speedMultiplier = 1.2;
-  else if (tension >= 31) speedMultiplier = 0.8;
-  else if (tension >= 10) speedMultiplier = 0.45;
-  else if (tension > 0) speedMultiplier = 0.45 * (tension / 10); // Linear scale from 0-10%
+  // Base speed from tension (smooth curve through the table points)
+  const speedMultiplier = sampleCurve(tension, [
+    { tension: 0, multiplier: 0 },
+    { tension: 10, multiplier: 0.45 },
+    { tension: 31, multiplier: 0.8 },
+    { tension: 51, multiplier: 1.2 },
+    { tension: 71, multiplier: 1.6 },
+    { tension: 86, multiplier: 1.9 },
+    { tension: 100, multiplier: 0 },
+  ]);
 
   // Weight resistance (heavier = slower, but less punishing)
   // Design doc shows 1.0x for medium items (10-30kg)
@@ -86,6 +85,26 @@ export function calculateDragSpeed(tension, itemWeight = 10) {
   const BASE_DRAG_SPEED = 1.3; // Tuned to match design doc ranges now that velocity persistence works
 
   return speedMultiplier * weightModifier * BASE_DRAG_SPEED;
+}
+
+function smoothstep(edge0, edge1, x) {
+  const t = Math.max(0, Math.min(1, (x - edge0) / (edge1 - edge0)));
+  return t * t * (3 - 2 * t);
+}
+
+function sampleCurve(tension, points) {
+  const t = Math.max(0, Math.min(100, tension));
+  for (let i = 0; i < points.length - 1; i++) {
+    const a = points[i];
+    const b = points[i + 1];
+    if (t >= a.tension && t <= b.tension) {
+      const span = b.tension - a.tension || 1;
+      const u = (t - a.tension) / span;
+      const eased = smoothstep(0, 1, u);
+      return a.multiplier + (b.multiplier - a.multiplier) * eased;
+    }
+  }
+  return points[points.length - 1].multiplier;
 }
 
 /**

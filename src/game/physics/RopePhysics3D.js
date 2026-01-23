@@ -352,7 +352,7 @@ export class Rope3D {
    */
   applyGroundCollision() {
     const RIVERBED_Z = 0;
-    const FRICTION = 0.5; // Friction coefficient when dragging on ground
+    const FRICTION = 0.0; // Friction coefficient when dragging on ground
 
     for (let i = 0; i < this.points.length; i++) {
       const point = this.points[i];
