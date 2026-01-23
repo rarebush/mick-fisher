@@ -6,6 +6,17 @@
 import { create } from "zustand";
 import useMagnetStore from "./magnetStore.js";
 
+const DEFAULT_CAST_AIM_STATE = {
+  phase: "idle", // idle | angle | power
+  angle: 0, // degrees
+  power: 0, // 0..1
+  angleDir: 1,
+  powerDir: 1,
+  angleSpeed: 120, // deg/sec
+  powerSpeed: 0.8, // units/sec
+  lastUpdate: 0,
+};
+
 const useSessionStore = create((set, get) => ({
   // Session timing
   sessionTimeRemaining: 600, // 10 minutes in seconds
@@ -46,6 +57,8 @@ const useSessionStore = create((set, get) => ({
   phase: "idle", // Current phase: 'idle', 'cast', 'drag', 'lift'
   phaseProgress: 0, // Phase completion (0 to 1)
   castPosition: null, // Cast landing position (set before drag starts, for rope rendering)
+  castInputMode: "click", // click | direction_power
+  castAimState: { ...DEFAULT_CAST_AIM_STATE },
 
   // Actions - Session Control
   startSession: () => {
@@ -271,6 +284,85 @@ const useSessionStore = create((set, get) => ({
 
   setCastPosition: (x, y) => set({ castPosition: { x, y } }),
 
+  setCastInputMode: (mode) => set({ castInputMode: mode }),
+
+  startCastAimAngle: () =>
+    set({
+      castAimState: {
+        ...DEFAULT_CAST_AIM_STATE,
+        phase: "angle",
+        lastUpdate: performance.now(),
+      },
+    }),
+
+  lockCastAimAngle: () =>
+    set((state) => ({
+      castAimState: {
+        ...state.castAimState,
+        phase: "power",
+        power: 0,
+        powerDir: 1,
+        lastUpdate: performance.now(),
+      },
+    })),
+
+  resetCastAim: () =>
+    set({
+      castAimState: { ...DEFAULT_CAST_AIM_STATE },
+    }),
+
+  updateCastAim: (deltaTime) =>
+    set((state) => {
+      const aim = state.castAimState;
+      if (aim.phase === "idle") return {};
+
+      if (aim.phase === "angle") {
+        let angle = aim.angle + aim.angleDir * aim.angleSpeed * deltaTime;
+        let angleDir = aim.angleDir;
+
+        if (angle > 90) {
+          angle = 90;
+          angleDir = -1;
+        } else if (angle < -90) {
+          angle = -90;
+          angleDir = 1;
+        }
+
+        return {
+          castAimState: {
+            ...aim,
+            angle,
+            angleDir,
+            lastUpdate: performance.now(),
+          },
+        };
+      }
+
+      if (aim.phase === "power") {
+        let power = aim.power + aim.powerDir * aim.powerSpeed * deltaTime;
+        let powerDir = aim.powerDir;
+
+        if (power > 1) {
+          power = 1;
+          powerDir = -1;
+        } else if (power < 0) {
+          power = 0;
+          powerDir = 1;
+        }
+
+        return {
+          castAimState: {
+            ...aim,
+            power,
+            powerDir,
+            lastUpdate: performance.now(),
+          },
+        };
+      }
+
+      return {};
+    }),
+
   updatePhaseProgress: (delta) => {
     const state = get();
     const newProgress = state.phaseProgress + delta;
@@ -299,6 +391,8 @@ const useSessionStore = create((set, get) => ({
       rope: null,
       phase: "idle",
       phaseProgress: 0,
+      castInputMode: "click",
+      castAimState: { ...DEFAULT_CAST_AIM_STATE },
       dragState: {
         active: false,
         tension: 0,

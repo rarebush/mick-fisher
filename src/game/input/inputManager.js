@@ -10,6 +10,7 @@ import {
   createViewport,
   getSurfaceScreenBounds,
 } from "../mechanics/worldConstants.js";
+import { computeCastTargetScreen } from "../mechanics/castAimUtils.js";
 
 export class InputManager {
   constructor(
@@ -111,6 +112,14 @@ export class InputManager {
       return;
     }
 
+    const castMode = this.sessionStore?.getState().castInputMode || "click";
+    if (castMode === "direction_power") {
+      this.activePointerId = event.pointerId;
+      this.handleCastAimClick();
+      this.activePointerId = null;
+      return;
+    }
+
     const quadrant = this.getQuadrantFromPosition(x, y);
     if (quadrant === null) return;
 
@@ -183,6 +192,17 @@ export class InputManager {
           this.gameStore?.getState().currentLocation || "picturesque-river";
         this.debugOverlay.updateEngagedItems(currentLocation);
       }
+      return;
+    }
+
+    if (event.key.toLowerCase() === "m") {
+      const sessionState = this.sessionStore?.getState();
+      const currentMode = sessionState?.castInputMode || "click";
+      const nextMode =
+        currentMode === "click" ? "direction_power" : "click";
+      this.sessionStore?.getState().setCastInputMode(nextMode);
+      this.sessionStore?.getState().resetCastAim();
+      console.log(`[CAST MODE] Set to ${nextMode}`);
       return;
     }
 
@@ -303,6 +323,63 @@ export class InputManager {
     this.isHoldingForDrag = false;
     if (this.sessionStore) {
       this.sessionStore.setState({ isDragging: false });
+    }
+  }
+
+  handleCastAimClick() {
+    const sessionState = this.sessionStore?.getState();
+    if (!sessionState) return;
+
+    const aimState = sessionState.castAimState;
+    if (aimState.phase === "idle") {
+      sessionState.startCastAimAngle();
+      return;
+    }
+
+    if (aimState.phase === "angle") {
+      sessionState.lockCastAimAngle();
+      return;
+    }
+
+    if (aimState.phase === "power") {
+      if (this.isCasting) return;
+
+      const viewport = createViewport(
+        this.app.screen.width,
+        this.app.screen.height,
+      );
+      const targetScreen = computeCastTargetScreen(
+        aimState.angle,
+        aimState.power,
+        viewport,
+      );
+      const quadrant = this.getQuadrantFromPosition(
+        targetScreen.x,
+        targetScreen.y,
+      );
+      if (quadrant === null) {
+        sessionState.resetCastAim();
+        return;
+      }
+
+      const equipment = this.gameStore?.getState().equipment;
+      if (!isQuadrantAccessible(quadrant, equipment?.lineLength || 8)) {
+        this.showAccessMessageAtPosition(targetScreen.x, targetScreen.y);
+        sessionState.resetCastAim();
+        return;
+      }
+
+      this.isCasting = true;
+      if (this.onCast) {
+        this.onCast(targetScreen.x, targetScreen.y, quadrant).finally(() => {
+          this.isCasting = false;
+          this.activePointerId = null;
+        });
+      } else {
+        this.isCasting = false;
+        this.activePointerId = null;
+      }
+      sessionState.resetCastAim();
     }
   }
 

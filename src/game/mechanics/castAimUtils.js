@@ -1,0 +1,87 @@
+import { WORLD_Y, WORLD_Z, worldToScreen } from "./worldConstants.js";
+
+export const CAST_AIM_ANGLE_MIN_DEG = -90;
+export const CAST_AIM_ANGLE_MAX_DEG = 90;
+
+const EPSILON = 1e-6;
+
+export function getAvatarCastOrigin() {
+  return { x: 0, y: WORLD_Y.AVATAR };
+}
+
+export function clampCastAngleDeg(angleDeg) {
+  return Math.max(CAST_AIM_ANGLE_MIN_DEG, Math.min(CAST_AIM_ANGLE_MAX_DEG, angleDeg));
+}
+
+export function clampCastPower(power) {
+  return Math.max(0, Math.min(1, power));
+}
+
+export function getCastDirectionFromAngleDeg(angleDeg) {
+  const clampedAngle = clampCastAngleDeg(angleDeg);
+  const angleRad = (clampedAngle * Math.PI) / 180;
+  return {
+    x: Math.sin(angleRad),
+    y: Math.cos(angleRad),
+  };
+}
+
+export function getMaxCastRange(direction, viewport) {
+  const origin = getAvatarCastOrigin();
+  const bounds = {
+    minX: viewport.worldXMin,
+    maxX: viewport.worldXMax,
+    minY: WORLD_Y.RIVERBED_NEAR,
+    maxY: WORLD_Y.RIVERBED_FAR,
+  };
+
+  let maxRange = Infinity;
+
+  if (Math.abs(direction.x) > EPSILON) {
+    const boundX = direction.x > 0 ? bounds.maxX : bounds.minX;
+    maxRange = Math.min(maxRange, (boundX - origin.x) / direction.x);
+  }
+
+  if (Math.abs(direction.y) > EPSILON) {
+    const boundY = direction.y > 0 ? bounds.maxY : bounds.minY;
+    maxRange = Math.min(maxRange, (boundY - origin.y) / direction.y);
+  }
+
+  if (!Number.isFinite(maxRange) || maxRange < 0) {
+    return 0;
+  }
+
+  return maxRange;
+}
+
+export function computeCastTargetWorld(angleDeg, power, viewport) {
+  const direction = getCastDirectionFromAngleDeg(angleDeg);
+  const maxRange = getMaxCastRange(direction, viewport);
+  const clampedPower = clampCastPower(power);
+  const distance = maxRange * clampedPower;
+  const origin = getAvatarCastOrigin();
+
+  const worldTarget = {
+    x: origin.x + direction.x * distance,
+    y: origin.y + direction.y * distance,
+    z: WORLD_Z.RIVERBED,
+  };
+
+  return clampTargetToRiverbed(worldTarget, viewport);
+}
+
+export function clampTargetToRiverbed(worldTarget, viewport) {
+  return {
+    x: Math.max(viewport.worldXMin, Math.min(viewport.worldXMax, worldTarget.x)),
+    y: Math.max(
+      WORLD_Y.RIVERBED_NEAR,
+      Math.min(WORLD_Y.RIVERBED_FAR, worldTarget.y),
+    ),
+    z: WORLD_Z.RIVERBED,
+  };
+}
+
+export function computeCastTargetScreen(angleDeg, power, viewport) {
+  const worldTarget = computeCastTargetWorld(angleDeg, power, viewport);
+  return worldToScreen(worldTarget, viewport);
+}

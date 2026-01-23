@@ -38,6 +38,7 @@ import {
   WORLD_Y,
   WORLD_Z,
 } from "./mechanics/worldConstants.js";
+import { computeCastTargetWorld } from "./mechanics/castAimUtils.js";
 
 export class PixiApp {
   constructor(
@@ -85,6 +86,7 @@ export class PixiApp {
     this.dragLine = null;
     this.dragPlayerX = 0;
     this.dragPlayerY = 0;
+    this.castAimOverlay = null;
   }
 
   async initialize() {
@@ -163,6 +165,7 @@ export class PixiApp {
     this.app.ticker.add(this.tickerUpdateSprites, this);
     this.app.ticker.add(this.tickerUpdateDragMechanics, this);
     this.app.ticker.add(this.tickerUpdateRope, this);
+    this.app.ticker.add(this.tickerUpdateCastAim, this);
 
     // Create scene container to offset for 3D perspective
     // This prevents negative Y coordinates from rendering off-screen
@@ -196,6 +199,11 @@ export class PixiApp {
 
     // Draw quadrant grid on top
     drawQuadrantGrid(this.app);
+
+    // Overlay for cast aim UI
+    this.castAimOverlay = new PIXI.Graphics();
+    this.castAimOverlay.zIndex = 10000;
+    this.app.stage.addChild(this.castAimOverlay);
   }
 
   setupInteraction() {
@@ -475,6 +483,100 @@ export class PixiApp {
     }
   }
 
+  // Ticker method for cast aim oscillators and preview
+  tickerUpdateCastAim() {
+    if (!this.app || this.isDestroyed || !this.castAimOverlay) {
+      return;
+    }
+
+    const sessionState = this.sessionStore?.getState();
+    if (!sessionState) return;
+
+    const gamePhase = this.gameStore?.getState().gamePhase;
+    const aimState = sessionState.castAimState;
+    const castMode = sessionState.castInputMode;
+
+    if (
+      gamePhase !== "idle" ||
+      castMode !== "direction_power" ||
+      !aimState ||
+      aimState.phase === "idle"
+    ) {
+      if (aimState && aimState.phase !== "idle") {
+        sessionState.resetCastAim();
+      }
+      this.castAimOverlay.clear();
+      return;
+    }
+
+    const now = performance.now();
+    const deltaTime = aimState.lastUpdate
+      ? (now - aimState.lastUpdate) / 1000
+      : 0;
+    if (deltaTime > 0) {
+      sessionState.updateCastAim(deltaTime);
+    }
+
+    const updatedAim = this.sessionStore.getState().castAimState;
+    const viewport = createViewport(
+      this.app.screen.width,
+      this.app.screen.height,
+    );
+    const previewPower = updatedAim.phase === "angle" ? 1 : updatedAim.power;
+    const targetWorld = computeCastTargetWorld(
+      updatedAim.angle,
+      previewPower,
+      viewport,
+    );
+    const targetScreen = worldToScreen(targetWorld, viewport);
+    const avatarScreen = worldToScreen(
+      { x: 0, y: WORLD_Y.AVATAR, z: WORLD_Z.AVATAR_HAND },
+      viewport,
+    );
+
+    this.castAimOverlay.clear();
+
+    // Preview line and marker
+    this.castAimOverlay.setStrokeStyle({
+      width: 2,
+      color: 0x00c2ff,
+      alpha: 0.8,
+    });
+    this.castAimOverlay.moveTo(avatarScreen.x, avatarScreen.y);
+    this.castAimOverlay.lineTo(targetScreen.x, targetScreen.y);
+    this.castAimOverlay.stroke();
+    this.castAimOverlay
+      .circle(targetScreen.x, targetScreen.y, 5)
+      .stroke({ width: 2, color: 0x00c2ff });
+
+    const barWidth = 220;
+    const barHeight = 6;
+    const centerX = this.app.screen.width / 2;
+    const angleBarY = this.app.screen.height - 70;
+    const powerBarY = this.app.screen.height - 45;
+
+    // Angle bar
+    this.castAimOverlay
+      .rect(centerX - barWidth / 2, angleBarY, barWidth, barHeight)
+      .stroke({ width: 2, color: 0xffffff, alpha: 0.7 });
+    const angleNorm = (updatedAim.angle + 90) / 180;
+    const angleX = centerX - barWidth / 2 + angleNorm * barWidth;
+    this.castAimOverlay
+      .circle(angleX, angleBarY + barHeight / 2, 4)
+      .fill({ color: 0xffd700 });
+
+    // Power bar (only when selecting power)
+    if (updatedAim.phase === "power") {
+      this.castAimOverlay
+        .rect(centerX - barWidth / 2, powerBarY, barWidth, barHeight)
+        .stroke({ width: 2, color: 0xffffff, alpha: 0.7 });
+      const powerX = centerX - barWidth / 2 + updatedAim.power * barWidth;
+      this.castAimOverlay
+        .circle(powerX, powerBarY + barHeight / 2, 4)
+        .fill({ color: 0x00ff7f });
+    }
+  }
+
   resize(width, height) {
     if (!this.app || this.isDestroyed) return;
 
@@ -535,6 +637,14 @@ export class PixiApp {
       }
       this.dragLine.destroy();
       this.dragLine = null;
+    }
+
+    if (this.castAimOverlay) {
+      if (this.castAimOverlay.parent) {
+        this.castAimOverlay.parent.removeChild(this.castAimOverlay);
+      }
+      this.castAimOverlay.destroy();
+      this.castAimOverlay = null;
     }
 
     // Clean up rope graphics
