@@ -325,19 +325,24 @@ export function animateCastLine(
         const dz = magnetWorld.z - avatarWorld.z;
         const currentDist3D = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
-        // Update rope physics - rope was created with full length, tension controls slack
+        // Update rope length from current distance before tension is applied
+        rope3D.updateBaseSegmentLength(currentDist3D);
+
+        // Update rope physics - tension controls slack
         rope3D.setTension(currentTension);
         rope3D.update(deltaTime, avatarWorld, magnetWorld);
 
         // VALIDATION: Log rope length vs 3D distance (sample 10% of frames)
         if (Math.random() < 0.1) {
           const actualRopeLength = rope3D.getTotalLength();
-          const tensionRatio = currentTension / 100;
-          const slackMultiplier = 1.0 + (1.0 - tensionRatio) * 0.3;
+          const slackMultiplier =
+            rope3D.baseSegmentLength > 0
+              ? rope3D.segmentLength / rope3D.baseSegmentLength
+              : 1.0;
           const expectedLength =
             rope3D.baseSegmentLength * (rope3D.points.length - 1);
           console.log(
-            `[CAST ROPE] 3D Dist: ${currentDist3D.toFixed(2)} | Base: ${expectedLength.toFixed(2)} | Actual: ${actualRopeLength.toFixed(2)} | Expected@${currentTension.toFixed(0)}%: ${(expectedLength * slackMultiplier).toFixed(2)} | Ratio: ${(actualRopeLength / expectedLength).toFixed(2)}x`,
+            `[CAST ROPE] 3D Dist: ${currentDist3D.toFixed(2)} | dX:${dx.toFixed(2)} dY:${dy.toFixed(2)} dZ:${dz.toFixed(2)} | Base: ${expectedLength.toFixed(2)} | Actual: ${actualRopeLength.toFixed(2)} | Expected@${currentTension.toFixed(0)}%: ${(expectedLength * slackMultiplier).toFixed(2)} | Ratio: ${(actualRopeLength / expectedLength).toFixed(2)}x`,
           );
         }
 
@@ -419,6 +424,13 @@ Z: ${magnetWorld.z.toFixed(2)} (max: ${peaks.maxZ.toFixed(2)})`;
           sessionStore.getState().setPhaseProgress(0.5 + sinkProgress * 0.4); // 50-90%
         }
 
+        // Update rope length from current distance before tension is applied
+        const dx = magnetWorld.x - avatarWorld.x;
+        const dy = magnetWorld.y - avatarWorld.y;
+        const dz = magnetWorld.z - avatarWorld.z;
+        const currentDist3D = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        rope3D.updateBaseSegmentLength(currentDist3D);
+
         // Update rope physics
         rope3D.setTension(currentTension);
         rope3D.update(deltaTime, avatarWorld, magnetWorld);
@@ -471,6 +483,13 @@ Z: ${magnetWorld.z.toFixed(2)} (max: ${peaks.maxZ.toFixed(2)})`;
         if (sessionStore) {
           sessionStore.getState().setPhaseProgress(0.9 + settleProgress * 0.1); // 90-100%
         }
+
+        // Update rope length from current distance before tension is applied
+        const dx = magnetWorld.x - avatarWorld.x;
+        const dy = magnetWorld.y - avatarWorld.y;
+        const dz = magnetWorld.z - avatarWorld.z;
+        const currentDist3D = Math.sqrt(dx * dx + dy * dy + dz * dz);
+        rope3D.updateBaseSegmentLength(currentDist3D);
 
         // Update rope physics
         rope3D.setTension(currentTension);
@@ -730,6 +749,11 @@ export function animateReelIn(
         y: magnetY, // This is still in screen-ish space - needs proper refactoring
         z: WORLD_Z.RIVERBED, // Assume on riverbed during reel
       };
+      const dx = magnetWorld.x - avatarWorld.x;
+      const dy = magnetWorld.y - avatarWorld.y;
+      const dz = magnetWorld.z - avatarWorld.z;
+      const currentDist3D = Math.sqrt(dx * dx + dy * dy + dz * dz);
+      rope3D.updateBaseSegmentLength(currentDist3D);
       rope3D.setTension(80); // High tension during reel (taut rope)
       rope3D.update(deltaTime, avatarWorld, magnetWorld);
 

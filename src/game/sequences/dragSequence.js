@@ -175,19 +175,13 @@ export function updateRopePhysics(
   const distanceXY = Math.sqrt(dx * dx + dy * dy); // Horizontal distance
   const distanceZ = Math.abs(dz); // Vertical distance
 
-  // During drag, update rope length based on current 3D distance
+  // Update rope length based on current 3D distance before tension is applied
   // As we reel in, the rope gets shorter
-  if (dragState.active) {
-    const numSegments = rope.points.length - 1;
-    const newBaseSegmentLength = distance3D / numSegments;
+  rope.updateBaseSegmentLength(distance3D);
 
-    // Update base segment length (the "taut" length at 100% tension)
-    rope.baseSegmentLength = newBaseSegmentLength;
-
-    console.log(
-      `[ROPE DRAG] 3D Distance: ${distance3D.toFixed(2)} | Horizontal (XY): ${distanceXY.toFixed(2)} | Vertical (Z): ${distanceZ.toFixed(2)} | BaseSegment: ${newBaseSegmentLength.toFixed(3)}`,
-    );
-  }
+  console.log(
+    `[ROPE DRAG] 3D Distance: ${distance3D.toFixed(2)} | dX:${dx.toFixed(2)} dY:${dy.toFixed(2)} dZ:${dz.toFixed(2)} | Horizontal (XY): ${distanceXY.toFixed(2)} | Vertical (Z): ${distanceZ.toFixed(2)} | BaseSegment: ${rope.baseSegmentLength.toFixed(3)}`,
+  );
 
   // Update rope tension - this will recalculate segmentLength from baseSegmentLength
   rope.setTension(tension);
@@ -198,8 +192,10 @@ export function updateRopePhysics(
     rope.baseSegmentLength *
     (rope.points.length - 1) *
     (rope.segmentLength / rope.baseSegmentLength);
-  const tensionRatio = tension / 100;
-  const slackMultiplier = 1.0 + (1.0 - tensionRatio) * 0.3;
+  const slackMultiplier =
+    rope.baseSegmentLength > 0
+      ? rope.segmentLength / rope.baseSegmentLength
+      : 1.0;
   const expectedAtTension = distance3D * slackMultiplier;
 
   console.log(
