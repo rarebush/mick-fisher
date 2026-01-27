@@ -19,6 +19,7 @@ const useGameStore = create((set, get) => ({
     lineTension: 100, // max tension before break
     hasWinch: false, // Phase 2 feature
   },
+  selectedCastingEquipmentId: "hand",
 
   // Current cast data
   currentCast: {
@@ -44,6 +45,9 @@ const useGameStore = create((set, get) => ({
   setGamePhase: (phase) => set({ gamePhase: phase }),
 
   setLocation: (locationId) => set({ currentLocation: locationId }),
+
+  setCastingEquipmentId: (equipmentId) =>
+    set({ selectedCastingEquipmentId: equipmentId }),
 
   startCast: (quadrant, distance, depth) => {
     set({
@@ -112,6 +116,7 @@ const useGameStore = create((set, get) => ({
     set({
       gamePhase: "idle",
       currentCast: { quadrant: null, distance: 0, depth: 0, itemId: null },
+      selectedCastingEquipmentId: "hand",
       sessionStats: {
         castsTotal: 0,
         castsSuccessful: 0,

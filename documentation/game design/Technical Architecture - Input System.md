@@ -174,6 +174,7 @@ window.addEventListener("blur", this.handleWindowBlur);
 | `Space` | Dragging            | Hold to drag (no tap detection - instant hold) |
 | `D`     | Any                 | Toggle debug overlay                           |
 | `C`     | Any (debug visible) | Clear engaged items                            |
+| `M`     | Idle                | Cycle cast input mode                          |
 
 **Why No Tap Detection for Keyboard?**
 
@@ -223,7 +224,8 @@ handleWindowBlur() {
 
 **Allowed Inputs:**
 
-- Pointer down on quadrant → Start cast sequence
+- Pointer down on quadrant → Start cast sequence (Click Mode)
+- Pointer down → Begin multi-click sequence (Direction + Power, Donut)
 - Debug shortcuts (D, C)
 
 **Blocked Inputs:**
@@ -238,27 +240,34 @@ handlePointerDown(event) {
   const gamePhase = gameStore.getState().gamePhase;
 
   if (gamePhase === "idle") {
-    // Check if notification blocking
     if (gameStore.getState().lastCompletedCast) return;
-
-    // Check if already casting
     if (this.isCasting) return;
 
-    // Calculate quadrant
-    const quadrant = getQuadrantFromPosition(x, y);
+    const castMode = sessionStore.getState().castInputMode;
+    if (castMode === "direction_power") return handleCastAimClick();
+    if (castMode === "donut") return handleDonutAimClick(x, y);
 
-    // Check accessibility
-    if (!isQuadrantAccessible(quadrant, equipment.lineLength)) {
-      showAccessMessage(x, y);
-      return;
-    }
+    const quadrant = getCastQuadrantIfAccessible(x, y);
+    if (!quadrant) return;
 
-    // Start cast
     this.isCasting = true;
     this.onCast(x, y, quadrant);
   }
 }
 ```
+
+## Cast Input Mode Handling
+
+**Mode Cycling:**  
+`M` cycles `click → direction_power → donut → click`
+
+**Direction + Power Mode:**  
+Click sequence: start angle oscillation → lock angle / start power → lock power and cast.
+
+**Donut Mode:**  
+Click 1 sets target on water surface and shows min/max rings.  
+Click 2 starts oscillating accuracy radius.  
+Click 3 locks radius, randomizes final landing point within the donut, and casts.
 
 ### Dragging Phase
 

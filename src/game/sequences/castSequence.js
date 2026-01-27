@@ -28,6 +28,8 @@ import {
   WORLD_Z,
   createViewport,
   getSurfaceScreenBounds,
+  screenToWorld,
+  worldToScreen,
 } from "../mechanics/worldConstants.js";
 
 /**
@@ -45,6 +47,15 @@ export async function executeCastSequence(
   getItemPosition,
   pixiApp = null, // PixiApp instance for immediate rope storage
 ) {
+  const viewport = createViewport(app.screen.width, app.screen.height);
+  const waterWorld = screenToWorld(x, y, WORLD_Z.WATER_SURFACE, viewport);
+  const riverbedWorld = {
+    x: waterWorld.x,
+    y: waterWorld.y,
+    z: WORLD_Z.RIVERBED,
+  };
+  const riverbedScreen = worldToScreen(riverbedWorld, viewport);
+
   // Set game phase to casting IMMEDIATELY so tension bar shows
   if (gameStore) {
     gameStore.getState().setGamePhase("casting");
@@ -64,12 +75,21 @@ export async function executeCastSequence(
   const currentLocation =
     gameStore?.getState().currentLocation || "picturesque-river";
   debugOverlay?.showSpawnTable(quadrant, currentLocation);
-  debugOverlay?.highlightQuadrant(quadrant, x, y);
+  debugOverlay?.highlightQuadrant(
+    quadrant,
+    riverbedScreen.x,
+    riverbedScreen.y,
+  );
 
   // Check for engaged item hit
   const hitItem = locationStore
     .getState()
-    .checkForHit(currentLocation, x, y, quadrant);
+    .checkForHit(
+      currentLocation,
+      riverbedScreen.x,
+      riverbedScreen.y,
+      quadrant,
+    );
 
   if (hitItem) {
     console.log(
@@ -99,16 +119,24 @@ export async function executeCastSequence(
   }
 
   // Store cast position for rope rendering (before drag starts)
-  sessionStore.getState().setCastPosition(x, y);
+  sessionStore
+    .getState()
+    .setCastPosition(riverbedScreen.x, riverbedScreen.y);
 
   // Visual feedback - ripple at landing point
   createRipple(app, x, y);
 
   // Create bubbles to show magnet sinking
-  createBubbles(app, x, y, 500);
+  createBubbles(app, riverbedScreen.x, riverbedScreen.y, 500);
 
   // Execute cast mechanics (with hit detection)
-  const castResult = executeCast(quadrant, currentLocation, x, y, hitItem);
+  const castResult = executeCast(
+    quadrant,
+    currentLocation,
+    riverbedScreen.x,
+    riverbedScreen.y,
+    hitItem,
+  );
 
   // Log spawn event to debug overlay
   if (castResult.success) {
@@ -176,7 +204,7 @@ export async function executeCastSequence(
       // For re-engaged items, use saved position for progressive retrieval
       const initialPosition = castResult.isEngagedItem
         ? castResult.itemPosition
-        : { x, y };
+        : { x: riverbedScreen.x, y: riverbedScreen.y };
 
       // Calculate slip direction from magnet position (pure function)
       const slipDirection = calculateSlipDirection(castResult.magnetPosition);
@@ -317,6 +345,7 @@ export async function handleDragFailure(
   const actualQuadrant = getQuadrantFromPosition(
     stopPosition.x,
     stopPosition.y,
+    "riverbed",
   );
 
   // Update engaged item position

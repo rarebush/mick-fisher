@@ -82,27 +82,37 @@ export function animateCastLine(
     const avatarScreen = worldToScreen(avatarWorld, viewport);
 
     // ===========================================
-    // TARGET POSITION (where user clicked = riverbed)
-    // Convert screen click to world coordinates on riverbed (Z=0)
+    // CLICK POSITION (where user clicked = water surface)
+    // Convert screen click to world coordinates on water surface (Z=1)
     // ===========================================
-    const targetWorld = screenToWorld(
+    const waterSurfaceWorld = screenToWorld(
       targetScreenX,
       targetScreenY,
-      WORLD_Z.RIVERBED,
+      WORLD_Z.WATER_SURFACE,
       viewport,
     );
 
     console.log(
-      `[CAST] Click at screen (${targetScreenX.toFixed(0)}, ${targetScreenY.toFixed(0)}) -> world (${targetWorld.x.toFixed(2)}, ${targetWorld.y.toFixed(2)}, ${targetWorld.z})`,
+      `[CAST] Click at screen (${targetScreenX.toFixed(0)}, ${targetScreenY.toFixed(0)}) -> water world (${waterSurfaceWorld.x.toFixed(2)}, ${waterSurfaceWorld.y.toFixed(2)}, ${waterSurfaceWorld.z})`,
     );
 
     // ===========================================
-    // WATER SURFACE POSITION (same world Y as target, but at water Z)
+    // TARGET POSITION (riverbed directly below click)
+    // ===========================================
+    const targetWorld = {
+      x: waterSurfaceWorld.x,
+      y: waterSurfaceWorld.y,
+      z: WORLD_Z.RIVERBED,
+    };
+    const targetScreen = worldToScreen(targetWorld, viewport);
+
+    // ===========================================
+    // WATER SURFACE POSITION (same world Y as target, at water Z)
     // ===========================================
     const waterHitWorld = {
-      x: targetWorld.x,
-      y: targetWorld.y, // Same depth as final target
-      z: WORLD_Z.WATER_SURFACE, // At water surface height
+      x: waterSurfaceWorld.x,
+      y: waterSurfaceWorld.y,
+      z: WORLD_Z.WATER_SURFACE,
     };
     const waterHitScreen = worldToScreen(waterHitWorld, viewport);
 
@@ -143,7 +153,7 @@ export function animateCastLine(
     debugLines.stroke({ width: 2, color: 0xffff00 });
 
     // MAGENTA = target riverbed position
-    debugLines.circle(targetScreenX, targetScreenY, 10);
+    debugLines.circle(targetScreen.x, targetScreen.y, 10);
     debugLines.stroke({ width: 2, color: 0xff00ff });
 
     // Add labels
@@ -173,7 +183,7 @@ export function animateCastLine(
     debugLines.addChild(labelViewport);
 
     console.log(
-      `[CAST DEBUG] Avatar screen: ${avatarScreen.y.toFixed(0)}px | Water hit screen: ${waterHitScreen.y.toFixed(0)}px | Target: ${targetScreenY.toFixed(0)}px`,
+      `[CAST DEBUG] Avatar screen: ${avatarScreen.y.toFixed(0)}px | Water hit screen: ${waterHitScreen.y.toFixed(0)}px | Target: ${targetScreen.y.toFixed(0)}px`,
     );
 
     // ===========================================
@@ -354,10 +364,22 @@ export function animateCastLine(
 
         // Update debug text with world coordinates and peaks from store
         const peaks = magnetStore.getPeakValues();
+        const peakX =
+          peaks && Math.abs(peaks.maxX) >= Math.abs(peaks.minX)
+            ? peaks.maxX
+            : peaks?.minX;
+        const peakY =
+          peaks && Math.abs(peaks.maxY) >= Math.abs(peaks.minY)
+            ? peaks.maxY
+            : peaks?.minY;
+        const peakZ =
+          peaks && Math.abs(peaks.maxZ) >= Math.abs(peaks.minZ)
+            ? peaks.maxZ
+            : peaks?.minZ;
         magnetDebugText.text = `Magnet World:
-X: ${magnetWorld.x.toFixed(2)} (max: ${peaks.maxX.toFixed(2)})
-Y: ${magnetWorld.y.toFixed(2)} (max: ${peaks.maxY.toFixed(2)})
-Z: ${magnetWorld.z.toFixed(2)} (max: ${peaks.maxZ.toFixed(2)})`;
+X: ${magnetWorld.x.toFixed(2)} (peak: ${peakX?.toFixed(2) ?? "n/a"})
+Y: ${magnetWorld.y.toFixed(2)} (peak: ${peakY?.toFixed(2) ?? "n/a"})
+Z: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
         magnetDebugText.x = 10;
         magnetDebugText.y = app.screen.height - 80;
 
@@ -443,10 +465,22 @@ Z: ${magnetWorld.z.toFixed(2)} (max: ${peaks.maxZ.toFixed(2)})`;
 
         // Update debug text with world coordinates and peaks from store
         const peaks = magnetStore.getPeakValues();
+        const peakX =
+          peaks && Math.abs(peaks.maxX) >= Math.abs(peaks.minX)
+            ? peaks.maxX
+            : peaks?.minX;
+        const peakY =
+          peaks && Math.abs(peaks.maxY) >= Math.abs(peaks.minY)
+            ? peaks.maxY
+            : peaks?.minY;
+        const peakZ =
+          peaks && Math.abs(peaks.maxZ) >= Math.abs(peaks.minZ)
+            ? peaks.maxZ
+            : peaks?.minZ;
         magnetDebugText.text = `Magnet World:
-X: ${magnetWorld.x.toFixed(2)} (max: ${peaks.maxX.toFixed(2)})
-Y: ${magnetWorld.y.toFixed(2)} (max: ${peaks.maxY.toFixed(2)})
-Z: ${magnetWorld.z.toFixed(2)} (max: ${peaks.maxZ.toFixed(2)})`;
+X: ${magnetWorld.x.toFixed(2)} (peak: ${peakX?.toFixed(2) ?? "n/a"})
+Y: ${magnetWorld.y.toFixed(2)} (peak: ${peakY?.toFixed(2) ?? "n/a"})
+Z: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
         magnetDebugText.x = 10;
         magnetDebugText.y = app.screen.height - 80;
 
@@ -503,10 +537,22 @@ Z: ${magnetWorld.z.toFixed(2)} (max: ${peaks.maxZ.toFixed(2)})`;
 
         // Update debug text with world coordinates and peaks from store
         const peaks = magnetStore.getPeakValues();
+        const peakX =
+          peaks && Math.abs(peaks.maxX) >= Math.abs(peaks.minX)
+            ? peaks.maxX
+            : peaks?.minX;
+        const peakY =
+          peaks && Math.abs(peaks.maxY) >= Math.abs(peaks.minY)
+            ? peaks.maxY
+            : peaks?.minY;
+        const peakZ =
+          peaks && Math.abs(peaks.maxZ) >= Math.abs(peaks.minZ)
+            ? peaks.maxZ
+            : peaks?.minZ;
         magnetDebugText.text = `Magnet World:
-X: ${magnetWorld.x.toFixed(2)} (max: ${peaks.maxX.toFixed(2)})
-Y: ${magnetWorld.y.toFixed(2)} (max: ${peaks.maxY.toFixed(2)})
-Z: ${magnetWorld.z.toFixed(2)} (max: ${peaks.maxZ.toFixed(2)})`;
+X: ${magnetWorld.x.toFixed(2)} (peak: ${peakX?.toFixed(2) ?? "n/a"})
+Y: ${magnetWorld.y.toFixed(2)} (peak: ${peakY?.toFixed(2) ?? "n/a"})
+Z: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
         magnetDebugText.x = 10;
         magnetDebugText.y = app.screen.height - 80;
 

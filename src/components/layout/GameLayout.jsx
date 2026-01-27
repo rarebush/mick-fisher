@@ -4,6 +4,7 @@ import TensionBar from "../game/TensionBar";
 import SlipMeter from "../game/SlipMeter";
 import GameNotification from "../ui/GameNotification";
 import GiveUpButton from "../ui/GiveUpButton";
+import CastingEquipmentToggle from "../ui/CastingEquipmentToggle";
 import "../../styles/game-layout.css";
 
 function GameLayout({ onQuit }) {
@@ -11,6 +12,7 @@ function GameLayout({ onQuit }) {
     <div className="game-layout">
       <Sidebar />
       <main className="game-main">
+        <CastingEquipmentToggle />
         <PixiGame />
         <GameNotification />
         <SlipMeter />

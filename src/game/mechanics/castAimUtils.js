@@ -64,20 +64,24 @@ export function computeCastTargetWorld(angleDeg, power, viewport) {
   const worldTarget = {
     x: origin.x + direction.x * distance,
     y: origin.y + direction.y * distance,
-    z: WORLD_Z.RIVERBED,
+    z: WORLD_Z.WATER_SURFACE,
   };
 
-  return clampTargetToRiverbed(worldTarget, viewport);
+  return clampTargetToRiverbed(worldTarget, viewport, WORLD_Z.WATER_SURFACE);
 }
 
-export function clampTargetToRiverbed(worldTarget, viewport) {
+export function clampTargetToRiverbed(
+  worldTarget,
+  viewport,
+  z = WORLD_Z.RIVERBED,
+) {
   return {
     x: Math.max(viewport.worldXMin, Math.min(viewport.worldXMax, worldTarget.x)),
     y: Math.max(
       WORLD_Y.RIVERBED_NEAR,
       Math.min(WORLD_Y.RIVERBED_FAR, worldTarget.y),
     ),
-    z: WORLD_Z.RIVERBED,
+    z,
   };
 }
 

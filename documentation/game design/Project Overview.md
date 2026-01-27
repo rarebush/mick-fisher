@@ -28,7 +28,7 @@ Finding weird and wonderful things with simple, engaging mechanics that feel goo
 ### Core Loop (60-second cycle)
 
 1. **Choose location** - Select themed fishing spot
-2. **Cast magnet** - Click quadrant in casting arc
+2. **Cast magnet** - Choose cast mode (click, direction+power, donut) and target
 3. **Horizontal drag** - Pull item toward shore with tension management
 4. **Blind lift** - Bring item to surface without knowing what it is
 5. **Surface break** - Reveal item type, condition, and magnet grip quality

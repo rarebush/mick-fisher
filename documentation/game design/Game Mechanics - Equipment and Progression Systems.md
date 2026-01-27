@@ -21,6 +21,12 @@ startingGear: {
     slipRate: 1.0, // baseline
     cost: 0
   },
+  casting: {
+    name: 'Hand Throw',
+    minAccuracyRadius: 0, // pixels
+    maxAccuracyRadius: 24, // pixels
+    cost: 0
+  },
   winch: null, // no winch at start, manual only
   tools: ['basic_gloves'], // quality of life, no mechanical benefit
   detectors: [] // no detection equipment initially
@@ -58,6 +64,23 @@ startingGear: {
 - Baseline magnets: 1.0x slip rate (no reduction)
 - Textured surface magnets: 0.8x slip rate (20% slower slip build)
 - Electromagnet: 0.7x slip rate + can "pulse" to partially reset slip (advanced mechanic)
+
+## Casting Equipment
+
+**Purpose:** Defines accuracy zone for donut casting mode.  
+Each casting tool sets a minimum and maximum accuracy radius (in screen pixels).
+
+**Starting Presets (MVP):**
+
+| Equipment   | Min Accuracy Radius | Max Accuracy Radius | Notes |
+| ----------- | ------------------- | ------------------- | ----- |
+| Hand Throw  | 0px                 | 24px                | Most precise, shortest range |
+| Slingshot   | 6px                 | 42px                | Moderate accuracy |
+| Catapult    | 12px                | 70px                | Least precise, widest zone |
+
+**Design Notes:**
+- Minimum radius allows a "dead zone" to model inherent inaccuracy.
+- Maximum radius controls deviation magnitude and odds of exact landing.
 
 ## Line Progression
 
@@ -215,6 +238,7 @@ Player chooses option 1:
 **Early Game (0-25 items discovered):**
 
 - Focus: Learn mechanics, volume fishing, build cash
+- Casting choice: Switch between hand throw, slingshot, catapult for accuracy trade-offs
 - Upgrades: Line to 15m (access mid quadrants), Reinforced Magnet
 - Locations: Picturesque, City River
 - Bottleneck: Cash (not many materials needed yet)

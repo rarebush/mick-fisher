@@ -217,7 +217,7 @@ items: [
 
 ```
 ┌─────────────────────────────────────┬────────────────────┐
-│                                     │ Timer: 8:34        │
+│ Casting Gear + Mode (top-left bar)  │ Timer: 8:34        │
 │                                     ├────────────────────┤
 │         Casting View (PixiJS)       │ Session Inventory: │
 │         - Top-down river            │ - Rusty Bike       │
@@ -250,6 +250,12 @@ items: [
 │ [Visual preview]                     │
 └──────────────────────────────────────┘
 ```
+
+**Casting Gear + Mode Bar:**
+
+- Positioned top-left over the casting view
+- Shows casting equipment presets (Hand Throw, Slingshot, Catapult)
+- Displays current cast input mode (Click / Direction + Power / Donut)
 
 **5. Reveal Screen (After Successful Retrieve):**
 
@@ -316,6 +322,7 @@ items: [
 1. Magnet throw arc (parabola, 1 second)
 2. Settle splash (particle burst)
 3. Ripples expand (concentric circles, 2 seconds)
+4. Donut mode overlay: min/max accuracy rings + oscillating radius ring
 
 **Drag Animation:**
 

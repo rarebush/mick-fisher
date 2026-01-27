@@ -51,8 +51,28 @@ _Note: Depletion & spawn timer system is planned for Phase 2+ - see Phase 2+ Fea
 - Upgraded line length: Unlocks Q4-Q6 (mid zones)
 - Max upgraded line: Unlocks Q7-Q9 (far zones)
 - Greyed-out quadrants indicate inaccessible zones
+- Casting equipment accuracy (hand/slingshot/catapult) defines minimum/maximum accuracy radius for donut mode, separate from line length
 
-**Click Interaction:**
+## Cast Input Modes (Press `M` to Cycle)
+
+**Modes:**
+
+1. **Click Mode (Quadrant Cast)**  
+   - Single click on water surface selects a quadrant and begins cast sequence.
+2. **Direction + Power Mode**  
+   - Click 1: Start oscillating angle  
+   - Click 2: Lock angle and start oscillating power  
+   - Click 3: Lock power and cast to computed target
+3. **Donut Mode (Accuracy Zone)**  
+   - Click 1: Choose target on water surface, show min/max accuracy rings  
+   - Click 2: Start oscillating ring between min and max radii  
+   - Click 3: Lock current radius; final landing point is randomized within the donut area
+
+**Notes:**
+- Donut mode requires the target to be within the water surface bounds.
+- Final landing point is sampled uniformly by area within the donut.
+
+**Click Interaction (Click Mode):**
 
 **UPDATED (January 2026):** Cast animations now use world-space projection with centralized magnet state management.
 
