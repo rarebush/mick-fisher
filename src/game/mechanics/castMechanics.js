@@ -266,10 +266,10 @@ export function getItemSize(item) {
 /**
  * Check if quadrant is accessible with current equipment
  * @param {number} quadrant - Quadrant number (0-9)
- * @param {number} lineLength - Equipment line length in meters
+ * @param {number} maxRangeMeters - Equipment max range in meters
  * @returns {boolean} - True if accessible
  */
-export function isQuadrantAccessible(quadrant, lineLength) {
+export function isQuadrantAccessible(quadrant, maxRangeMeters) {
   const range = getQuadrantDistance(quadrant);
-  return range.max <= lineLength;
+  return range.max <= maxRangeMeters;
 }

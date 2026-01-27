@@ -179,6 +179,10 @@ export const QUADRANT_DISTANCES = {
   9: { min: 15, max: 25 },
 };
 
+export const MAX_QUADRANT_DISTANCE = Math.max(
+  ...Object.values(QUADRANT_DISTANCES).map((range) => range.max),
+);
+
 // Quadrant depth ranges (meters underwater)
 export const QUADRANT_DEPTHS = {
   0: { min: 0.5, max: 1.5 },

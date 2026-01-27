@@ -6,6 +6,7 @@ export const CASTING_EQUIPMENT = [
     maxAccuracyRadius: 24,
     aspectRatioX: 1,
     aspectRatioY: 1,
+    maxRangeMeters: 8,
   },
   {
     id: "slingshot",
@@ -14,6 +15,7 @@ export const CASTING_EQUIPMENT = [
     maxAccuracyRadius: 42,
     aspectRatioX: 1.35,
     aspectRatioY: 0.75,
+    maxRangeMeters: 15,
   },
   {
     id: "catapult",
@@ -22,6 +24,7 @@ export const CASTING_EQUIPMENT = [
     maxAccuracyRadius: 70,
     aspectRatioX: 0.8,
     aspectRatioY: 1.25,
+    maxRangeMeters: 25,
   },
   {
     id: "counterweight-rig",
@@ -30,6 +33,7 @@ export const CASTING_EQUIPMENT = [
     maxAccuracyRadius: 58,
     aspectRatioX: 1.6,
     aspectRatioY: 0.6,
+    maxRangeMeters: 15,
   },
   {
     id: "training-reel",
@@ -38,6 +42,7 @@ export const CASTING_EQUIPMENT = [
     maxAccuracyRadius: 36,
     aspectRatioX: 0.65,
     aspectRatioY: 1.45,
+    maxRangeMeters: 8,
   },
 ];
 
@@ -46,4 +51,8 @@ export function getCastingEquipmentById(id) {
     CASTING_EQUIPMENT.find((equipment) => equipment.id === id) ||
     CASTING_EQUIPMENT[0]
   );
+}
+
+export function getCastingEquipmentMaxRange(id) {
+  return getCastingEquipmentById(id).maxRangeMeters;
 }

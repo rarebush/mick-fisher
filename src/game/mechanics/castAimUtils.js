@@ -1,3 +1,4 @@
+import { MAX_QUADRANT_DISTANCE } from "../data/locationDatabase.js";
 import { WORLD_Y, WORLD_Z, worldToScreen } from "./worldConstants.js";
 
 export const CAST_AIM_ANGLE_MIN_DEG = -90;
@@ -7,6 +8,17 @@ const EPSILON = 1e-6;
 
 export function getAvatarCastOrigin() {
   return { x: 0, y: WORLD_Y.AVATAR };
+}
+
+export function metersToWorldRange(meters) {
+  if (!Number.isFinite(meters) || meters <= 0) {
+    return 0;
+  }
+  if (!Number.isFinite(MAX_QUADRANT_DISTANCE) || MAX_QUADRANT_DISTANCE <= 0) {
+    return 0;
+  }
+  const worldDepthRange = WORLD_Y.RIVERBED_FAR - WORLD_Y.AVATAR;
+  return (meters / MAX_QUADRANT_DISTANCE) * worldDepthRange;
 }
 
 export function clampCastAngleDeg(angleDeg) {
@@ -54,9 +66,18 @@ export function getMaxCastRange(direction, viewport) {
   return maxRange;
 }
 
-export function computeCastTargetWorld(angleDeg, power, viewport) {
+export function computeCastTargetWorld(
+  angleDeg,
+  power,
+  viewport,
+  maxRangeMeters = null,
+) {
   const direction = getCastDirectionFromAngleDeg(angleDeg);
-  const maxRange = getMaxCastRange(direction, viewport);
+  let maxRange = getMaxCastRange(direction, viewport);
+  if (Number.isFinite(maxRangeMeters)) {
+    const maxRangeWorld = metersToWorldRange(maxRangeMeters);
+    maxRange = Math.min(maxRange, Math.max(0, maxRangeWorld));
+  }
   const clampedPower = clampCastPower(power);
   const distance = maxRange * clampedPower;
   const origin = getAvatarCastOrigin();
@@ -85,7 +106,17 @@ export function clampTargetToRiverbed(
   };
 }
 
-export function computeCastTargetScreen(angleDeg, power, viewport) {
-  const worldTarget = computeCastTargetWorld(angleDeg, power, viewport);
+export function computeCastTargetScreen(
+  angleDeg,
+  power,
+  viewport,
+  maxRangeMeters = null,
+) {
+  const worldTarget = computeCastTargetWorld(
+    angleDeg,
+    power,
+    viewport,
+    maxRangeMeters,
+  );
   return worldToScreen(worldTarget, viewport);
 }

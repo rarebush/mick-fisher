@@ -15,7 +15,6 @@ const useGameStore = create((set, get) => ({
   // Equipment stats (MVP: basic equipment, no upgrades yet)
   equipment: {
     magnetStrength: 50, // kg capacity
-    lineLength: 30, // meters (extended for debugging - allows all quadrants)
     lineTension: 100, // max tension before break
     hasWinch: false, // Phase 2 feature
   },

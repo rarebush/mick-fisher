@@ -14,9 +14,13 @@ import {
   screenToWorld,
   worldToScreen,
 } from "../mechanics/worldConstants.js";
-import { computeCastTargetScreen } from "../mechanics/castAimUtils.js";
+import {
+  computeCastTargetScreen,
+  metersToWorldRange,
+} from "../mechanics/castAimUtils.js";
 import {
   getCastingEquipmentById,
+  getCastingEquipmentMaxRange,
 } from "../data/castingEquipmentDatabase.js";
 
 export class InputManager {
@@ -358,10 +362,14 @@ export class InputManager {
         this.app.screen.width,
         this.app.screen.height,
       );
+      const equipmentId =
+        this.gameStore?.getState().selectedCastingEquipmentId;
+      const maxRangeMeters = getCastingEquipmentMaxRange(equipmentId);
       const targetScreen = computeCastTargetScreen(
         aimState.angle,
         aimState.power,
         viewport,
+        maxRangeMeters,
       );
       const quadrant = this.getCastQuadrantIfAccessible(
         targetScreen.x,
@@ -397,6 +405,11 @@ export class InputManager {
       }
       const equipmentId =
         this.gameStore?.getState().selectedCastingEquipmentId;
+      const maxRangeMeters = getCastingEquipmentMaxRange(equipmentId);
+      if (!this.isWithinCastRange(x, y, maxRangeMeters)) {
+        this.showAccessMessageAtPosition(x, y);
+        return;
+      }
       const equipment = getCastingEquipmentById(equipmentId);
       sessionState.startDonutAim(
         { x, y },
@@ -412,6 +425,13 @@ export class InputManager {
       if (!this.isWithinWaterSurface(x, y)) {
         return;
       }
+      const equipmentId =
+        this.gameStore?.getState().selectedCastingEquipmentId;
+      const maxRangeMeters = getCastingEquipmentMaxRange(equipmentId);
+      if (!this.isWithinCastRange(x, y, maxRangeMeters)) {
+        this.showAccessMessageAtPosition(x, y);
+        return;
+      }
       sessionState.startDonutOscillation();
       return;
     }
@@ -425,6 +445,14 @@ export class InputManager {
         return;
       }
       if (!this.isWithinWaterSurface(target.x, target.y)) {
+        sessionState.resetDonutAim();
+        return;
+      }
+      const equipmentId =
+        this.gameStore?.getState().selectedCastingEquipmentId;
+      const maxRangeMeters = getCastingEquipmentMaxRange(equipmentId);
+      if (!this.isWithinCastRange(target.x, target.y, maxRangeMeters)) {
+        this.showAccessMessageAtPosition(target.x, target.y);
         sessionState.resetDonutAim();
         return;
       }
@@ -513,12 +541,38 @@ export class InputManager {
     );
   }
 
+  isWithinCastRange(x, y, maxRangeMeters) {
+    const viewport = createViewport(
+      this.app.screen.width,
+      this.app.screen.height,
+    );
+    const worldTarget = screenToWorld(
+      x,
+      y,
+      WORLD_Z.WATER_SURFACE,
+      viewport,
+    );
+    const origin = { x: 0, y: WORLD_Y.AVATAR };
+    const worldDistance = Math.hypot(
+      worldTarget.x - origin.x,
+      worldTarget.y - origin.y,
+    );
+    const maxRangeWorld = metersToWorldRange(maxRangeMeters);
+    return worldDistance <= maxRangeWorld;
+  }
+
   getCastQuadrantIfAccessible(x, y) {
     const quadrant = this.getQuadrantFromPosition(x, y);
     if (quadrant === null) return null;
 
-    const equipment = this.gameStore?.getState().equipment;
-    if (!isQuadrantAccessible(quadrant, equipment?.lineLength || 8)) {
+    const equipmentId =
+      this.gameStore?.getState().selectedCastingEquipmentId;
+    const maxRangeMeters = getCastingEquipmentMaxRange(equipmentId);
+    if (!this.isWithinCastRange(x, y, maxRangeMeters)) {
+      this.showAccessMessageAtPosition(x, y);
+      return null;
+    }
+    if (!isQuadrantAccessible(quadrant, maxRangeMeters)) {
       this.showAccessMessageAtPosition(x, y);
       return null;
     }

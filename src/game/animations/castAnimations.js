@@ -72,7 +72,7 @@ export function animateCastLine(
     );
 
     // ===========================================
-    // AVATAR POSITION (fixed in world space)
+    // AVATAR POSITION (fixed in world space, used for magnet throw)
     // ===========================================
     const avatarWorld = {
       x: 0, // Avatar at world center
@@ -80,6 +80,13 @@ export function animateCastLine(
       z: WORLD_Z.AVATAR_HAND, // Hand height (Z=4.2)
     };
     const avatarScreen = worldToScreen(avatarWorld, viewport);
+
+    // Rope anchor starts at cast origin (avatar hand)
+    const ropeAnchorWorld = {
+      x: 0,
+      y: WORLD_Y.AVATAR,
+      z: WORLD_Z.AVATAR_HAND,
+    };
 
     // ===========================================
     // CLICK POSITION (where user clicked = water surface)
@@ -189,10 +196,10 @@ export function animateCastLine(
     // ===========================================
     // CREATE 3D ROPE
     // ===========================================
-    // Calculate 3D distance from avatar to target for segment count
-    const dx = targetWorld.x - avatarWorld.x;
-    const dy = targetWorld.y - avatarWorld.y;
-    const dz = targetWorld.z - avatarWorld.z;
+    // Calculate 3D distance from rope anchor to target for segment count
+    const dx = targetWorld.x - ropeAnchorWorld.x;
+    const dy = targetWorld.y - ropeAnchorWorld.y;
+    const dz = targetWorld.z - ropeAnchorWorld.z;
     const distance3D = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
     // For throw timing, use horizontal distance (XY plane) - more visually relevant
@@ -200,8 +207,9 @@ export function animateCastLine(
 
     const segments = calculateRopeSegments(distance3D, viewport);
 
-    // Create rope from avatar to target (final position) with correct length
-    const rope3D = new Rope3D(segments, avatarWorld, targetWorld);
+    // Create rope from avatar feet to the starting magnet position (hand).
+    // Rope length is still based on the full target distance below.
+    const rope3D = new Rope3D(segments, ropeAnchorWorld, avatarWorld);
 
     // Set base segment length for the full throw distance
     const tautSegmentLength = distance3D / (segments - 1);
@@ -330,9 +338,9 @@ export function animateCastLine(
         );
 
         // Calculate actual 3D distance for validation
-        const dx = magnetWorld.x - avatarWorld.x;
-        const dy = magnetWorld.y - avatarWorld.y;
-        const dz = magnetWorld.z - avatarWorld.z;
+        const dx = magnetWorld.x - ropeAnchorWorld.x;
+        const dy = magnetWorld.y - ropeAnchorWorld.y;
+        const dz = magnetWorld.z - ropeAnchorWorld.z;
         const currentDist3D = Math.sqrt(dx * dx + dy * dy + dz * dz);
 
         // Update rope length from current distance before tension is applied
@@ -340,7 +348,7 @@ export function animateCastLine(
 
         // Update rope physics - tension controls slack
         rope3D.setTension(currentTension);
-        rope3D.update(deltaTime, avatarWorld, magnetWorld);
+        rope3D.update(deltaTime, ropeAnchorWorld, magnetWorld);
 
         // VALIDATION: Log rope length vs 3D distance (sample 10% of frames)
         if (Math.random() < 0.1) {
@@ -445,15 +453,15 @@ Z: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
         }
 
         // Update rope length from current distance before tension is applied
-        const dx = magnetWorld.x - avatarWorld.x;
-        const dy = magnetWorld.y - avatarWorld.y;
-        const dz = magnetWorld.z - avatarWorld.z;
+        const dx = magnetWorld.x - ropeAnchorWorld.x;
+        const dy = magnetWorld.y - ropeAnchorWorld.y;
+        const dz = magnetWorld.z - ropeAnchorWorld.z;
         const currentDist3D = Math.sqrt(dx * dx + dy * dy + dz * dz);
         rope3D.updateBaseSegmentLength(currentDist3D);
 
         // Update rope physics
         rope3D.setTension(currentTension);
-        rope3D.update(deltaTime, avatarWorld, magnetWorld);
+        rope3D.update(deltaTime, ropeAnchorWorld, magnetWorld);
 
         // Render rope
         render3DRopeWithViewport(line, rope3D, viewport, waterSurfaceScreenY);
@@ -517,15 +525,15 @@ Z: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
         }
 
         // Update rope length from current distance before tension is applied
-        const dx = magnetWorld.x - avatarWorld.x;
-        const dy = magnetWorld.y - avatarWorld.y;
-        const dz = magnetWorld.z - avatarWorld.z;
+        const dx = magnetWorld.x - ropeAnchorWorld.x;
+        const dy = magnetWorld.y - ropeAnchorWorld.y;
+        const dz = magnetWorld.z - ropeAnchorWorld.z;
         const currentDist3D = Math.sqrt(dx * dx + dy * dy + dz * dz);
         rope3D.updateBaseSegmentLength(currentDist3D);
 
         // Update rope physics
         rope3D.setTension(currentTension);
-        rope3D.update(deltaTime, avatarWorld, magnetWorld);
+        rope3D.update(deltaTime, ropeAnchorWorld, magnetWorld);
 
         // Render rope
         render3DRopeWithViewport(line, rope3D, viewport, waterSurfaceScreenY);
@@ -579,8 +587,8 @@ Z: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
             `[CAST] Animation complete, tension: ${currentTension.toFixed(1)}`,
           );
 
-          // Store the avatar screen position for rope rendering during drag
-          const avatarScreenPos = worldToScreen(avatarWorld, viewport);
+          // Store the rope anchor screen position for drag/reel visuals
+          const avatarScreenPos = worldToScreen(ropeAnchorWorld, viewport);
 
           resolve({
             line,

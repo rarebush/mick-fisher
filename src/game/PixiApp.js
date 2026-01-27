@@ -35,12 +35,19 @@ import {
 import {
   createViewport,
   getWorldDirectionScreenAngle,
+  getSurfaceScreenBounds,
   screenToWorld,
   worldToScreen,
   WORLD_Y,
   WORLD_Z,
 } from "./mechanics/worldConstants.js";
-import { computeCastTargetWorld } from "./mechanics/castAimUtils.js";
+import {
+  computeCastTargetWorld,
+  getAvatarCastOrigin,
+  getMaxCastRange,
+  metersToWorldRange,
+} from "./mechanics/castAimUtils.js";
+import { getCastingEquipmentMaxRange } from "./data/castingEquipmentDatabase.js";
 
 export class PixiApp {
   constructor(
@@ -206,6 +213,11 @@ export class PixiApp {
     this.castAimOverlay = new PIXI.Graphics();
     this.castAimOverlay.zIndex = 10000;
     this.app.stage.addChild(this.castAimOverlay);
+
+    this.castAimMask = new PIXI.Graphics();
+    this.castAimMask.zIndex = 9999;
+    this.app.stage.addChild(this.castAimMask);
+    this.castAimOverlay.mask = this.castAimMask;
   }
 
   setupInteraction() {
@@ -499,6 +511,46 @@ export class PixiApp {
     const donutAimState = sessionState.donutAimState;
     const castMode = sessionState.castInputMode;
 
+    const drawCastRangeRing = (viewport) => {
+      const waterBounds = getSurfaceScreenBounds(
+        WORLD_Z.WATER_SURFACE,
+        viewport,
+      );
+      this.castAimMask.clear();
+      this.castAimMask
+        .rect(
+          0,
+          waterBounds.top,
+          this.app.screen.width,
+          waterBounds.bottom - waterBounds.top,
+        )
+        .fill({ color: 0xffffff });
+
+      const equipmentId =
+        this.gameStore?.getState().selectedCastingEquipmentId;
+      const maxRangeMeters = getCastingEquipmentMaxRange(equipmentId);
+      const forwardRange = getMaxCastRange({ x: 0, y: 1 }, viewport);
+      const maxRangeWorld = metersToWorldRange(maxRangeMeters);
+      const rangeWorld = Math.min(maxRangeWorld, forwardRange);
+      if (!Number.isFinite(rangeWorld) || rangeWorld <= 0) return;
+
+      const origin = getAvatarCastOrigin();
+      const originScreen = worldToScreen(
+        { x: origin.x, y: origin.y, z: WORLD_Z.WATER_SURFACE },
+        viewport,
+      );
+      const edgeScreen = worldToScreen(
+        { x: origin.x + rangeWorld, y: origin.y, z: WORLD_Z.WATER_SURFACE },
+        viewport,
+      );
+      const radius = Math.abs(edgeScreen.x - originScreen.x);
+
+      this.castAimOverlay
+        .circle(originScreen.x, originScreen.y, radius)
+        .fill({ color: 0x00c2ff, alpha: 0.15 })
+        .stroke({ width: 2, color: 0x00c2ff, alpha: 0.6 });
+    };
+
     if (gamePhase !== "idle") {
       if (aimState && aimState.phase !== "idle") {
         sessionState.resetCastAim();
@@ -513,6 +565,11 @@ export class PixiApp {
     if (castMode === "direction_power") {
       if (!aimState || aimState.phase === "idle") {
         this.castAimOverlay.clear();
+        const viewport = createViewport(
+          this.app.screen.width,
+          this.app.screen.height,
+        );
+        drawCastRangeRing(viewport);
         return;
       }
 
@@ -529,11 +586,15 @@ export class PixiApp {
         this.app.screen.width,
         this.app.screen.height,
       );
+      const equipmentId =
+        this.gameStore?.getState().selectedCastingEquipmentId;
+      const maxRangeMeters = getCastingEquipmentMaxRange(equipmentId);
       const previewPower = updatedAim.phase === "angle" ? 1 : updatedAim.power;
       const targetWorld = computeCastTargetWorld(
         updatedAim.angle,
         previewPower,
         viewport,
+        maxRangeMeters,
       );
       const targetScreen = worldToScreen(targetWorld, viewport);
       const avatarScreen = worldToScreen(
@@ -542,6 +603,7 @@ export class PixiApp {
       );
 
       this.castAimOverlay.clear();
+      drawCastRangeRing(viewport);
 
       // Preview line and marker
       this.castAimOverlay.setStrokeStyle({
@@ -588,6 +650,11 @@ export class PixiApp {
     if (castMode === "donut") {
       if (!donutAimState || donutAimState.phase === "idle") {
         this.castAimOverlay.clear();
+        const viewport = createViewport(
+          this.app.screen.width,
+          this.app.screen.height,
+        );
+        drawCastRangeRing(viewport);
         return;
       }
 
@@ -611,6 +678,7 @@ export class PixiApp {
         this.app.screen.width,
         this.app.screen.height,
       );
+      drawCastRangeRing(viewport);
       const avatarWorld = { x: 0, y: WORLD_Y.AVATAR };
       const targetWorld = screenToWorld(
         updatedDonut.target.x,
@@ -693,6 +761,14 @@ export class PixiApp {
       sessionState.resetDonutAim();
     }
     this.castAimOverlay.clear();
+
+    if (castMode === "click") {
+      const viewport = createViewport(
+        this.app.screen.width,
+        this.app.screen.height,
+      );
+      drawCastRangeRing(viewport);
+    }
   }
 
   resize(width, height) {

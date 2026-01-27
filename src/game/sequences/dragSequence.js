@@ -132,7 +132,7 @@ export function updateRopePhysics(
     `[ROPE] Physics update in phase: ${phase}, deltaTime: ${deltaTime.toFixed(3)}s`,
   );
 
-  // Avatar world position (fixed at world center)
+  // Rope anchor world position (cast origin at avatar hand)
   const avatarWorld = {
     x: 0, // Avatar at world center
     y: WORLD_Y.AVATAR,
