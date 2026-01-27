@@ -195,6 +195,44 @@ export function screenToWorld(screenX, screenY, worldZ, viewport) {
 }
 
 /**
+ * Get screen-space angle for a world-space direction on a given plane.
+ * Direction is computed from world X/Y only (ignores Z).
+ * @param {{x: number, y: number}} fromWorld - World origin (X/Y)
+ * @param {{x: number, y: number}} toWorld - World target (X/Y)
+ * @param {number} planeZ - World Z plane to project onto
+ * @param {Object} viewport - Viewport configuration
+ * @returns {number} Angle in radians in screen space
+ */
+export function getWorldDirectionScreenAngle(
+  fromWorld,
+  toWorld,
+  planeZ,
+  viewport,
+) {
+  const deltaX = toWorld.x - fromWorld.x;
+  const deltaY = toWorld.y - fromWorld.y;
+  const distance = Math.hypot(deltaX, deltaY);
+  if (distance === 0) return 0;
+
+  const directionX = deltaX / distance;
+  const directionY = deltaY / distance;
+
+  const screenOrigin = worldToScreen(
+    { x: toWorld.x, y: toWorld.y, z: planeZ },
+    viewport,
+  );
+  const screenAhead = worldToScreen(
+    {
+      x: toWorld.x + directionX,
+      y: toWorld.y + directionY,
+      z: planeZ,
+    },
+    viewport,
+  );
+  return Math.atan2(screenAhead.y - screenOrigin.y, screenAhead.x - screenOrigin.x);
+}
+
+/**
  * Get the screen Y boundaries for a horizontal surface at a given Z height.
  * Uses the appropriate Y range for each surface type.
  *

@@ -34,6 +34,8 @@ import {
 } from "./sequences/dragSequence.js";
 import {
   createViewport,
+  getWorldDirectionScreenAngle,
+  screenToWorld,
   worldToScreen,
   WORLD_Y,
   WORLD_Z,
@@ -494,87 +496,203 @@ export class PixiApp {
 
     const gamePhase = this.gameStore?.getState().gamePhase;
     const aimState = sessionState.castAimState;
+    const donutAimState = sessionState.donutAimState;
     const castMode = sessionState.castInputMode;
 
-    if (
-      gamePhase !== "idle" ||
-      castMode !== "direction_power" ||
-      !aimState ||
-      aimState.phase === "idle"
-    ) {
+    if (gamePhase !== "idle") {
       if (aimState && aimState.phase !== "idle") {
         sessionState.resetCastAim();
+      }
+      if (donutAimState && donutAimState.phase !== "idle") {
+        sessionState.resetDonutAim();
       }
       this.castAimOverlay.clear();
       return;
     }
 
-    const now = performance.now();
-    const deltaTime = aimState.lastUpdate
-      ? (now - aimState.lastUpdate) / 1000
-      : 0;
-    if (deltaTime > 0) {
-      sessionState.updateCastAim(deltaTime);
-    }
+    if (castMode === "direction_power") {
+      if (!aimState || aimState.phase === "idle") {
+        this.castAimOverlay.clear();
+        return;
+      }
 
-    const updatedAim = this.sessionStore.getState().castAimState;
-    const viewport = createViewport(
-      this.app.screen.width,
-      this.app.screen.height,
-    );
-    const previewPower = updatedAim.phase === "angle" ? 1 : updatedAim.power;
-    const targetWorld = computeCastTargetWorld(
-      updatedAim.angle,
-      previewPower,
-      viewport,
-    );
-    const targetScreen = worldToScreen(targetWorld, viewport);
-    const avatarScreen = worldToScreen(
-      { x: 0, y: WORLD_Y.AVATAR, z: WORLD_Z.AVATAR_HAND },
-      viewport,
-    );
+      const now = performance.now();
+      const deltaTime = aimState.lastUpdate
+        ? (now - aimState.lastUpdate) / 1000
+        : 0;
+      if (deltaTime > 0) {
+        sessionState.updateCastAim(deltaTime);
+      }
 
-    this.castAimOverlay.clear();
+      const updatedAim = this.sessionStore.getState().castAimState;
+      const viewport = createViewport(
+        this.app.screen.width,
+        this.app.screen.height,
+      );
+      const previewPower = updatedAim.phase === "angle" ? 1 : updatedAim.power;
+      const targetWorld = computeCastTargetWorld(
+        updatedAim.angle,
+        previewPower,
+        viewport,
+      );
+      const targetScreen = worldToScreen(targetWorld, viewport);
+      const avatarScreen = worldToScreen(
+        { x: 0, y: WORLD_Y.AVATAR, z: WORLD_Z.AVATAR_HAND },
+        viewport,
+      );
 
-    // Preview line and marker
-    this.castAimOverlay.setStrokeStyle({
-      width: 2,
-      color: 0x00c2ff,
-      alpha: 0.8,
-    });
-    this.castAimOverlay.moveTo(avatarScreen.x, avatarScreen.y);
-    this.castAimOverlay.lineTo(targetScreen.x, targetScreen.y);
-    this.castAimOverlay.stroke();
-    this.castAimOverlay
-      .circle(targetScreen.x, targetScreen.y, 5)
-      .stroke({ width: 2, color: 0x00c2ff });
+      this.castAimOverlay.clear();
 
-    const barWidth = 220;
-    const barHeight = 6;
-    const centerX = this.app.screen.width / 2;
-    const angleBarY = this.app.screen.height - 70;
-    const powerBarY = this.app.screen.height - 45;
-
-    // Angle bar
-    this.castAimOverlay
-      .rect(centerX - barWidth / 2, angleBarY, barWidth, barHeight)
-      .stroke({ width: 2, color: 0xffffff, alpha: 0.7 });
-    const angleNorm = (updatedAim.angle + 90) / 180;
-    const angleX = centerX - barWidth / 2 + angleNorm * barWidth;
-    this.castAimOverlay
-      .circle(angleX, angleBarY + barHeight / 2, 4)
-      .fill({ color: 0xffd700 });
-
-    // Power bar (only when selecting power)
-    if (updatedAim.phase === "power") {
+      // Preview line and marker
+      this.castAimOverlay.setStrokeStyle({
+        width: 2,
+        color: 0x00c2ff,
+        alpha: 0.8,
+      });
+      this.castAimOverlay.moveTo(avatarScreen.x, avatarScreen.y);
+      this.castAimOverlay.lineTo(targetScreen.x, targetScreen.y);
+      this.castAimOverlay.stroke();
       this.castAimOverlay
-        .rect(centerX - barWidth / 2, powerBarY, barWidth, barHeight)
+        .circle(targetScreen.x, targetScreen.y, 5)
+        .stroke({ width: 2, color: 0x00c2ff });
+
+      const barWidth = 220;
+      const barHeight = 6;
+      const centerX = this.app.screen.width / 2;
+      const angleBarY = this.app.screen.height - 70;
+      const powerBarY = this.app.screen.height - 45;
+
+      // Angle bar
+      this.castAimOverlay
+        .rect(centerX - barWidth / 2, angleBarY, barWidth, barHeight)
         .stroke({ width: 2, color: 0xffffff, alpha: 0.7 });
-      const powerX = centerX - barWidth / 2 + updatedAim.power * barWidth;
+      const angleNorm = (updatedAim.angle + 90) / 180;
+      const angleX = centerX - barWidth / 2 + angleNorm * barWidth;
       this.castAimOverlay
-        .circle(powerX, powerBarY + barHeight / 2, 4)
-        .fill({ color: 0x00ff7f });
+        .circle(angleX, angleBarY + barHeight / 2, 4)
+        .fill({ color: 0xffd700 });
+
+      // Power bar (only when selecting power)
+      if (updatedAim.phase === "power") {
+        this.castAimOverlay
+          .rect(centerX - barWidth / 2, powerBarY, barWidth, barHeight)
+          .stroke({ width: 2, color: 0xffffff, alpha: 0.7 });
+        const powerX = centerX - barWidth / 2 + updatedAim.power * barWidth;
+        this.castAimOverlay
+          .circle(powerX, powerBarY + barHeight / 2, 4)
+          .fill({ color: 0x00ff7f });
+      }
+      return;
     }
+
+    if (castMode === "donut") {
+      if (!donutAimState || donutAimState.phase === "idle") {
+        this.castAimOverlay.clear();
+        return;
+      }
+
+      const now = performance.now();
+      const deltaTime = donutAimState.lastUpdate
+        ? (now - donutAimState.lastUpdate) / 1000
+        : 0;
+      if (deltaTime > 0) {
+        sessionState.updateDonutAim(deltaTime);
+      }
+
+      const updatedDonut = this.sessionStore.getState().donutAimState;
+      if (!updatedDonut.target) {
+        this.castAimOverlay.clear();
+        return;
+      }
+
+      this.castAimOverlay.clear();
+
+      const viewport = createViewport(
+        this.app.screen.width,
+        this.app.screen.height,
+      );
+      const avatarWorld = { x: 0, y: WORLD_Y.AVATAR };
+      const targetWorld = screenToWorld(
+        updatedDonut.target.x,
+        updatedDonut.target.y,
+        WORLD_Z.WATER_SURFACE,
+        viewport,
+      );
+      const orientation = getWorldDirectionScreenAngle(
+        avatarWorld,
+        targetWorld,
+        WORLD_Z.WATER_SURFACE,
+        viewport,
+      );
+
+      const drawOrientedEllipse = (centerX, centerY, radiusX, radiusY) => {
+        const steps = 72;
+        const cosOrientation = Math.cos(orientation);
+        const sinOrientation = Math.sin(orientation);
+        for (let i = 0; i <= steps; i += 1) {
+          const angle = (i / steps) * Math.PI * 2;
+          const localX = Math.cos(angle) * radiusX;
+          const localY = Math.sin(angle) * radiusY;
+          const rotatedX = localX * cosOrientation - localY * sinOrientation;
+          const rotatedY = localX * sinOrientation + localY * cosOrientation;
+          const x = centerX + rotatedX;
+          const y = centerY + rotatedY;
+          if (i === 0) {
+            this.castAimOverlay.moveTo(x, y);
+          } else {
+            this.castAimOverlay.lineTo(x, y);
+          }
+        }
+        this.castAimOverlay.stroke();
+      };
+
+      // Min and max accuracy rings
+      this.castAimOverlay.setStrokeStyle({
+        width: 2,
+        color: 0x6bdcff,
+        alpha: 0.8,
+      });
+      drawOrientedEllipse(
+        updatedDonut.target.x,
+        updatedDonut.target.y,
+        updatedDonut.minRadiusX,
+        updatedDonut.minRadiusY,
+      );
+      drawOrientedEllipse(
+        updatedDonut.target.x,
+        updatedDonut.target.y,
+        updatedDonut.maxRadiusX,
+        updatedDonut.maxRadiusY,
+      );
+
+      // Target marker
+      this.castAimOverlay
+        .circle(updatedDonut.target.x, updatedDonut.target.y, 3)
+        .fill({ color: 0xffffff });
+
+      if (updatedDonut.phase === "oscillate") {
+        this.castAimOverlay.setStrokeStyle({
+          width: 2,
+          color: 0xffd700,
+          alpha: 0.9,
+        });
+        drawOrientedEllipse(
+          updatedDonut.target.x,
+          updatedDonut.target.y,
+          updatedDonut.currentRadiusX,
+          updatedDonut.currentRadiusY,
+        );
+      }
+      return;
+    }
+
+    if (aimState && aimState.phase !== "idle") {
+      sessionState.resetCastAim();
+    }
+    if (donutAimState && donutAimState.phase !== "idle") {
+      sessionState.resetDonutAim();
+    }
+    this.castAimOverlay.clear();
   }
 
   resize(width, height) {

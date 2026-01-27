@@ -7,10 +7,17 @@ import * as PIXI from "pixi.js";
 import { isQuadrantAccessible } from "../mechanics/castMechanics.js";
 import {
   WORLD_Z,
+  WORLD_Y,
   createViewport,
   getSurfaceScreenBounds,
+  getWorldDirectionScreenAngle,
+  screenToWorld,
+  worldToScreen,
 } from "../mechanics/worldConstants.js";
 import { computeCastTargetScreen } from "../mechanics/castAimUtils.js";
+import {
+  getCastingEquipmentById,
+} from "../data/castingEquipmentDatabase.js";
 
 export class InputManager {
   constructor(
@@ -119,17 +126,15 @@ export class InputManager {
       this.activePointerId = null;
       return;
     }
-
-    const quadrant = this.getQuadrantFromPosition(x, y);
-    if (quadrant === null) return;
-
-    // Check if quadrant is accessible
-    const equipment = this.gameStore?.getState().equipment;
-    if (!isQuadrantAccessible(quadrant, equipment?.lineLength || 8)) {
-      // Show access message using messageAnimations
-      this.showAccessMessageAtPosition(x, y);
+    if (castMode === "donut") {
+      this.activePointerId = event.pointerId;
+      this.handleDonutAimClick(x, y);
+      this.activePointerId = null;
       return;
     }
+
+    const quadrant = this.getCastQuadrantIfAccessible(x, y);
+    if (quadrant === null) return;
 
     this.activePointerId = event.pointerId;
     this.isCasting = true;
@@ -199,9 +204,14 @@ export class InputManager {
       const sessionState = this.sessionStore?.getState();
       const currentMode = sessionState?.castInputMode || "click";
       const nextMode =
-        currentMode === "click" ? "direction_power" : "click";
+        currentMode === "click"
+          ? "direction_power"
+          : currentMode === "direction_power"
+            ? "donut"
+            : "click";
       this.sessionStore?.getState().setCastInputMode(nextMode);
       this.sessionStore?.getState().resetCastAim();
+      this.sessionStore?.getState().resetDonutAim();
       console.log(`[CAST MODE] Set to ${nextMode}`);
       return;
     }
@@ -353,18 +363,11 @@ export class InputManager {
         aimState.power,
         viewport,
       );
-      const quadrant = this.getQuadrantFromPosition(
+      const quadrant = this.getCastQuadrantIfAccessible(
         targetScreen.x,
         targetScreen.y,
       );
       if (quadrant === null) {
-        sessionState.resetCastAim();
-        return;
-      }
-
-      const equipment = this.gameStore?.getState().equipment;
-      if (!isQuadrantAccessible(quadrant, equipment?.lineLength || 8)) {
-        this.showAccessMessageAtPosition(targetScreen.x, targetScreen.y);
         sessionState.resetCastAim();
         return;
       }
@@ -383,29 +386,191 @@ export class InputManager {
     }
   }
 
-  getQuadrantFromPosition(x, y) {
+  handleDonutAimClick(x, y) {
+    const sessionState = this.sessionStore?.getState();
+    if (!sessionState) return;
+
+    const donutAimState = sessionState.donutAimState;
+    if (donutAimState.phase === "idle") {
+      if (!this.isWithinWaterSurface(x, y)) {
+        return;
+      }
+      const equipmentId =
+        this.gameStore?.getState().selectedCastingEquipmentId;
+      const equipment = getCastingEquipmentById(equipmentId);
+      sessionState.startDonutAim(
+        { x, y },
+        equipment.minAccuracyRadius,
+        equipment.maxAccuracyRadius,
+        equipment.aspectRatioX,
+        equipment.aspectRatioY,
+      );
+      return;
+    }
+
+    if (donutAimState.phase === "target") {
+      if (!this.isWithinWaterSurface(x, y)) {
+        return;
+      }
+      sessionState.startDonutOscillation();
+      return;
+    }
+
+    if (donutAimState.phase === "oscillate") {
+      if (this.isCasting) return;
+
+      const target = donutAimState.target;
+      if (!target) {
+        sessionState.resetDonutAim();
+        return;
+      }
+      if (!this.isWithinWaterSurface(target.x, target.y)) {
+        sessionState.resetDonutAim();
+        return;
+      }
+
+      const minRadius = donutAimState.minRadius;
+      const maxRadius = Math.max(
+        donutAimState.currentRadius,
+        donutAimState.minRadius,
+      );
+      const aspectRatioX = donutAimState.aspectRatioX ?? 1;
+      const aspectRatioY = donutAimState.aspectRatioY ?? 1;
+      const viewport = createViewport(
+        this.app.screen.width,
+        this.app.screen.height,
+      );
+      const avatarWorld = { x: 0, y: WORLD_Y.AVATAR };
+      const targetWorld = screenToWorld(
+        target.x,
+        target.y,
+        WORLD_Z.WATER_SURFACE,
+        viewport,
+      );
+      const orientation = getWorldDirectionScreenAngle(
+        avatarWorld,
+        targetWorld,
+        WORLD_Z.WATER_SURFACE,
+        viewport,
+      );
+      const cosOrientation = Math.cos(orientation);
+      const sinOrientation = Math.sin(orientation);
+      let targetX = null;
+      let targetY = null;
+      for (let attempt = 0; attempt < 10; attempt += 1) {
+        const angle = Math.random() * Math.PI * 2;
+        const radius = Math.sqrt(
+          Math.random() * (maxRadius ** 2 - minRadius ** 2) + minRadius ** 2,
+        );
+        const localX = radius * Math.cos(angle) * aspectRatioX;
+        const localY = radius * Math.sin(angle) * aspectRatioY;
+        const rotatedX = localX * cosOrientation - localY * sinOrientation;
+        const rotatedY = localX * sinOrientation + localY * cosOrientation;
+        const candidateX = target.x + rotatedX;
+        const candidateY = target.y + rotatedY;
+        if (this.isWithinWaterSurface(candidateX, candidateY)) {
+          targetX = candidateX;
+          targetY = candidateY;
+          break;
+        }
+      }
+      if (targetX === null || targetY === null) {
+        sessionState.resetDonutAim();
+        return;
+      }
+      const quadrant = this.getCastQuadrantIfAccessible(targetX, targetY);
+      if (quadrant === null) {
+        sessionState.resetDonutAim();
+        return;
+      }
+
+      sessionState.lockDonutAim();
+      sessionState.resetDonutAim();
+      this.isCasting = true;
+      if (this.onCast) {
+        this.onCast(targetX, targetY, quadrant).finally(() => {
+          this.isCasting = false;
+          this.activePointerId = null;
+        });
+      } else {
+        this.isCasting = false;
+        this.activePointerId = null;
+      }
+    }
+  }
+
+  isWithinWaterSurface(x, y) {
+    const viewport = createViewport(
+      this.app.screen.width,
+      this.app.screen.height,
+    );
+    const waterBounds = getSurfaceScreenBounds(WORLD_Z.WATER_SURFACE, viewport);
+    return (
+      x >= 0 &&
+      x <= this.app.screen.width &&
+      y >= waterBounds.top &&
+      y <= waterBounds.bottom
+    );
+  }
+
+  getCastQuadrantIfAccessible(x, y) {
+    const quadrant = this.getQuadrantFromPosition(x, y);
+    if (quadrant === null) return null;
+
+    const equipment = this.gameStore?.getState().equipment;
+    if (!isQuadrantAccessible(quadrant, equipment?.lineLength || 8)) {
+      this.showAccessMessageAtPosition(x, y);
+      return null;
+    }
+
+    return quadrant;
+  }
+
+  getQuadrantFromPosition(x, y, inputPlane = "waterSurface") {
     // Quadrants only exist on the riverbed (derived from world coordinates)
     const viewport = createViewport(
       this.app.screen.width,
       this.app.screen.height,
     );
+    const riverbedScreen =
+      inputPlane === "riverbed"
+        ? { x, y }
+        : this.getRiverbedScreenFromWaterScreen(x, y, viewport);
     const riverbedBounds = getSurfaceScreenBounds(WORLD_Z.RIVERBED, viewport);
 
     // Per diagram: riverbed is at Z=0, from riverbedBounds.top to riverbedBounds.bottom
     const riverbedStartY = riverbedBounds.top;
-    if (y < riverbedStartY) return null; // Above riverbed, no quadrants
+    if (riverbedScreen.y < riverbedStartY) return null; // Above riverbed, no quadrants
 
     const riverbedHeight = riverbedBounds.bottom - riverbedBounds.top;
     const quadrantWidth = this.app.screen.width / 3;
     const quadrantHeight = riverbedHeight / 3;
 
-    const col = Math.floor(x / quadrantWidth);
-    const row = Math.floor((y - riverbedStartY) / quadrantHeight);
+    const col = Math.floor(riverbedScreen.x / quadrantWidth);
+    const row = Math.floor(
+      (riverbedScreen.y - riverbedStartY) / quadrantHeight,
+    );
 
     if (col < 0 || col > 2 || row < 0 || row > 2) return null;
 
     // Map to quadrant numbers (1-9)
     return row * 3 + col + 1;
+  }
+
+  getRiverbedScreenFromWaterScreen(x, y, viewport = null) {
+    const resolvedViewport =
+      viewport ||
+      createViewport(this.app.screen.width, this.app.screen.height);
+    const waterWorld = screenToWorld(
+      x,
+      y,
+      WORLD_Z.WATER_SURFACE,
+      resolvedViewport,
+    );
+    return worldToScreen(
+      { x: waterWorld.x, y: waterWorld.y, z: WORLD_Z.RIVERBED },
+      resolvedViewport,
+    );
   }
 
   /**

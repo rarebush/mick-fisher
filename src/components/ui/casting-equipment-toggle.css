@@ -1,0 +1,56 @@
+.casting-equipment-bar {
+  position: absolute;
+  top: 16px;
+  left: 16px;
+  z-index: 900;
+  display: flex;
+  gap: 10px;
+  font-size: 12px;
+}
+
+.casting-equipment-toggle,
+.casting-mode-display {
+  background: rgba(0, 0, 0, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.casting-equipment-title {
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.casting-equipment-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.casting-mode-buttons {
+  display: flex;
+  gap: 6px;
+}
+
+.equipment-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: #ffffff;
+  border-radius: 4px;
+  padding: 4px 8px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: background 0.2s, border-color 0.2s;
+}
+
+.equipment-btn:hover {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+.equipment-btn.active {
+  background: rgba(0, 194, 255, 0.25);
+  border-color: rgba(0, 194, 255, 0.6);
+}

@@ -17,6 +17,25 @@ const DEFAULT_CAST_AIM_STATE = {
   lastUpdate: 0,
 };
 
+const DEFAULT_DONUT_AIM_STATE = {
+  phase: "idle", // idle | target | oscillate | locked
+  target: null, // { x, y }
+  minRadius: 0,
+  maxRadius: 0,
+  currentRadius: 0,
+  minRadiusX: 0,
+  minRadiusY: 0,
+  maxRadiusX: 0,
+  maxRadiusY: 0,
+  currentRadiusX: 0,
+  currentRadiusY: 0,
+  aspectRatioX: 1,
+  aspectRatioY: 1,
+  radiusDir: 1,
+  radiusSpeed: 80, // pixels/sec
+  lastUpdate: 0,
+};
+
 const useSessionStore = create((set, get) => ({
   // Session timing
   sessionTimeRemaining: 600, // 10 minutes in seconds
@@ -57,8 +76,9 @@ const useSessionStore = create((set, get) => ({
   phase: "idle", // Current phase: 'idle', 'cast', 'drag', 'lift'
   phaseProgress: 0, // Phase completion (0 to 1)
   castPosition: null, // Cast landing position (set before drag starts, for rope rendering)
-  castInputMode: "click", // click | direction_power
+  castInputMode: "click", // click | direction_power | donut
   castAimState: { ...DEFAULT_CAST_AIM_STATE },
+  donutAimState: { ...DEFAULT_DONUT_AIM_STATE },
 
   // Actions - Session Control
   startSession: () => {
@@ -311,6 +331,79 @@ const useSessionStore = create((set, get) => ({
       castAimState: { ...DEFAULT_CAST_AIM_STATE },
     }),
 
+  startDonutAim: (target, minRadius, maxRadius, aspectRatioX, aspectRatioY) =>
+    set({
+      donutAimState: {
+        ...DEFAULT_DONUT_AIM_STATE,
+        phase: "target",
+        target,
+        minRadius,
+        maxRadius,
+        currentRadius: minRadius,
+        minRadiusX: minRadius * (aspectRatioX ?? 1),
+        minRadiusY: minRadius * (aspectRatioY ?? 1),
+        maxRadiusX: maxRadius * (aspectRatioX ?? 1),
+        maxRadiusY: maxRadius * (aspectRatioY ?? 1),
+        currentRadiusX: minRadius * (aspectRatioX ?? 1),
+        currentRadiusY: minRadius * (aspectRatioY ?? 1),
+        aspectRatioX: aspectRatioX ?? 1,
+        aspectRatioY: aspectRatioY ?? 1,
+        lastUpdate: performance.now(),
+      },
+    }),
+
+  startDonutOscillation: () =>
+    set((state) => ({
+      donutAimState: {
+        ...state.donutAimState,
+        phase: "oscillate",
+        lastUpdate: performance.now(),
+      },
+    })),
+
+  lockDonutAim: () =>
+    set((state) => ({
+      donutAimState: {
+        ...state.donutAimState,
+        phase: "locked",
+        lastUpdate: performance.now(),
+      },
+    })),
+
+  resetDonutAim: () =>
+    set({
+      donutAimState: { ...DEFAULT_DONUT_AIM_STATE },
+    }),
+
+  updateDonutAim: (deltaTime) =>
+    set((state) => {
+      const aim = state.donutAimState;
+      if (aim.phase !== "oscillate") return {};
+
+      let currentRadius =
+        aim.currentRadius + aim.radiusDir * aim.radiusSpeed * deltaTime;
+      let radiusDir = aim.radiusDir;
+
+      if (currentRadius > aim.maxRadius) {
+        currentRadius = aim.maxRadius;
+        radiusDir = -1;
+      } else if (currentRadius < aim.minRadius) {
+        currentRadius = aim.minRadius;
+        radiusDir = 1;
+      }
+
+      return {
+        donutAimState: {
+          ...aim,
+          currentRadius,
+          currentRadiusX: currentRadius * aim.aspectRatioX,
+          currentRadiusY: currentRadius * aim.aspectRatioY,
+          radiusDir,
+          lastUpdate: performance.now(),
+        },
+      };
+    }),
+
   updateCastAim: (deltaTime) =>
     set((state) => {
       const aim = state.castAimState;
@@ -393,6 +486,7 @@ const useSessionStore = create((set, get) => ({
       phaseProgress: 0,
       castInputMode: "click",
       castAimState: { ...DEFAULT_CAST_AIM_STATE },
+      donutAimState: { ...DEFAULT_DONUT_AIM_STATE },
       dragState: {
         active: false,
         tension: 0,

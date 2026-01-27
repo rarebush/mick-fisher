@@ -8,6 +8,12 @@ import {
   createPlaceholderSprite,
   createMagnetSprite,
 } from "../graphics/placeholderSprites.js";
+import {
+  createViewport,
+  getWorldDirectionScreenAngle,
+  WORLD_Y,
+  WORLD_Z,
+} from "../mechanics/worldConstants.js";
 import useMagnetStore from "../state/magnetStore.js";
 
 export class SpriteManager {
@@ -33,6 +39,10 @@ export class SpriteManager {
     if (!this.itemSprite && item) {
       this.itemSprite = createPlaceholderSprite(item.category);
       this.itemSprite.scale.set(2); // Make it bigger for visibility
+      this.itemSprite.pivot.set(
+        this.itemSprite.width / 2,
+        this.itemSprite.height / 2,
+      );
       this.app.stage.addChild(this.itemSprite);
     }
 
@@ -40,6 +50,10 @@ export class SpriteManager {
     if (!this.magnetSprite) {
       this.magnetSprite = createMagnetSprite();
       this.magnetSprite.scale.set(2);
+      this.magnetSprite.pivot.set(
+        this.magnetSprite.width / 2,
+        this.magnetSprite.height / 2,
+      );
       this.app.stage.addChild(this.magnetSprite);
     }
 
@@ -60,20 +74,53 @@ export class SpriteManager {
 
     // Update positions
     if (this.itemSprite) {
-      this.itemSprite.x = itemPos.x - this.itemSprite.width / 2;
-      this.itemSprite.y = itemPos.y - this.itemSprite.height / 2;
+      this.itemSprite.x = itemPos.x;
+      this.itemSprite.y = itemPos.y;
     }
 
     if (this.magnetSprite) {
       // Magnet positioned above the item
-      this.magnetSprite.x = itemPos.x - this.magnetSprite.width / 2;
-      this.magnetSprite.y = itemPos.y - this.magnetSprite.height - 5;
+      this.magnetSprite.x = itemPos.x;
+      this.magnetSprite.y = itemPos.y - this.magnetSprite.height / 2 - 5;
+    }
+
+    if (magnetWorld) {
+      const viewport = createViewport(
+        this.app.screen.width,
+        this.app.screen.height,
+      );
+      const avatarWorld = { x: 0, y: WORLD_Y.AVATAR };
+      const planeZ = magnetWorld.z ?? WORLD_Z.RIVERBED;
+      const orientation = getWorldDirectionScreenAngle(
+        magnetWorld,
+        avatarWorld,
+        planeZ,
+        viewport,
+      );
+      if (this.itemSprite) {
+        this.itemSprite.rotation = orientation;
+      }
+      if (this.magnetSprite) {
+        this.magnetSprite.rotation = orientation + Math.PI / 2;
+      }
     }
 
     // Update debug text with world coordinates
     if (this.magnetDebugText && magnetWorld) {
       const peaks = useMagnetStore.getState().getPeakValues();
-      this.magnetDebugText.text = `Magnet World:\nX: ${magnetWorld.x.toFixed(2)} (max: ${peaks.maxX.toFixed(2)})\nY: ${magnetWorld.y.toFixed(2)} (max: ${peaks.maxY.toFixed(2)})\nZ: ${magnetWorld.z.toFixed(2)} (max: ${peaks.maxZ.toFixed(2)})`;
+      const peakX =
+        peaks && Math.abs(peaks.maxX) >= Math.abs(peaks.minX)
+          ? peaks.maxX
+          : peaks?.minX;
+      const peakY =
+        peaks && Math.abs(peaks.maxY) >= Math.abs(peaks.minY)
+          ? peaks.maxY
+          : peaks?.minY;
+      const peakZ =
+        peaks && Math.abs(peaks.maxZ) >= Math.abs(peaks.minZ)
+          ? peaks.maxZ
+          : peaks?.minZ;
+      this.magnetDebugText.text = `Magnet World:\nX: ${magnetWorld.x.toFixed(2)} (peak: ${peakX?.toFixed(2) ?? "n/a"})\nY: ${magnetWorld.y.toFixed(2)} (peak: ${peakY?.toFixed(2) ?? "n/a"})\nZ: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
       // Position debug text static in bottom-left corner
       this.magnetDebugText.x = 10;
       this.magnetDebugText.y = this.app.screen.height - 80;
