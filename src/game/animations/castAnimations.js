@@ -20,6 +20,11 @@ import {
 import { calculateRopeSegments } from "../mechanics/heightMechanics.js";
 import { createMagnetSprite } from "../graphics/placeholderSprites.js";
 import useMagnetStore from "../state/magnetStore.js";
+import {
+  SEGMENTED_ROPE_CONFIG,
+  renderSegmentedRopeOverlay,
+  resetCornerBlend,
+} from "./segmentedRopeOverlay.js";
 
 /**
  * Animate casting line from shore to target position with 3D rope physics
@@ -58,6 +63,8 @@ export function animateCastLine(
       sessionStore.getState().setPhaseProgress(0);
       sessionStore.getState().setCastPosition(null, null);
     }
+
+    resetCornerBlend();
 
     // ===========================================
     // CREATE VIEWPORT - maps world units to screen pixels
@@ -622,6 +629,7 @@ export function render3DRopeWithViewport(
   rope3D,
   viewport,
   waterSurfaceScreenY,
+  options = {},
 ) {
   if (!line || !rope3D || line.destroyed) {
     return;
@@ -687,6 +695,25 @@ export function render3DRopeWithViewport(
       .circle(surfaceScreen.x, surfaceScreen.y, 4)
       .stroke({ width: 2, color: 0x00c2ff });
   }
+
+  const tension =
+    Number.isFinite(options?.tension) && options.tension !== null
+      ? options.tension
+      : rope3D.tension ?? 50;
+  const castOrigin = {
+    x: worldPoints[0].pos.x,
+    y: worldPoints[0].pos.y + SEGMENTED_ROPE_CONFIG.castOriginYOffset,
+    z: worldPoints[0].pos.z,
+  };
+  const magnetWorld = worldPoints[worldPoints.length - 1].pos;
+
+  renderSegmentedRopeOverlay(
+    line,
+    castOrigin,
+    magnetWorld,
+    tension,
+    viewport,
+  );
 }
 
 
@@ -711,6 +738,7 @@ export function animateReelIn(
       return;
     }
 
+    resetCornerBlend();
     const rope3D = sessionStore?.getState().rope;
     if (!rope3D) {
       // No 3D rope, just clean up
@@ -807,7 +835,9 @@ export function animateReelIn(
       rope3D.update(deltaTime, avatarWorld, magnetWorld);
 
       // Render rope with viewport projection
-      render3DRopeWithViewport(line, rope3D, viewport, waterSurfaceScreenY);
+      render3DRopeWithViewport(line, rope3D, viewport, waterSurfaceScreenY, {
+        tension: 80,
+      });
 
       if (progress >= 1) {
         // Reel complete - clean up rope and graphics
