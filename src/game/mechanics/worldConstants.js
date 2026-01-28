@@ -30,7 +30,14 @@ export const WORLD_Z = {
   RIVERBED: 0, // Ground level - items rest here
   WATER_SURFACE: 1, // Top of water
   WALKWAY: 3, // Pier/walkway surface where avatar stands
+  AVATAR_FEET: 3, // Avatar feet position (same as walkway surface)
   AVATAR_HAND: 4.2, // Avatar's hand when holding rod (above walkway)
+};
+
+export const AVATAR_CAST_OFFSET = {
+  x: 0,
+  y: 0,
+  z: WORLD_Z.AVATAR_HAND - WORLD_Z.AVATAR_FEET,
 };
 
 // =============================================================================

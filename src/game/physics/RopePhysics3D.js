@@ -15,6 +15,8 @@
  * @see worldConstants.js for projection utilities
  */
 
+import { WORLD_Y, WORLD_Z } from "../mechanics/worldConstants.js";
+
 /**
  * RopePoint3D - Individual point in the rope
  * Positions are in world space (X, Y depth, Z height)
@@ -277,6 +279,7 @@ export class Rope3D {
       const baseIterations = substeps === 2 ? 6 : 8;
       for (let iteration = 0; iteration < baseIterations; iteration++) {
         this.applyConstraints(subDeltaTime);
+        this.applyPierCollision(); // Clamp rope at wall/walkway corner
         this.applyGroundCollision(); // Prevent rope from going below riverbed
       }
 
@@ -294,6 +297,7 @@ export class Rope3D {
 
           for (let iteration = 0; iteration < extraIterations; iteration++) {
             this.applyConstraints(subDeltaTime);
+            this.applyPierCollision();
             this.applyGroundCollision();
           }
 
@@ -420,6 +424,39 @@ export class Rope3D {
         point.oldPos.y = point.pos.y - vy * FRICTION;
 
         // Zero out vertical velocity (no bouncing)
+        point.oldPos.z = point.pos.z;
+      }
+    }
+  }
+
+  /**
+   * Apply pier collision constraint
+   * Prevents rope points from going behind the wall or below the walkway.
+   */
+  applyPierCollision() {
+    const WALL_Y = WORLD_Y.WALKWAY_FRONT;
+    const WALKWAY_Z = WORLD_Z.WALKWAY;
+    const FRICTION = 0.0;
+
+    for (let i = 0; i < this.points.length; i++) {
+      const point = this.points[i];
+
+      // Skip pinned endpoints (they're controlled by game state)
+      if (point.pinned) continue;
+
+      if (point.pos.y < WALL_Y && point.pos.z < WALKWAY_Z) {
+        // Clamp to the corner edge at the wall/walkway intersection.
+        point.pos.y = WALL_Y;
+        point.pos.z = WALKWAY_Z;
+
+        const vx = point.pos.x - point.oldPos.x;
+        const vy = point.pos.y - point.oldPos.y;
+
+        // Reduce horizontal velocity by friction factor
+        point.oldPos.x = point.pos.x - vx * FRICTION;
+        point.oldPos.y = point.pos.y - vy * FRICTION;
+
+        // Zero vertical velocity (no bouncing)
         point.oldPos.z = point.pos.z;
       }
     }

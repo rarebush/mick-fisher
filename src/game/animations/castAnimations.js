@@ -16,6 +16,7 @@ import {
   worldToScreen,
   screenToWorld,
   lerp,
+  AVATAR_CAST_OFFSET,
 } from "../mechanics/worldConstants.js";
 import { calculateRopeSegments } from "../mechanics/heightMechanics.js";
 import { createMagnetSprite } from "../graphics/placeholderSprites.js";
@@ -649,51 +650,53 @@ export function render3DRopeWithViewport(
   }
 
   line.clear();
-  line.setStrokeStyle({ width: 3, color: 0x8b4513 });
-  line.moveTo(screenPoints[0].x, screenPoints[0].y);
+  if (SEGMENTED_ROPE_CONFIG.showPhysicsRope) {
+    line.setStrokeStyle({ width: 3, color: 0x8b4513 });
+    line.moveTo(screenPoints[0].x, screenPoints[0].y);
 
-  for (let i = 1; i < screenPoints.length; i++) {
-    const point = screenPoints[i];
+    for (let i = 1; i < screenPoints.length; i++) {
+      const point = screenPoints[i];
 
-    // Fade underwater portions
-    if (point.y > waterSurfaceScreenY) {
-      line.setStrokeStyle({ width: 3, color: 0x8b4513, alpha: 0.6 });
+      // Fade underwater portions
+      if (point.y > waterSurfaceScreenY) {
+        line.setStrokeStyle({ width: 3, color: 0x8b4513, alpha: 0.6 });
+      }
+
+      line.lineTo(point.x, point.y);
     }
 
-    line.lineTo(point.x, point.y);
-  }
+    line.stroke();
 
-  line.stroke();
+    // Mark rope intersection with water surface (first crossing)
+    let surfacePoint = null;
+    for (let i = 1; i < worldPoints.length; i++) {
+      const p1 = worldPoints[i - 1].pos;
+      const p2 = worldPoints[i].pos;
+      const dz1 = p1.z - waterSurfaceZ;
+      const dz2 = p2.z - waterSurfaceZ;
 
-  // Mark rope intersection with water surface (first crossing)
-  let surfacePoint = null;
-  for (let i = 1; i < worldPoints.length; i++) {
-    const p1 = worldPoints[i - 1].pos;
-    const p2 = worldPoints[i].pos;
-    const dz1 = p1.z - waterSurfaceZ;
-    const dz2 = p2.z - waterSurfaceZ;
+      if (dz1 === 0) {
+        surfacePoint = p1;
+        break;
+      }
 
-    if (dz1 === 0) {
-      surfacePoint = p1;
-      break;
+      if (dz1 * dz2 < 0) {
+        const t = (waterSurfaceZ - p1.z) / (p2.z - p1.z);
+        surfacePoint = {
+          x: p1.x + (p2.x - p1.x) * t,
+          y: p1.y + (p2.y - p1.y) * t,
+          z: waterSurfaceZ,
+        };
+        break;
+      }
     }
 
-    if (dz1 * dz2 < 0) {
-      const t = (waterSurfaceZ - p1.z) / (p2.z - p1.z);
-      surfacePoint = {
-        x: p1.x + (p2.x - p1.x) * t,
-        y: p1.y + (p2.y - p1.y) * t,
-        z: waterSurfaceZ,
-      };
-      break;
+    if (surfacePoint) {
+      const surfaceScreen = worldToScreen(surfacePoint, viewport);
+      line
+        .circle(surfaceScreen.x, surfaceScreen.y, 4)
+        .stroke({ width: 2, color: 0x00c2ff });
     }
-  }
-
-  if (surfacePoint) {
-    const surfaceScreen = worldToScreen(surfacePoint, viewport);
-    line
-      .circle(surfaceScreen.x, surfaceScreen.y, 4)
-      .stroke({ width: 2, color: 0x00c2ff });
   }
 
   const tension =
@@ -701,11 +704,17 @@ export function render3DRopeWithViewport(
       ? options.tension
       : rope3D.tension ?? 50;
   const castOrigin = {
-    x: worldPoints[0].pos.x,
-    y: worldPoints[0].pos.y + SEGMENTED_ROPE_CONFIG.castOriginYOffset,
-    z: worldPoints[0].pos.z,
+    x: AVATAR_CAST_OFFSET.x,
+    y:
+      WORLD_Y.AVATAR +
+      AVATAR_CAST_OFFSET.y +
+      SEGMENTED_ROPE_CONFIG.castOriginYOffset,
+    z: WORLD_Z.AVATAR_FEET + AVATAR_CAST_OFFSET.z,
   };
-  const magnetWorld = worldPoints[worldPoints.length - 1].pos;
+  const magnetStore = useMagnetStore.getState();
+  const trackedMagnetWorld = magnetStore?.getMagnetWorld?.();
+  const magnetWorld =
+    trackedMagnetWorld ?? worldPoints[worldPoints.length - 1].pos;
 
   renderSegmentedRopeOverlay(
     line,
