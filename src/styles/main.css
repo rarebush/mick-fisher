@@ -2,6 +2,12 @@
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+  -webkit-touch-callout: none;
+  -webkit-user-select: none;
+  user-select: none;
+  -ms-user-select: none;
+  -webkit-user-drag: none;
 }
 
 body {
@@ -10,11 +16,6 @@ body {
   background: #1a1a1a;
   color: #ffffff;
   overflow: hidden;
-  -webkit-touch-callout: none;
-  -webkit-tap-highlight-color: transparent;
-  user-select: none;
-  -webkit-user-select: none;
-  -ms-user-select: none;
 }
 
 .app {
