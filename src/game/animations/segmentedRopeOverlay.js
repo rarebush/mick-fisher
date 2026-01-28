@@ -15,9 +15,21 @@ export const SEGMENTED_ROPE_CONFIG = {
   curveSamples: 10,
   overlayColor: 0xffd200,
   overlayWidth: 2,
-  cornerBlendMs: 160,
-  cornerLeadStrength: 0.6,
+  showPhysicsRope: true,
+  // Time (ms) for the corner blend to ease 0 -> 1 (and back).
+  // Smaller = faster snap to the corner; larger = slower transition.
+  cornerBlendMs: 2000,
+  // Reference distance (world units, XY) used to scale cornerBlendMs.
+  cornerBlendDistanceReference: 1.5,
+  // Clamp for the distance-based time scaling.
+  cornerBlendDistanceScaleMin: 0.6,
+  cornerBlendDistanceScaleMax: 3.0,
+  // Distance (world Y) over which the corner blend ramps based on magnet position.
+  cornerBlendDistance: 1.0,
+  cornerLeadStrength: 0.5,
+  cornerLeadMaxOffset: 11.0,
   cornerLeadFadeDistance: 1.2,
+  cornerLeadSmoothing: 0.2,
   debug: {
     drawWaypoints: true,
     drawWaterEntry: true,
@@ -30,7 +42,6 @@ const SEGMENT_EPSILON = 1e-4;
 let cornerBlend = 0;
 let lastCornerBlendTime = null;
 let cornerLeadX = null;
-let lastCornerTargetX = null;
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
@@ -40,7 +51,6 @@ export const resetCornerBlend = () => {
   cornerBlend = 0;
   lastCornerBlendTime = null;
   cornerLeadX = null;
-  lastCornerTargetX = null;
 };
 
 const areWorldPointsNear = (a, b, epsilon = SEGMENT_EPSILON) => {
@@ -118,11 +128,14 @@ const computeSegmentedRope = (
   magnetWorld,
   tension,
   cornerBlendValue,
+  cornerDistanceBlend,
   viewport,
 ) => {
   if (!castOrigin || !magnetWorld) {
     return { waypoints: [], segments: [] };
   }
+
+  const ropeEnd = magnetWorld;
 
   const waypoints = [];
   const pushWaypoint = (point) => {
@@ -139,41 +152,90 @@ const computeSegmentedRope = (
     const lineCorner =
       computeLinePlaneIntersection(
         castOrigin,
-        magnetWorld,
+        ropeEnd,
         WORLD_Y.WALKWAY_FRONT,
         "y",
         true,
-      ) ?? {
-        x: castOrigin.x,
-        y: WORLD_Y.WALKWAY_FRONT,
-        z: castOrigin.z,
+      );
+    if (lineCorner) {
+      if (viewport) {
+        lineCorner.x = clamp(lineCorner.x, viewport.worldXMin, viewport.worldXMax);
+      }
+      const distToCornerXY = Math.hypot(
+        lineCorner.x - castOrigin.x,
+        lineCorner.y - castOrigin.y,
+      );
+      const distToMagnetXY = Math.hypot(
+        ropeEnd.x - castOrigin.x,
+        ropeEnd.y - castOrigin.y,
+      );
+      const cornerReach =
+        distToCornerXY > SEGMENT_EPSILON
+          ? clamp(distToMagnetXY / distToCornerXY, 0, 1)
+          : 1;
+      const baseCorner = {
+        x: lerp(castOrigin.x, lineCorner.x, cornerReach),
+        y: lerp(castOrigin.y, lineCorner.y, cornerReach),
+        z: lerp(castOrigin.z, lineCorner.z, cornerReach),
       };
-    if (viewport) {
-      lineCorner.x = clamp(lineCorner.x, viewport.worldXMin, viewport.worldXMax);
+      if (cornerReach >= 1 - SEGMENT_EPSILON) {
+        const leadDistance = Math.max(
+          SEGMENTED_ROPE_CONFIG.cornerLeadFadeDistance,
+          SEGMENT_EPSILON,
+        );
+        const leadScale = clamp(Math.abs(magnetWorld.x) / leadDistance, 0, 1);
+        const leadStrength = Math.max(
+          0,
+          SEGMENTED_ROPE_CONFIG.cornerLeadStrength,
+        );
+        const targetCornerX = lineCorner.x;
+        const leadOffsetRaw =
+          (castOrigin.x - targetCornerX) * leadStrength * leadScale;
+        const leadOffset = clamp(
+          leadOffsetRaw,
+          -SEGMENTED_ROPE_CONFIG.cornerLeadMaxOffset,
+          SEGMENTED_ROPE_CONFIG.cornerLeadMaxOffset,
+        );
+        const leadTargetX = targetCornerX + leadOffset;
+        const leadSmoothing = clamp(
+          SEGMENTED_ROPE_CONFIG.cornerLeadSmoothing ?? 0.2,
+          0,
+          1,
+        );
+        cornerLeadX = Number.isFinite(cornerLeadX)
+          ? lerp(cornerLeadX, leadTargetX, leadSmoothing)
+          : leadTargetX;
+        const cornerX = lerp(
+          lineCorner.x,
+          Number.isFinite(cornerLeadX) ? cornerLeadX : lineCorner.x,
+          cornerDistanceBlend,
+        );
+        const targetCornerZ = lerp(
+          lineCorner.z,
+          WORLD_Z.WALKWAY,
+          cornerBlendValue,
+        );
+        const cornerZ = Math.max(
+          WORLD_Z.WALKWAY,
+          lerp(lineCorner.z, targetCornerZ, cornerDistanceBlend),
+        );
+        const pierCorner = {
+          x: viewport
+            ? clamp(cornerX, viewport.worldXMin, viewport.worldXMax)
+            : cornerX,
+          y: WORLD_Y.WALKWAY_FRONT,
+          z: cornerZ,
+        };
+        pushWaypoint(pierCorner);
+      } else {
+        pushWaypoint(baseCorner);
+      }
     }
-    const leadDistance = Math.max(
-      SEGMENTED_ROPE_CONFIG.cornerLeadFadeDistance,
-      SEGMENT_EPSILON,
-    );
-    const leadScale = clamp(Math.abs(magnetWorld.x) / leadDistance, 0, 1);
-    const leadStrength = clamp(SEGMENTED_ROPE_CONFIG.cornerLeadStrength, 0, 1);
-    const targetCornerX = lineCorner.x;
-    const deltaX = Number.isFinite(lastCornerTargetX)
-      ? targetCornerX - lastCornerTargetX
-      : 0;
-    cornerLeadX = targetCornerX + deltaX * leadStrength * leadScale;
-    lastCornerTargetX = targetCornerX;
-    const pierCorner = {
-      x: Number.isFinite(cornerLeadX) ? cornerLeadX : lineCorner.x,
-      y: WORLD_Y.WALKWAY_FRONT,
-      z: lerp(lineCorner.z, WORLD_Z.WALKWAY, cornerBlendValue),
-    };
-    pushWaypoint(pierCorner);
   }
 
   const waterEntry = computeLinePlaneIntersection(
     waypoints[waypoints.length - 1],
-    magnetWorld,
+    ropeEnd,
     WORLD_Z.WATER_SURFACE,
     "z",
   );
@@ -181,7 +243,7 @@ const computeSegmentedRope = (
     pushWaypoint(waterEntry);
   }
 
-  pushWaypoint(magnetWorld);
+  pushWaypoint(ropeEnd);
 
   const segments = [];
   for (let i = 0; i < waypoints.length - 1; i += 1) {
@@ -212,23 +274,67 @@ export const renderSegmentedRopeOverlay = (
   lastCornerBlendTime = now;
   const shouldUseCorner =
     castOrigin.y < WORLD_Y.WALKWAY_FRONT - SEGMENT_EPSILON;
-  const blendDelta = SEGMENTED_ROPE_CONFIG.cornerBlendMs
-    ? deltaMs / SEGMENTED_ROPE_CONFIG.cornerBlendMs
+  // Time-based corner blend, scaled by origin->corner distance (XY).
+  let cornerTimeScale = 1;
+  if (shouldUseCorner && SEGMENTED_ROPE_CONFIG.cornerBlendMs) {
+    const lineCorner = computeLinePlaneIntersection(
+      castOrigin,
+      magnetWorld,
+      WORLD_Y.WALKWAY_FRONT,
+      "y",
+      true,
+    );
+    if (lineCorner) {
+      const cornerDistance = Math.hypot(
+        lineCorner.x - castOrigin.x,
+        lineCorner.y - castOrigin.y,
+      );
+      const referenceDistance = Math.max(
+        SEGMENTED_ROPE_CONFIG.cornerBlendDistanceReference ?? 1,
+        SEGMENT_EPSILON,
+      );
+      cornerTimeScale = clamp(
+        cornerDistance / referenceDistance,
+        SEGMENTED_ROPE_CONFIG.cornerBlendDistanceScaleMin ?? 1,
+        SEGMENTED_ROPE_CONFIG.cornerBlendDistanceScaleMax ?? 1,
+      );
+    }
+  }
+  const effectiveCornerBlendMs = SEGMENTED_ROPE_CONFIG.cornerBlendMs
+    ? SEGMENTED_ROPE_CONFIG.cornerBlendMs * cornerTimeScale
+    : 0;
+  const blendDelta = effectiveCornerBlendMs
+    ? deltaMs / effectiveCornerBlendMs
     : 1;
   if (shouldUseCorner) {
     cornerBlend = clamp(cornerBlend + blendDelta, 0, 1);
   } else {
     cornerBlend = clamp(cornerBlend - blendDelta, 0, 1);
     cornerLeadX = null;
-    lastCornerTargetX = null;
   }
   const easedCornerBlend = smoothstep01(cornerBlend);
+  // Distance-based corner blend (magnet Y vs walkway front).
+  const cornerDistanceBlend = SEGMENTED_ROPE_CONFIG.cornerBlendDistance
+    ? smoothstep01(
+        clamp(
+          (magnetWorld.y -
+            (WORLD_Y.WALKWAY_FRONT -
+              SEGMENTED_ROPE_CONFIG.cornerBlendDistance)) /
+            SEGMENTED_ROPE_CONFIG.cornerBlendDistance,
+          0,
+          1,
+        ),
+      )
+    : 1;
+  // Use the stricter of time or distance so both must progress.
+  const blendedCorner = Math.min(easedCornerBlend, cornerDistanceBlend);
 
   const { waypoints, segments, waterEntry } = computeSegmentedRope(
     castOrigin,
     magnetWorld,
     tension,
     easedCornerBlend,
+    blendedCorner,
     viewport,
   );
 
