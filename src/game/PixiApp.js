@@ -493,6 +493,7 @@ export class PixiApp {
         rope,
         viewport,
         waterSurfaceScreenY,
+        { tension },
       );
     }
   }

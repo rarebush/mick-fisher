@@ -62,6 +62,9 @@ export function getItemWorldPosition(app, sessionStore) {
     z: WORLD_Z.RIVERBED, // Always on riverbed during drag
   };
 
+  // Clamp item so it doesn't move past the riverwall while dragging.
+  itemWorld.y = Math.max(itemWorld.y, WORLD_Y.WALKWAY_FRONT);
+
   // Update magnet store with current position
   const magnetStore = useMagnetStore.getState();
   magnetStore.updateMagnetPosition(itemWorld.x, itemWorld.y, itemWorld.z);

@@ -44,7 +44,7 @@ export const WORLD_Y = {
   WALKWAY_BACK: -4, // Back edge of walkway (toward camera, fills screen top)
   WALKWAY_FRONT: 0, // Front edge of walkway (where avatar stands)
 
-  AVATAR: 0, // Avatar is at the front edge of walkway
+  AVATAR: -0.6, // Avatar is set back from the front edge
 
   // Wall is at the front edge, no Y depth (vertical surface)
   WALL_EDGE: 0, // Wall is at Y=0, spans Z from walkway to water
