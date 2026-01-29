@@ -13,6 +13,7 @@ import {
   renderRope as animationRenderRope,
   animateReelIn,
 } from "../animations/castAnimations.js";
+import { getSegmentedWaterEntryScreen } from "../animations/segmentedRopeOverlay.js";
 
 // Re-export renderRope for use by PixiApp
 export { animationRenderRope as renderRope };
@@ -329,6 +330,10 @@ export async function handleDragFailure(
   if (!stopPosition) return;
 
   // Animate rope reeling in from stop position back to player
+  const reelClipScreenY = Number.isFinite(getSegmentedWaterEntryScreen()?.y)
+    ? getSegmentedWaterEntryScreen().y
+    : null;
+
   if (line) {
     await animateReelIn(
       app,
@@ -342,6 +347,7 @@ export async function handleDragFailure(
       {
         hideUnderwaterSegments:
           gameStore?.getState()?.waterSurfaceOpaque ?? false,
+        reelClipScreenY,
       },
     );
   }

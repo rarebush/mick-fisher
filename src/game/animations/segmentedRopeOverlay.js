@@ -44,6 +44,7 @@ const SEGMENT_EPSILON = 1e-4;
 let cornerBlend = 0;
 let lastCornerBlendTime = null;
 let cornerLeadX = null;
+let lastWaterEntryScreen = null;
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
@@ -54,6 +55,8 @@ export const resetCornerBlend = () => {
   lastCornerBlendTime = null;
   cornerLeadX = null;
 };
+
+export const getSegmentedWaterEntryScreen = () => lastWaterEntryScreen;
 
 const areWorldPointsNear = (a, b, epsilon = SEGMENT_EPSILON) => {
   if (!a || !b) return false;
@@ -437,11 +440,15 @@ export const renderSegmentedRopeOverlay = (
     });
   }
 
-  if (SEGMENTED_ROPE_CONFIG.debug.drawWaterEntry && waterEntry) {
-    const entryScreen = worldToScreen(waterEntry, viewport);
+  if (waterEntry) {
+    lastWaterEntryScreen = worldToScreen(waterEntry, viewport);
+  } else {
+    lastWaterEntryScreen = null;
+  }
+  if (SEGMENTED_ROPE_CONFIG.debug.drawWaterEntry && lastWaterEntryScreen) {
     line
-      .circle(entryScreen.x, entryScreen.y, 4)
-      .stroke({ width: 2, color: 0x00c2ff, alpha: 0.9 });
+      .circle(lastWaterEntryScreen.x, lastWaterEntryScreen.y, 4)
+      .stroke({ width: 2, color: 0xffd200, alpha: 0.9 });
   }
 
   if (SEGMENTED_ROPE_CONFIG.debug.drawCornerLine) {
