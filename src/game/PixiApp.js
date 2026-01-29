@@ -18,6 +18,7 @@ import {
   setupWaterBackground,
   drawQuadrantGrid,
   setupEnvironmentLayers,
+  drawWaterSurface,
 } from "./rendering/sceneSetup.js";
 import { SpriteManager } from "./rendering/spriteManager.js";
 import { InputManager } from "./input/inputManager.js";
@@ -29,6 +30,7 @@ import {
 import { render3DRopeWithViewport } from "./animations/castAnimations.js";
 import {
   getItemPosition,
+  getItemWorldPosition,
   updateDragMechanics,
   updateRopePhysics,
 } from "./sequences/dragSequence.js";
@@ -81,6 +83,8 @@ export class PixiApp {
     // Environment layer references
     this.environmentLayers = null;
     this.sceneContainer = null;
+    this.gameStoreUnsubscribe = null;
+    this.spriteLayers = null;
 
     // Drag timing (for deltaTime calculations)
     this.lastDragUpdateTime = null;
@@ -167,9 +171,6 @@ export class PixiApp {
   async setupSceneInternal() {
     if (!this.app || this.isDestroyed) return;
 
-    // Initialize managers
-    this.spriteManager = new SpriteManager(this.app);
-
     // Setup tickers for continuous updates
     this.app.ticker.add(this.tickerUpdateSprites, this);
     this.app.ticker.add(this.tickerUpdateDragMechanics, this);
@@ -188,6 +189,35 @@ export class PixiApp {
       this.app.screen.width,
       this.app.screen.height,
     );
+
+    this.spriteLayers = {
+      underwater: new PIXI.Container(),
+      aboveWater: new PIXI.Container(),
+    };
+    const waterIndex = this.sceneContainer.getChildIndex(
+      this.environmentLayers.water,
+    );
+    this.sceneContainer.addChildAt(this.spriteLayers.underwater, waterIndex);
+    const gridIndex = this.sceneContainer.getChildIndex(
+      this.environmentLayers.gridLines,
+    );
+    this.sceneContainer.addChildAt(this.spriteLayers.aboveWater, gridIndex);
+
+    // Initialize managers
+    this.spriteManager = new SpriteManager(this.app, this.spriteLayers);
+
+    const initialWaterOpaque =
+      this.gameStore?.getState()?.waterSurfaceOpaque ?? false;
+    this.applyWaterSurfaceOpacity(initialWaterOpaque);
+    if (this.gameStore && !this.gameStoreUnsubscribe) {
+      this.gameStoreUnsubscribe = this.gameStore.subscribe(
+        (state, prevState) => {
+          if (state.waterSurfaceOpaque !== prevState.waterSurfaceOpaque) {
+            this.applyWaterSurfaceOpacity(state.waterSurfaceOpaque);
+          }
+        },
+      );
+    }
 
     // No need to apply Y offset - layers are positioned to fill screen
     console.log(`[SCENE] Environment layers created, filling full screen`);
@@ -240,6 +270,19 @@ export class PixiApp {
     this.inputManager.setupInteraction();
   }
 
+  applyWaterSurfaceOpacity(isOpaque) {
+    if (!this.app || !this.environmentLayers?.water) return;
+    const waterSurface = this.environmentLayers.waterSurface;
+    if (!waterSurface) return;
+    drawWaterSurface(this.environmentLayers.water, {
+      width: this.app.screen.width,
+      height: this.app.screen.height,
+      waterY: waterSurface.y,
+      waterHeight: waterSurface.height,
+      opaque: isOpaque,
+    });
+  }
+
   // Tap callback invoked by InputManager during drag phase
   handleTap() {
     const dragState = this.sessionStore?.getState().dragState;
@@ -263,7 +306,7 @@ export class PixiApp {
       x,
       y,
       quadrant,
-      () => getItemPosition(this.app, this.sessionStore),
+      () => getItemWorldPosition(this.app, this.sessionStore),
       this, // Pass PixiApp instance for immediate rope storage
     );
 
@@ -488,12 +531,14 @@ export class PixiApp {
         { x: 0, y: WORLD_Y.WATER_NEAR, z: WORLD_Z.WATER_SURFACE },
         viewport,
       ).y;
+      const hideUnderwaterSegments =
+        this.gameStore?.getState()?.waterSurfaceOpaque ?? false;
       render3DRopeWithViewport(
         this.dragLine,
         rope,
         viewport,
         waterSurfaceScreenY,
-        { tension },
+        { tension, hideUnderwaterSegments },
       );
     }
   }
@@ -863,6 +908,11 @@ export class PixiApp {
       this.locationStoreUnsubscribe = null;
     }
 
+    if (this.gameStoreUnsubscribe) {
+      this.gameStoreUnsubscribe();
+      this.gameStoreUnsubscribe = null;
+    }
+
     // Clean up debug overlay
     if (this.debugOverlay) {
       this.debugOverlay.destroy();
@@ -873,6 +923,12 @@ export class PixiApp {
     if (this.spriteManager) {
       this.spriteManager.clearSprites();
       this.spriteManager = null;
+    }
+
+    if (this.spriteLayers) {
+      this.spriteLayers.underwater.destroy({ children: true });
+      this.spriteLayers.aboveWater.destroy({ children: true });
+      this.spriteLayers = null;
     }
 
     // Clean up input manager (handles all keyboard/pointer events)

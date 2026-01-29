@@ -21,6 +21,55 @@ import {
   RENDER_LAYERS,
 } from "../mechanics/worldConstants.js";
 
+const WATER_COLORS = {
+  base: 0x00ffff,
+  wave: 0x00cccc,
+  outline: 0x00ffff,
+};
+
+export function drawWaterSurface(
+  water,
+  { width, height, waterY, waterHeight, opaque = false },
+) {
+  if (!water) return;
+
+  const baseAlpha = opaque ? 1.0 : 0.4;
+  const waveAlpha = opaque ? 1.0 : 0.3;
+  const bubbleAlpha = opaque ? 1.0 : 0.4;
+
+  water.clear();
+  // Base fill - DEBUG: Bright cyan for visibility
+  water.rect(0, waterY, width, waterHeight);
+  water.fill({ color: WATER_COLORS.base, alpha: baseAlpha });
+  // Horizontal wave pattern
+  for (let y = waterY; y < waterY + waterHeight; y += 8) {
+    const waveOffset = Math.sin(y * 0.1) * 3;
+    water.moveTo(0, y);
+    for (let x = 0; x <= width; x += 10) {
+      const wave = Math.sin((x + y) * 0.05) * 2;
+      water.lineTo(x, y + wave + waveOffset);
+    }
+    water.stroke({ width: 1, color: WATER_COLORS.wave, alpha: waveAlpha });
+  }
+  // Bubble circles
+  for (let i = 0; i < 30; i++) {
+    const x = (i * 37) % width;
+    const y = waterY + ((i * 17) % waterHeight);
+    const radius = 2 + (i % 3);
+    water.circle(x, y, radius);
+    water.stroke({ width: 1, color: WATER_COLORS.base, alpha: bubbleAlpha });
+  }
+  water.rect(0, waterY, width, waterHeight);
+  water.stroke({ width: 3, color: WATER_COLORS.outline, alpha: 1.0 }); // Cyan outline
+
+  // Extend water fill to bottom of viewport (visual-only)
+  const waterBottom = waterY + waterHeight;
+  if (waterBottom < height) {
+    water.rect(0, waterBottom, width, height - waterBottom);
+    water.fill({ color: WATER_COLORS.base, alpha: baseAlpha });
+  }
+}
+
 /**
  * Setup environment layers with 3D perspective
  * Creates pier, wall, water surface, and riverbed layers
@@ -255,36 +304,7 @@ export function setupEnvironmentLayers(container, width, height) {
 
   // Layer 6: Water Surface (semi-transparent, overlays riverbed)
   const water = new PIXI.Graphics();
-  // Base fill - DEBUG: Bright cyan for visibility
-  water.rect(0, waterY, width, waterHeight);
-  water.fill({ color: 0x00ffff, alpha: 0.4 }); // Cyan water
-  // Horizontal wave pattern
-  for (let y = waterY; y < waterY + waterHeight; y += 8) {
-    const waveOffset = Math.sin(y * 0.1) * 3;
-    water.moveTo(0, y);
-    for (let x = 0; x <= width; x += 10) {
-      const wave = Math.sin((x + y) * 0.05) * 2;
-      water.lineTo(x, y + wave + waveOffset);
-    }
-    water.stroke({ width: 1, color: 0x00cccc, alpha: 0.3 });
-  }
-  // Bubble circles
-  for (let i = 0; i < 30; i++) {
-    const x = (i * 37) % width;
-    const y = waterY + ((i * 17) % waterHeight);
-    const radius = 2 + (i % 3);
-    water.circle(x, y, radius);
-    water.stroke({ width: 1, color: 0x00ffff, alpha: 0.4 });
-  }
-  water.rect(0, waterY, width, waterHeight);
-  water.stroke({ width: 3, color: 0x00ffff, alpha: 1.0 }); // Cyan outline
-
-  // Extend water fill to bottom of viewport (visual-only)
-  const waterBottom = waterY + waterHeight;
-  if (waterBottom < height) {
-    water.rect(0, waterBottom, width, height - waterBottom);
-    water.fill({ color: 0x00ffff, alpha: 0.4 });
-  }
+  drawWaterSurface(water, { width, height, waterY, waterHeight, opaque: false });
   container.addChild(water);
 
   // Layer 7: Magnet would be added here with dynamic Z-based ordering (handled separately)
@@ -326,7 +346,16 @@ export function setupEnvironmentLayers(container, width, height) {
     `[ENVIRONMENT] Created 3D environment layers using world constants (Walkway Z=${WORLD_Z.WALKWAY}, Water Z=${WORLD_Z.WATER_SURFACE}, Riverbed Z=${WORLD_Z.RIVERBED})`,
   );
 
-  return { riverbed, wall, water, pier, gridLines, yOffset, viewport };
+  return {
+    riverbed,
+    wall,
+    water,
+    pier,
+    gridLines,
+    yOffset,
+    viewport,
+    waterSurface: { y: waterY, height: waterHeight },
+  };
 }
 
 /**

@@ -44,7 +44,7 @@ export async function executeCastSequence(
   x,
   y,
   quadrant,
-  getItemPosition,
+  getItemWorldPosition,
   pixiApp = null, // PixiApp instance for immediate rope storage
 ) {
   const viewport = createViewport(app.screen.width, app.screen.height);
@@ -108,6 +108,7 @@ export async function executeCastSequence(
     y,
     gameStore,
     sessionStore,
+    pixiApp?.spriteLayers ?? null,
   );
 
   // The 3D rope is already stored in sessionStore by animateCastLine
@@ -127,7 +128,7 @@ export async function executeCastSequence(
   createRipple(app, x, y);
 
   // Create bubbles to show magnet sinking
-  createBubbles(app, riverbedScreen.x, riverbedScreen.y, 500);
+  createBubbles(app, waterWorld.x, waterWorld.y, 500);
 
   // Execute cast mechanics (with hit detection)
   const castResult = executeCast(
@@ -241,7 +242,7 @@ export async function executeCastSequence(
 
       const dragBubbleInterval = startDragBubbles(
         app,
-        getItemPosition,
+        getItemWorldPosition,
         isStillDragging,
       );
 
@@ -338,6 +339,10 @@ export async function handleDragFailure(
       stopPosition.x,
       stopPosition.y,
       sessionStore,
+      {
+        hideUnderwaterSegments:
+          gameStore?.getState()?.waterSurfaceOpaque ?? false,
+      },
     );
   }
 

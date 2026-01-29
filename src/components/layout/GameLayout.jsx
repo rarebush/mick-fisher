@@ -5,6 +5,7 @@ import SlipMeter from "../game/SlipMeter";
 import GameNotification from "../ui/GameNotification";
 import GiveUpButton from "../ui/GiveUpButton";
 import CastingEquipmentToggle from "../ui/CastingEquipmentToggle";
+import WaterOpacityToggle from "../ui/WaterOpacityToggle";
 import "../../styles/game-layout.css";
 
 function GameLayout({ onQuit }) {
@@ -13,6 +14,7 @@ function GameLayout({ onQuit }) {
       <Sidebar />
       <main className="game-main">
         <CastingEquipmentToggle />
+        <WaterOpacityToggle />
         <PixiGame />
         <GameNotification />
         <SlipMeter />

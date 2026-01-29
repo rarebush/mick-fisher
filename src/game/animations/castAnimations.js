@@ -46,6 +46,7 @@ export function animateCastLine(
   targetScreenY,
   gameStore,
   sessionStore,
+  layerContainers = null,
 ) {
   return new Promise((resolve) => {
     if (!app) {
@@ -242,14 +243,17 @@ export function animateCastLine(
     const magnetStore = useMagnetStore.getState();
     magnetStore.spawnMagnet(avatarWorld.x);
 
+    const aboveWaterContainer = layerContainers?.aboveWater ?? app.stage;
+    const underwaterContainer = layerContainers?.underwater ?? app.stage;
+
     // Create graphics object for the line
     const line = new PIXI.Graphics();
-    app.stage.addChild(line);
+    aboveWaterContainer.addChild(line);
 
     // Create magnet sprite
     const magnetSprite = createMagnetSprite();
     magnetSprite.scale.set(2);
-    app.stage.addChild(magnetSprite);
+    aboveWaterContainer.addChild(magnetSprite);
 
     // Create debug text for magnet world coordinates
     const magnetDebugText = new PIXI.Text({
@@ -295,6 +299,8 @@ export function animateCastLine(
     ).y;
 
     const animate = (currentTime) => {
+      const hideUnderwaterSegments =
+        gameStore?.getState()?.waterSurfaceOpaque ?? false;
       if (!app) {
         if (line.parent) line.parent.removeChild(line);
         line.destroy();
@@ -308,6 +314,16 @@ export function animateCastLine(
       }
 
       const elapsed = currentTime - startTime;
+
+      if (magnetWorld.z <= WORLD_Z.WATER_SURFACE) {
+        if (magnetSprite.parent !== underwaterContainer) {
+          if (magnetSprite.parent) magnetSprite.parent.removeChild(magnetSprite);
+          underwaterContainer.addChild(magnetSprite);
+        }
+      } else if (magnetSprite.parent !== aboveWaterContainer) {
+        if (magnetSprite.parent) magnetSprite.parent.removeChild(magnetSprite);
+        aboveWaterContainer.addChild(magnetSprite);
+      }
 
       if (phase === "throwing") {
         // PHASE 1: Throw magnet in arc from avatar to water surface
@@ -371,7 +387,9 @@ export function animateCastLine(
         }
 
         // Render rope
-        render3DRopeWithViewport(line, rope3D, viewport, waterSurfaceScreenY);
+        render3DRopeWithViewport(line, rope3D, viewport, waterSurfaceScreenY, {
+          hideUnderwaterSegments,
+        });
 
         // Update magnet sprite screen position
         const magnetScreen = worldToScreen(magnetWorld, viewport);
@@ -472,7 +490,9 @@ Z: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
         rope3D.update(deltaTime, ropeAnchorWorld, magnetWorld);
 
         // Render rope
-        render3DRopeWithViewport(line, rope3D, viewport, waterSurfaceScreenY);
+        render3DRopeWithViewport(line, rope3D, viewport, waterSurfaceScreenY, {
+          hideUnderwaterSegments,
+        });
 
         // Update magnet sprite
         const magnetScreen = worldToScreen(magnetWorld, viewport);
@@ -544,7 +564,9 @@ Z: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
         rope3D.update(deltaTime, ropeAnchorWorld, magnetWorld);
 
         // Render rope
-        render3DRopeWithViewport(line, rope3D, viewport, waterSurfaceScreenY);
+        render3DRopeWithViewport(line, rope3D, viewport, waterSurfaceScreenY, {
+          hideUnderwaterSegments,
+        });
 
         // Update magnet sprite
         const magnetScreen = worldToScreen(magnetWorld, viewport);
@@ -722,6 +744,7 @@ export function render3DRopeWithViewport(
     magnetWorld,
     tension,
     viewport,
+    { hideUnderwaterSegments: options.hideUnderwaterSegments },
   );
 }
 
@@ -740,6 +763,7 @@ export function animateReelIn(
   startX,
   startY,
   sessionStore,
+  options = {},
 ) {
   return new Promise((resolve) => {
     if (!app || !line) {
@@ -787,6 +811,7 @@ export function animateReelIn(
     ).y;
 
     const animate = (currentTime) => {
+      const hideUnderwaterSegments = options.hideUnderwaterSegments ?? false;
       if (!app) {
         if (line.parent) {
           line.parent.removeChild(line);
@@ -846,6 +871,7 @@ export function animateReelIn(
       // Render rope with viewport projection
       render3DRopeWithViewport(line, rope3D, viewport, waterSurfaceScreenY, {
         tension: 80,
+        hideUnderwaterSegments,
       });
 
       if (progress >= 1) {
@@ -940,20 +966,18 @@ export function createRipple(app, x, y) {
 }
 
 /**
- * Create bubbles rising from position to water surface
+ * Create bubbles popping on the water surface above a world position
  * Used when magnet sinks through water
  */
-export function createBubbles(app, x, y, duration = 500) {
+export function createBubbles(app, worldX, worldY, duration = 500) {
   if (!app) return;
 
-  // Water surface from world constants
   const viewport = createViewport(app.screen.width, app.screen.height);
-  const waterSurfaceY = worldToScreen(
-    { x: 0, y: WORLD_Y.WATER_NEAR, z: WORLD_Z.WATER_SURFACE },
+  const surfaceScreen = worldToScreen(
+    { x: worldX, y: worldY, z: WORLD_Z.WATER_SURFACE },
     viewport,
-  ).y;
-  const bubbleCount = 8;
-  const bubbles = [];
+  );
+  const bubbleCount = 6;
 
   for (let i = 0; i < bubbleCount; i++) {
     // Stagger bubble creation
@@ -961,22 +985,23 @@ export function createBubbles(app, x, y, duration = 500) {
       () => {
         if (!app) return;
 
-        const bubble = new PIXI.Graphics()
-          .circle(0, 0, 2 + Math.random() * 3)
-          .fill(0xadd8e6);
+        const baseRadius = 2 + Math.random() * 2;
+        const bubble = new PIXI.Graphics();
+        bubble
+          .circle(0, 0, baseRadius)
+          .stroke({ width: 2, color: 0xcdf5ff, alpha: 0.9 });
 
         // Random horizontal offset from center
-        bubble.x = x + (Math.random() - 0.5) * 30;
-        bubble.y = y;
-        bubble.alpha = 0.6 + Math.random() * 0.4;
+        bubble.x = surfaceScreen.x + (Math.random() - 0.5) * 24;
+        bubble.y = surfaceScreen.y + (Math.random() - 0.5) * 6;
+        bubble.alpha = 0.6 + Math.random() * 0.3;
 
         app.stage.addChild(bubble);
-        bubbles.push(bubble);
 
-        // Animate bubble rising to water surface
-        const riseSpeed = 1 + Math.random() * 2;
-        const drift = (Math.random() - 0.5) * 0.5;
+        // Animate bubble popping on surface
         let bubbleAlpha = bubble.alpha;
+        let scale = 1;
+        const scaleSpeed = 0.06 + Math.random() * 0.05;
 
         const animate = () => {
           if (!app) {
@@ -987,13 +1012,13 @@ export function createBubbles(app, x, y, duration = 500) {
             return;
           }
 
-          bubble.y -= riseSpeed;
-          bubble.x += drift;
-          bubbleAlpha -= 0.015;
+          scale += scaleSpeed;
+          bubble.scale.set(scale);
+          bubbleAlpha -= 0.04;
           bubble.alpha = bubbleAlpha;
 
           // Remove when faded or reached water surface
-          if (bubbleAlpha <= 0 || bubble.y < waterSurfaceY) {
+          if (bubbleAlpha <= 0) {
             if (bubble.parent) {
               bubble.parent.removeChild(bubble);
             }
@@ -1020,7 +1045,7 @@ export function startDragBubbles(app, getItemPosition, isStillDragging) {
       return;
     }
 
-    // Calculate current item position
+    // Calculate current item position (world space)
     const itemPos = getItemPosition();
     if (itemPos) {
       // Create a small burst of bubbles (fewer than initial cast)

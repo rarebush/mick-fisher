@@ -15,7 +15,9 @@ export const SEGMENTED_ROPE_CONFIG = {
   curveSamples: 10,
   overlayColor: 0xffd200,
   overlayWidth: 2,
-  showPhysicsRope: true,
+  showPhysicsRope: false,
+  hideUnderwaterSegments: true,
+  underwaterFadeDepth: 0.3,
   // Time (ms) for the corner blend to ease 0 -> 1 (and back).
   // Smaller = faster snap to the corner; larger = slower transition.
   cornerBlendMs: 2000,
@@ -264,10 +266,14 @@ export const renderSegmentedRopeOverlay = (
   magnetWorld,
   tension,
   viewport,
+  options = {},
 ) => {
   if (!SEGMENTED_ROPE_CONFIG.enabled) {
     return;
   }
+
+  const hideUnderwaterSegments =
+    options.hideUnderwaterSegments ?? SEGMENTED_ROPE_CONFIG.hideUnderwaterSegments;
 
   const now = performance.now();
   const deltaMs = lastCornerBlendTime ? now - lastCornerBlendTime : 0;
@@ -350,28 +356,71 @@ export const renderSegmentedRopeOverlay = (
     };
 
     const underwater = segment.type !== "air";
-    line.setStrokeStyle({
-      width: SEGMENTED_ROPE_CONFIG.overlayWidth,
-      color: SEGMENTED_ROPE_CONFIG.overlayColor,
-      alpha: underwater ? 0.6 : 1.0,
-    });
-
-    for (let i = 0; i <= SEGMENTED_ROPE_CONFIG.curveSamples; i += 1) {
-      const t = i / SEGMENTED_ROPE_CONFIG.curveSamples;
-      const worldPoint = getQuadraticBezierPoint(
-        segment.start,
-        control,
-        segment.end,
-        t,
+    let alpha = underwater ? 0.6 : 1.0;
+    if (underwater && hideUnderwaterSegments) {
+      const fadeDepth = Math.max(
+        SEGMENTED_ROPE_CONFIG.underwaterFadeDepth ?? 0.6,
+        SEGMENT_EPSILON,
       );
-      const screenPoint = worldToScreen(worldPoint, viewport);
-      if (i === 0) {
-        line.moveTo(screenPoint.x, screenPoint.y);
-      } else {
-        line.lineTo(screenPoint.x, screenPoint.y);
+      const thresholdZ = WORLD_Z.WATER_SURFACE - fadeDepth;
+      let hasDrawn = false;
+      for (let i = 0; i < SEGMENTED_ROPE_CONFIG.curveSamples; i += 1) {
+        const t0 = i / SEGMENTED_ROPE_CONFIG.curveSamples;
+        const t1 = (i + 1) / SEGMENTED_ROPE_CONFIG.curveSamples;
+        const p0 = getQuadraticBezierPoint(segment.start, control, segment.end, t0);
+        const p1 = getQuadraticBezierPoint(segment.start, control, segment.end, t1);
+        const visible0 = p0.z >= thresholdZ;
+        const visible1 = p1.z >= thresholdZ;
+        if (!visible0 && !visible1) {
+          continue;
+        }
+        const depth0 = Math.max(0, WORLD_Z.WATER_SURFACE - p0.z);
+        const depth1 = Math.max(0, WORLD_Z.WATER_SURFACE - p1.z);
+        const maxDepth = Math.max(depth0, depth1);
+        const fadeT = clamp(maxDepth / fadeDepth, 0, 1);
+        const stepAlpha = lerp(0.6, 0, fadeT);
+        if (stepAlpha <= 0.02) {
+          continue;
+        }
+        line.setStrokeStyle({
+          width: SEGMENTED_ROPE_CONFIG.overlayWidth,
+          color: SEGMENTED_ROPE_CONFIG.overlayColor,
+          alpha: stepAlpha,
+        });
+        const s0 = worldToScreen(p0, viewport);
+        const s1 = worldToScreen(p1, viewport);
+        line.moveTo(s0.x, s0.y);
+        line.lineTo(s1.x, s1.y);
+        line.stroke();
+        hasDrawn = true;
       }
+      if (!hasDrawn) {
+        return;
+      }
+    } else {
+      line.setStrokeStyle({
+        width: SEGMENTED_ROPE_CONFIG.overlayWidth,
+        color: SEGMENTED_ROPE_CONFIG.overlayColor,
+        alpha,
+      });
+
+      for (let i = 0; i <= SEGMENTED_ROPE_CONFIG.curveSamples; i += 1) {
+        const t = i / SEGMENTED_ROPE_CONFIG.curveSamples;
+        const worldPoint = getQuadraticBezierPoint(
+          segment.start,
+          control,
+          segment.end,
+          t,
+        );
+        const screenPoint = worldToScreen(worldPoint, viewport);
+        if (i === 0) {
+          line.moveTo(screenPoint.x, screenPoint.y);
+        } else {
+          line.lineTo(screenPoint.x, screenPoint.y);
+        }
+      }
+      line.stroke();
     }
-    line.stroke();
   });
 
   if (SEGMENTED_ROPE_CONFIG.debug.drawWaypoints) {

@@ -17,11 +17,12 @@ import {
 import useMagnetStore from "../state/magnetStore.js";
 
 export class SpriteManager {
-  constructor(app) {
+  constructor(app, layerContainers = null) {
     this.app = app;
     this.itemSprite = null;
     this.magnetSprite = null;
     this.magnetDebugText = null;
+    this.layerContainers = layerContainers;
   }
 
   /**
@@ -35,6 +36,22 @@ export class SpriteManager {
     // Get magnet world position from central store
     const magnetWorld = useMagnetStore.getState().getMagnetWorld();
 
+    const magnetDepth = magnetWorld?.z ?? WORLD_Z.RIVERBED;
+    const targetContainer =
+      magnetDepth > WORLD_Z.WATER_SURFACE
+        ? this.layerContainers?.aboveWater
+        : this.layerContainers?.underwater;
+
+    const addToTargetContainer = (sprite) => {
+      if (!sprite || !targetContainer) return;
+      if (sprite.parent !== targetContainer) {
+        if (sprite.parent) {
+          sprite.parent.removeChild(sprite);
+        }
+        targetContainer.addChild(sprite);
+      }
+    };
+
     // Create item sprite if needed
     if (!this.itemSprite && item) {
       this.itemSprite = createPlaceholderSprite(item.category);
@@ -43,7 +60,7 @@ export class SpriteManager {
         this.itemSprite.width / 2,
         this.itemSprite.height / 2,
       );
-      this.app.stage.addChild(this.itemSprite);
+      (targetContainer || this.app.stage).addChild(this.itemSprite);
     }
 
     // Create magnet sprite if needed
@@ -54,7 +71,7 @@ export class SpriteManager {
         this.magnetSprite.width / 2,
         this.magnetSprite.height / 2,
       );
-      this.app.stage.addChild(this.magnetSprite);
+      (targetContainer || this.app.stage).addChild(this.magnetSprite);
     }
 
     // Create debug text if needed
@@ -71,6 +88,9 @@ export class SpriteManager {
       this.magnetDebugText.zIndex = 10000;
       this.app.stage.addChild(this.magnetDebugText);
     }
+
+    addToTargetContainer(this.itemSprite);
+    addToTargetContainer(this.magnetSprite);
 
     // Update positions
     if (this.itemSprite) {

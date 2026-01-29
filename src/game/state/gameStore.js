@@ -40,6 +40,9 @@ const useGameStore = create((set, get) => ({
     itemsLost: 0,
   },
 
+  // Visual toggles
+  waterSurfaceOpaque: false,
+
   // Actions
   setGamePhase: (phase) => set({ gamePhase: phase }),
 
@@ -47,6 +50,12 @@ const useGameStore = create((set, get) => ({
 
   setCastingEquipmentId: (equipmentId) =>
     set({ selectedCastingEquipmentId: equipmentId }),
+
+  setWaterSurfaceOpaque: (isOpaque) =>
+    set({ waterSurfaceOpaque: Boolean(isOpaque) }),
+
+  toggleWaterSurfaceOpaque: () =>
+    set((state) => ({ waterSurfaceOpaque: !state.waterSurfaceOpaque })),
 
   startCast: (quadrant, distance, depth) => {
     set({
@@ -116,6 +125,7 @@ const useGameStore = create((set, get) => ({
       gamePhase: "idle",
       currentCast: { quadrant: null, distance: 0, depth: 0, itemId: null },
       selectedCastingEquipmentId: "hand",
+      waterSurfaceOpaque: false,
       sessionStats: {
         castsTotal: 0,
         castsSuccessful: 0,
