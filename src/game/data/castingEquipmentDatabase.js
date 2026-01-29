@@ -24,7 +24,7 @@ export const CASTING_EQUIPMENT = [
     maxAccuracyRadius: 70,
     aspectRatioX: 0.8,
     aspectRatioY: 1.25,
-    maxRangeMeters: 25,
+    maxRangeMeters: 40,
   },
   {
     id: "counterweight-rig",

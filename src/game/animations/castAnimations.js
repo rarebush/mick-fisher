@@ -50,7 +50,14 @@ export function animateCastLine(
 ) {
   return new Promise((resolve) => {
     if (!app) {
-      resolve({ line: null, playerX: 0, playerY: 0, finalTension: 0 });
+      resolve({
+        line: null,
+        lineUnderwater: null,
+        lineDebug: null,
+        playerX: 0,
+        playerY: 0,
+        finalTension: 0,
+      });
       return;
     }
 
@@ -245,10 +252,15 @@ export function animateCastLine(
 
     const aboveWaterContainer = layerContainers?.aboveWater ?? app.stage;
     const underwaterContainer = layerContainers?.underwater ?? app.stage;
+    const debugContainer = layerContainers?.debug ?? app.stage;
 
     // Create graphics object for the line
     const line = new PIXI.Graphics();
     aboveWaterContainer.addChild(line);
+    const lineUnderwater = new PIXI.Graphics();
+    underwaterContainer.addChild(lineUnderwater);
+    const lineDebug = new PIXI.Graphics();
+    debugContainer.addChild(lineDebug);
 
     // Create magnet sprite
     const magnetSprite = createMagnetSprite();
@@ -309,7 +321,14 @@ export function animateCastLine(
         if (magnetDebugText.parent)
           magnetDebugText.parent.removeChild(magnetDebugText);
         magnetDebugText.destroy();
-        resolve({ line: null, playerX: 0, playerY: 0, finalTension: 0 });
+        resolve({
+          line: null,
+          lineUnderwater: null,
+          lineDebug: null,
+          playerX: 0,
+          playerY: 0,
+          finalTension: 0,
+        });
         return;
       }
 
@@ -317,7 +336,8 @@ export function animateCastLine(
 
       if (magnetWorld.z <= WORLD_Z.WATER_SURFACE) {
         if (magnetSprite.parent !== underwaterContainer) {
-          if (magnetSprite.parent) magnetSprite.parent.removeChild(magnetSprite);
+          if (magnetSprite.parent)
+            magnetSprite.parent.removeChild(magnetSprite);
           underwaterContainer.addChild(magnetSprite);
         }
       } else if (magnetSprite.parent !== aboveWaterContainer) {
@@ -377,9 +397,8 @@ export function animateCastLine(
         // VALIDATION: Log rope length vs 3D distance (sample 10% of frames)
         if (Math.random() < 0.1) {
           const actualRopeLength = rope3D.getTotalLength();
-          const slackMultiplier = rope3D.getSlackMultiplierForTension(
-            currentTension,
-          );
+          const slackMultiplier =
+            rope3D.getSlackMultiplierForTension(currentTension);
           const expectedAtTension = currentDist3D * slackMultiplier;
           console.log(
             `[CAST ROPE] Tension: ${currentTension.toFixed(1)}% | Multiplier: ${slackMultiplier.toFixed(3)}x | 3D Dist: ${currentDist3D.toFixed(2)} | Expected: ${expectedAtTension.toFixed(2)} | Actual: ${actualRopeLength.toFixed(2)} | dX:${dx.toFixed(2)} dY:${dy.toFixed(2)} dZ:${dz.toFixed(2)}`,
@@ -389,6 +408,8 @@ export function animateCastLine(
         // Render rope
         render3DRopeWithViewport(line, rope3D, viewport, waterSurfaceScreenY, {
           hideUnderwaterSegments,
+          lineUnderwater,
+          lineDebug,
         });
 
         // Update magnet sprite screen position
@@ -492,6 +513,8 @@ Z: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
         // Render rope
         render3DRopeWithViewport(line, rope3D, viewport, waterSurfaceScreenY, {
           hideUnderwaterSegments,
+          lineUnderwater,
+          lineDebug,
         });
 
         // Update magnet sprite
@@ -566,6 +589,8 @@ Z: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
         // Render rope
         render3DRopeWithViewport(line, rope3D, viewport, waterSurfaceScreenY, {
           hideUnderwaterSegments,
+          lineUnderwater,
+          lineDebug,
         });
 
         // Update magnet sprite
@@ -622,6 +647,8 @@ Z: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
 
           resolve({
             line,
+            lineUnderwater,
+            lineDebug,
             playerX: avatarScreenPos.x,
             playerY: avatarScreenPos.y,
             finalTension: currentTension,
@@ -670,11 +697,17 @@ export function render3DRopeWithViewport(
   }
 
   line.clear();
+  if (options.lineUnderwater) {
+    options.lineUnderwater.clear();
+  }
+  if (options.lineDebug) {
+    options.lineDebug.clear();
+  }
 
   const tension =
     Number.isFinite(options?.tension) && options.tension !== null
       ? options.tension
-      : rope3D.tension ?? 50;
+      : (rope3D.tension ?? 50);
   const castOrigin = {
     x: AVATAR_CAST_OFFSET.x,
     y:
@@ -685,18 +718,16 @@ export function render3DRopeWithViewport(
   };
   const magnetStore = useMagnetStore.getState();
   const trackedMagnetWorld = magnetStore?.getMagnetWorld?.();
-  const magnetWorld = trackedMagnetWorld ?? worldPoints[worldPoints.length - 1].pos;
+  const magnetWorld =
+    trackedMagnetWorld ?? worldPoints[worldPoints.length - 1].pos;
 
-  renderSegmentedRopeOverlay(
-    line,
-    castOrigin,
-    magnetWorld,
-    tension,
-    viewport,
-    { hideUnderwaterSegments: options.hideUnderwaterSegments },
-  );
+  renderSegmentedRopeOverlay(line, castOrigin, magnetWorld, tension, viewport, {
+    hideUnderwaterSegments: options.hideUnderwaterSegments,
+    lineAbove: line,
+    lineBelow: options.lineUnderwater ?? null,
+    debugLine: options.lineDebug ?? null,
+  });
 }
-
 
 /**
  * Animate rope reeling in after drag failure
@@ -741,7 +772,9 @@ export function animateReelIn(
 
     const viewport = createViewport(app.screen.width, app.screen.height);
     const worldPoints = rope3D.points.map((point) => point.pos);
-    const screenPoints = worldPoints.map((point) => worldToScreen(point, viewport));
+    const screenPoints = worldPoints.map((point) =>
+      worldToScreen(point, viewport),
+    );
     const clipHeight = Number.isFinite(options.reelClipScreenY)
       ? Math.max(0, Math.min(app.screen.height, options.reelClipScreenY))
       : app.screen.height;
@@ -790,10 +823,7 @@ export function animateReelIn(
       const progress = Math.min(elapsed / retractDuration, 1);
       const visiblePoints = Math.min(
         screenPoints.length,
-        Math.max(
-          2,
-          Math.ceil((1 - progress) * (screenPoints.length - 1)) + 1,
-        ),
+        Math.max(2, Math.ceil((1 - progress) * (screenPoints.length - 1)) + 1),
       );
 
       const hideUnderwaterSegments = options.hideUnderwaterSegments ?? false;
@@ -859,14 +889,14 @@ export function animateReelIn(
         if (!endPoint || !prevPoint) {
           reelMagnetSprite.visible = false;
         } else {
-        reelMagnetSprite.x = endPoint.x;
-        reelMagnetSprite.y = endPoint.y;
-        const angle = Math.atan2(
-          endPoint.y - prevPoint.y,
-          endPoint.x - prevPoint.x,
-        );
-        reelMagnetSprite.rotation = angle + Math.PI / 2 + Math.PI;
-        reelMagnetSprite.visible = true;
+          reelMagnetSprite.x = endPoint.x;
+          reelMagnetSprite.y = endPoint.y;
+          const angle = Math.atan2(
+            endPoint.y - prevPoint.y,
+            endPoint.x - prevPoint.x,
+          );
+          reelMagnetSprite.rotation = angle + Math.PI / 2 + Math.PI;
+          reelMagnetSprite.visible = true;
         }
       } else {
         reelMagnetSprite.visible = false;

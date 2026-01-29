@@ -76,21 +76,12 @@ export async function executeCastSequence(
   const currentLocation =
     gameStore?.getState().currentLocation || "picturesque-river";
   debugOverlay?.showSpawnTable(quadrant, currentLocation);
-  debugOverlay?.highlightQuadrant(
-    quadrant,
-    riverbedScreen.x,
-    riverbedScreen.y,
-  );
+  debugOverlay?.highlightQuadrant(quadrant, riverbedScreen.x, riverbedScreen.y);
 
   // Check for engaged item hit
   const hitItem = locationStore
     .getState()
-    .checkForHit(
-      currentLocation,
-      riverbedScreen.x,
-      riverbedScreen.y,
-      quadrant,
-    );
+    .checkForHit(currentLocation, riverbedScreen.x, riverbedScreen.y, quadrant);
 
   if (hitItem) {
     console.log(
@@ -103,27 +94,28 @@ export async function executeCastSequence(
   }
 
   // Animate casting line and get graphics for continued rendering
-  const { line, playerX, playerY, finalTension } = await animateCastLine(
-    app,
-    x,
-    y,
-    gameStore,
-    sessionStore,
-    pixiApp?.spriteLayers ?? null,
-  );
+  const { line, lineUnderwater, lineDebug, playerX, playerY, finalTension } =
+    await animateCastLine(
+      app,
+      x,
+      y,
+      gameStore,
+      sessionStore,
+      pixiApp?.spriteLayers ?? null,
+    );
 
   // The 3D rope is already stored in sessionStore by animateCastLine
   // Store line and player position on PixiApp instance for rendering
   if (pixiApp) {
     pixiApp.dragLine = line;
+    pixiApp.dragLineUnderwater = lineUnderwater;
+    pixiApp.dragLineDebug = lineDebug;
     pixiApp.dragPlayerX = playerX;
     pixiApp.dragPlayerY = playerY;
   }
 
   // Store cast position for rope rendering (before drag starts)
-  sessionStore
-    .getState()
-    .setCastPosition(riverbedScreen.x, riverbedScreen.y);
+  sessionStore.getState().setCastPosition(riverbedScreen.x, riverbedScreen.y);
 
   // Visual feedback - ripple at landing point
   createRipple(app, x, y);
@@ -266,6 +258,14 @@ export async function executeCastSequence(
         line.parent.removeChild(line);
         line.destroy();
       }
+      if (lineUnderwater && lineUnderwater.parent) {
+        lineUnderwater.parent.removeChild(lineUnderwater);
+        lineUnderwater.destroy();
+      }
+      if (lineDebug && lineDebug.parent) {
+        lineDebug.parent.removeChild(lineDebug);
+        lineDebug.destroy();
+      }
 
       // Clear sessionStore rope state
       sessionStore.getState().setRope(null);
@@ -276,6 +276,8 @@ export async function executeCastSequence(
       // Clear PixiApp references
       if (pixiApp) {
         pixiApp.dragLine = null;
+        pixiApp.dragLineUnderwater = null;
+        pixiApp.dragLineDebug = null;
         pixiApp.dragPlayerX = null;
         pixiApp.dragPlayerY = null;
       }

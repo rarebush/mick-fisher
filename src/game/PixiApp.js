@@ -97,6 +97,8 @@ export class PixiApp {
     // Rope physics for drag visualization
 
     this.dragLine = null;
+    this.dragLineUnderwater = null;
+    this.dragLineDebug = null;
     this.dragPlayerX = 0;
     this.dragPlayerY = 0;
     this.castAimOverlay = null;
@@ -193,6 +195,7 @@ export class PixiApp {
     this.spriteLayers = {
       underwater: new PIXI.Container(),
       aboveWater: new PIXI.Container(),
+      debug: new PIXI.Container(),
     };
     const waterIndex = this.sceneContainer.getChildIndex(
       this.environmentLayers.water,
@@ -202,6 +205,7 @@ export class PixiApp {
       this.environmentLayers.gridLines,
     );
     this.sceneContainer.addChildAt(this.spriteLayers.aboveWater, gridIndex);
+    this.sceneContainer.addChild(this.spriteLayers.debug);
 
     // Initialize managers
     this.spriteManager = new SpriteManager(this.app, this.spriteLayers);
@@ -362,6 +366,17 @@ export class PixiApp {
 
         // Trigger failure at current distance (with rope reel-in animation)
         const currentDistance = event.detail.distance || dragState.distance;
+        if (this.dragLineUnderwater && this.dragLineUnderwater.parent) {
+          this.dragLineUnderwater.parent.removeChild(this.dragLineUnderwater);
+          this.dragLineUnderwater.destroy();
+        }
+        this.dragLineUnderwater = null;
+        if (this.dragLineDebug && this.dragLineDebug.parent) {
+          this.dragLineDebug.parent.removeChild(this.dragLineDebug);
+          this.dragLineDebug.destroy();
+        }
+        this.dragLineDebug = null;
+
         await handleDragFailure(
           this.app,
           this.gameStore,
@@ -383,6 +398,11 @@ export class PixiApp {
 
         // Clear line reference after reel-in
         this.dragLine = null;
+        if (this.dragLineDebug && this.dragLineDebug.parent) {
+          this.dragLineDebug.parent.removeChild(this.dragLineDebug);
+          this.dragLineDebug.destroy();
+        }
+        this.dragLineDebug = null;
 
         // Store failure reason - manual yank = tension overload
         this.gameStore.setState((state) => ({
@@ -443,6 +463,11 @@ export class PixiApp {
       this.lastDragUpdateTime,
       this.dragStartTime,
       async (failureDistance) => {
+        if (this.dragLineDebug && this.dragLineDebug.parent) {
+          this.dragLineDebug.parent.removeChild(this.dragLineDebug);
+          this.dragLineDebug.destroy();
+        }
+        this.dragLineDebug = null;
         await handleDragFailure(
           this.app,
           this.gameStore,
@@ -467,6 +492,16 @@ export class PixiApp {
           this.dragLine.parent.removeChild(this.dragLine);
           this.dragLine.destroy();
           this.dragLine = null;
+        }
+        if (this.dragLineUnderwater && this.dragLineUnderwater.parent) {
+          this.dragLineUnderwater.parent.removeChild(this.dragLineUnderwater);
+          this.dragLineUnderwater.destroy();
+          this.dragLineUnderwater = null;
+        }
+        if (this.dragLineDebug && this.dragLineDebug.parent) {
+          this.dragLineDebug.parent.removeChild(this.dragLineDebug);
+          this.dragLineDebug.destroy();
+          this.dragLineDebug = null;
         }
 
         // Clear 3D rope from sessionStore
@@ -538,7 +573,12 @@ export class PixiApp {
         rope,
         viewport,
         waterSurfaceScreenY,
-        { tension, hideUnderwaterSegments },
+        {
+          tension,
+          hideUnderwaterSegments,
+          lineUnderwater: this.dragLineUnderwater,
+          lineDebug: this.dragLineDebug,
+        },
       );
     }
   }
@@ -572,12 +612,10 @@ export class PixiApp {
         )
         .fill({ color: 0xffffff });
 
-      const equipmentId =
-        this.gameStore?.getState().selectedCastingEquipmentId;
+      const equipmentId = this.gameStore?.getState().selectedCastingEquipmentId;
       const maxRangeMeters = getCastingEquipmentMaxRange(equipmentId);
-      const forwardRange = getMaxCastRange({ x: 0, y: 1 }, viewport);
       const maxRangeWorld = metersToWorldRange(maxRangeMeters);
-      const rangeWorld = Math.min(maxRangeWorld, forwardRange);
+      const rangeWorld = Math.max(0, maxRangeWorld);
       if (!Number.isFinite(rangeWorld) || rangeWorld <= 0) return;
 
       const origin = getAvatarCastOrigin();
@@ -632,8 +670,7 @@ export class PixiApp {
         this.app.screen.width,
         this.app.screen.height,
       );
-      const equipmentId =
-        this.gameStore?.getState().selectedCastingEquipmentId;
+      const equipmentId = this.gameStore?.getState().selectedCastingEquipmentId;
       const maxRangeMeters = getCastingEquipmentMaxRange(equipmentId);
       const previewPower = updatedAim.phase === "angle" ? 1 : updatedAim.power;
       const targetWorld = computeCastTargetWorld(
@@ -878,6 +915,20 @@ export class PixiApp {
       this.dragLine.destroy();
       this.dragLine = null;
     }
+    if (this.dragLineUnderwater) {
+      if (this.dragLineUnderwater.parent) {
+        this.dragLineUnderwater.parent.removeChild(this.dragLineUnderwater);
+      }
+      this.dragLineUnderwater.destroy();
+      this.dragLineUnderwater = null;
+    }
+    if (this.dragLineDebug) {
+      if (this.dragLineDebug.parent) {
+        this.dragLineDebug.parent.removeChild(this.dragLineDebug);
+      }
+      this.dragLineDebug.destroy();
+      this.dragLineDebug = null;
+    }
 
     if (this.castAimOverlay) {
       if (this.castAimOverlay.parent) {
@@ -894,6 +945,20 @@ export class PixiApp {
       }
       this.dragLine.destroy();
       this.dragLine = null;
+    }
+    if (this.dragLineUnderwater) {
+      if (this.dragLineUnderwater.parent) {
+        this.dragLineUnderwater.parent.removeChild(this.dragLineUnderwater);
+      }
+      this.dragLineUnderwater.destroy();
+      this.dragLineUnderwater = null;
+    }
+    if (this.dragLineDebug) {
+      if (this.dragLineDebug.parent) {
+        this.dragLineDebug.parent.removeChild(this.dragLineDebug);
+      }
+      this.dragLineDebug.destroy();
+      this.dragLineDebug = null;
     }
 
     // Clean up manual failure listener
@@ -928,6 +993,7 @@ export class PixiApp {
     if (this.spriteLayers) {
       this.spriteLayers.underwater.destroy({ children: true });
       this.spriteLayers.aboveWater.destroy({ children: true });
+      this.spriteLayers.debug.destroy({ children: true });
       this.spriteLayers = null;
     }
 
