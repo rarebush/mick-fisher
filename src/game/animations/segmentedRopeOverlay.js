@@ -328,7 +328,6 @@ const findCurvePlaneIntersection = (
 const computeCornerWaypoints = (
   castOrigin,
   magnetWorld,
-  cornerBlendValue,
   cornerDistanceBlend,
   viewport,
   shouldIncludeCorner,
@@ -369,76 +368,46 @@ const computeCornerWaypoints = (
           viewport.worldXMax,
         );
       }
-      const distToCornerXY = Math.hypot(
-        lineCorner.x - castOrigin.x,
-        lineCorner.y - castOrigin.y,
+      const leadDistance = Math.max(
+        SEGMENTED_ROPE_CONFIG.cornerLeadFadeDistance,
+        SEGMENT_EPSILON,
       );
-      const distToMagnetXY = Math.hypot(
-        ropeEnd.x - castOrigin.x,
-        ropeEnd.y - castOrigin.y,
+      const leadScale = clamp(Math.abs(magnetWorld.x) / leadDistance, 0, 1);
+      const leadStrength = Math.max(
+        0,
+        SEGMENTED_ROPE_CONFIG.cornerLeadStrength,
       );
-      const cornerReach =
-        distToCornerXY > SEGMENT_EPSILON
-          ? clamp(distToMagnetXY / distToCornerXY, 0, 1)
-          : 1;
-      const baseCorner = {
-        x: lerp(castOrigin.x, lineCorner.x, cornerReach),
-        y: lerp(castOrigin.y, lineCorner.y, cornerReach),
-        z: lerp(castOrigin.z, lineCorner.z, cornerReach),
+      const targetCornerX = lineCorner.x;
+      const leadOffsetRaw =
+        (castOrigin.x - targetCornerX) * leadStrength * leadScale;
+      const leadOffset = clamp(
+        leadOffsetRaw,
+        -SEGMENTED_ROPE_CONFIG.cornerLeadMaxOffset,
+        SEGMENTED_ROPE_CONFIG.cornerLeadMaxOffset,
+      );
+      const leadTargetX = targetCornerX + leadOffset;
+      const leadSmoothing = clamp(
+        SEGMENTED_ROPE_CONFIG.cornerLeadSmoothing ?? 0.2,
+        0,
+        1,
+      );
+      cornerLeadX = Number.isFinite(cornerLeadX)
+        ? lerp(cornerLeadX, leadTargetX, leadSmoothing)
+        : leadTargetX;
+      const cornerX = lerp(
+        lineCorner.x,
+        Number.isFinite(cornerLeadX) ? cornerLeadX : lineCorner.x,
+        cornerDistanceBlend,
+      );
+      const pierCorner = {
+        x: viewport
+          ? clamp(cornerX, viewport.worldXMin, viewport.worldXMax)
+          : cornerX,
+        y: WORLD_Y.WALKWAY_FRONT,
+        z: WORLD_Z.WALKWAY,
+        isPierCorner: true,
       };
-      if (cornerReach >= 1 - SEGMENT_EPSILON) {
-        const leadDistance = Math.max(
-          SEGMENTED_ROPE_CONFIG.cornerLeadFadeDistance,
-          SEGMENT_EPSILON,
-        );
-        const leadScale = clamp(Math.abs(magnetWorld.x) / leadDistance, 0, 1);
-        const leadStrength = Math.max(
-          0,
-          SEGMENTED_ROPE_CONFIG.cornerLeadStrength,
-        );
-        const targetCornerX = lineCorner.x;
-        const leadOffsetRaw =
-          (castOrigin.x - targetCornerX) * leadStrength * leadScale;
-        const leadOffset = clamp(
-          leadOffsetRaw,
-          -SEGMENTED_ROPE_CONFIG.cornerLeadMaxOffset,
-          SEGMENTED_ROPE_CONFIG.cornerLeadMaxOffset,
-        );
-        const leadTargetX = targetCornerX + leadOffset;
-        const leadSmoothing = clamp(
-          SEGMENTED_ROPE_CONFIG.cornerLeadSmoothing ?? 0.2,
-          0,
-          1,
-        );
-        cornerLeadX = Number.isFinite(cornerLeadX)
-          ? lerp(cornerLeadX, leadTargetX, leadSmoothing)
-          : leadTargetX;
-        const cornerX = lerp(
-          lineCorner.x,
-          Number.isFinite(cornerLeadX) ? cornerLeadX : lineCorner.x,
-          cornerDistanceBlend,
-        );
-        const targetCornerZ = lerp(
-          lineCorner.z,
-          WORLD_Z.WALKWAY,
-          cornerBlendValue,
-        );
-        const cornerZ = Math.max(
-          WORLD_Z.WALKWAY,
-          lerp(lineCorner.z, targetCornerZ, cornerDistanceBlend),
-        );
-        const pierCorner = {
-          x: viewport
-            ? clamp(cornerX, viewport.worldXMin, viewport.worldXMax)
-            : cornerX,
-          y: WORLD_Y.WALKWAY_FRONT,
-          z: cornerZ,
-          isPierCorner: true,
-        };
-        pushWaypoint(pierCorner);
-      } else {
-        pushWaypoint(baseCorner);
-      }
+      pushWaypoint(pierCorner);
     }
   }
 
@@ -498,7 +467,6 @@ export const renderSegmentedRopeOverlay = (
   const { waypoints: cornerWaypoints } = computeCornerWaypoints(
     castOrigin,
     magnetWorld,
-    easedCornerBlend,
     easedCornerBlend,
     viewport,
     shouldIncludeCorner,
