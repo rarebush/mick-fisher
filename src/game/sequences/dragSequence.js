@@ -63,7 +63,12 @@ export function getItemWorldPosition(app, sessionStore) {
   };
 
   // Clamp item so it doesn't move past the riverwall while dragging.
-  itemWorld.y = Math.max(itemWorld.y, WORLD_Y.WALKWAY_FRONT);
+  // Offset scales by cast landing X so it fades as x -> 0.
+  const maxWallOffset = 0.1;
+  const maxAbsX = Math.max(Math.abs(castWorld.x), 1e-4);
+  const wallOffset =
+    maxWallOffset * Math.min(1, Math.abs(itemWorld.x) / maxAbsX);
+  itemWorld.y = Math.max(itemWorld.y, WORLD_Y.WALKWAY_FRONT + wallOffset);
 
   // Update magnet store with current position
   const magnetStore = useMagnetStore.getState();
@@ -275,7 +280,7 @@ export async function updateDragMechanics(
     {
       tension: newTension,
       distance: dragState.distance,
-      magnetPosition: dragState.magnetPosition,
+      magnetSurfacePosition: dragState.magnetSurfacePosition,
       magnetContactWidth: dragState.magnetContactWidth,
       slipDirection: dragState.slipDirection,
       velocity: dragState.velocity,
@@ -292,7 +297,7 @@ export async function updateDragMechanics(
       .getState()
       .updateDragProgress(
         result.distance,
-        result.magnetPosition,
+        result.magnetSurfacePosition,
         result.velocity,
         result.accelerationTime,
       );
@@ -305,11 +310,11 @@ export async function updateDragMechanics(
         ? (dragState.distance - result.distance) / deltaTime
         : 0;
     const magnetLeftEdge =
-      result.magnetPosition - dragState.magnetContactWidth / 2;
+      result.magnetSurfacePosition - dragState.magnetContactWidth / 2;
     const magnetRightEdge =
-      result.magnetPosition + dragState.magnetContactWidth / 2;
+      result.magnetSurfacePosition + dragState.magnetContactWidth / 2;
     console.log(
-      `[DRAG] T:${newTension.toFixed(0)}% | Speed:${dragSpeed.toFixed(2)}m/s | Dist:${result.distance.toFixed(1)}/${dragState.totalDistance.toFixed(1)}m | MagPos:${result.magnetPosition.toFixed(1)} [${magnetLeftEdge.toFixed(1)}-${magnetRightEdge.toFixed(1)}] | ${item.name}(${item.weight}kg)`,
+      `[DRAG] T:${newTension.toFixed(0)}% | Speed:${dragSpeed.toFixed(2)}m/s | Dist:${result.distance.toFixed(1)}/${dragState.totalDistance.toFixed(1)}m | MagPos:${result.magnetSurfacePosition.toFixed(1)} [${magnetLeftEdge.toFixed(1)}-${magnetRightEdge.toFixed(1)}] | ${item.name}(${item.weight}kg)`,
     );
   }
 

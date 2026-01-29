@@ -48,10 +48,9 @@ const useSessionStore = create((set, get) => ({
   // Drag phase state
   dragState: {
     active: false,
-    tension: 0, // 0-100%
     distance: 0, // meters from shore (decreases as item approaches)
     totalDistance: 0, // initial distance (for progress tracking)
-    magnetPosition: 50, // 0-100 units on item surface (positional slip model)
+    magnetSurfacePosition: 50, // 0-100 units on item surface (positional slip model)
     magnetContactWidth: 6, // width of magnet contact area (reduced for more slip risk)
     slipDirection: 0, // -1 = left, 1 = right, 0 = not yet determined
     dragMemory: [], // Array of {timestamp, tension, distance} for pattern detection
@@ -69,6 +68,7 @@ const useSessionStore = create((set, get) => ({
     tapTimestamps: [], // for tap rate calculation
     slipAccumulated: 0, // carries over from drag + new accumulation
     revealed: false, // false = blind lift, true = revealed lift
+    magnetSurfacePosition: null, // Optional, used by SlipMeter in revealed phase
   },
 
   // 3D Rope physics state
@@ -123,7 +123,7 @@ const useSessionStore = create((set, get) => ({
   // Actions - Drag Phase
   startDrag: (
     distance,
-    magnetPosition = 50,
+    magnetSurfacePosition = 50,
     magnetContactWidth = 6,
     castPosition = { x: 0, y: 0 },
     quadrant = 0,
@@ -143,10 +143,9 @@ const useSessionStore = create((set, get) => ({
       ropeTension: initialTension,
       dragState: {
         active: true,
-        tension: initialTension, // Use tension from cast animation
         distance,
         totalDistance: distance,
-        magnetPosition,
+        magnetSurfacePosition,
         magnetContactWidth,
         slipDirection,
         dragMemory: [],
@@ -172,7 +171,6 @@ const useSessionStore = create((set, get) => ({
       ropeTension: Math.max(0, tension),
       dragState: {
         ...state.dragState,
-        tension: Math.max(0, tension), // Allow tension > 100% for failure detection
         dragMemory: newMemory,
       },
     });
@@ -184,7 +182,7 @@ const useSessionStore = create((set, get) => ({
 
   updateDragProgress: (
     distance,
-    magnetPosition,
+    magnetSurfacePosition,
     velocity,
     accelerationTime,
   ) => {
@@ -192,7 +190,7 @@ const useSessionStore = create((set, get) => ({
       dragState: {
         ...state.dragState,
         distance: Math.max(0, distance),
-        magnetPosition: magnetPosition, // Allow position to go beyond 0-100 for slip-off detection
+        magnetSurfacePosition: magnetSurfacePosition, // Allow position to go beyond 0-100 for slip-off detection
         velocity: velocity || 0,
         accelerationTime: accelerationTime || 0,
       },
@@ -214,7 +212,7 @@ const useSessionStore = create((set, get) => ({
         active: false,
       },
     });
-    return state.dragState.magnetPosition;
+    return state.dragState.magnetSurfacePosition;
   },
 
   // Deactivate drag without completing (for manual failure)
@@ -498,10 +496,9 @@ const useSessionStore = create((set, get) => ({
       donutAimState: { ...DEFAULT_DONUT_AIM_STATE },
       dragState: {
         active: false,
-        tension: 0,
         distance: 0,
         totalDistance: 0,
-        magnetPosition: 50,
+        magnetSurfacePosition: 50,
         magnetContactWidth: 6,
         slipDirection: 0,
         dragMemory: [],
@@ -513,6 +510,7 @@ const useSessionStore = create((set, get) => ({
         tapTimestamps: [],
         slipAccumulated: 0,
         revealed: false,
+        magnetSurfacePosition: null,
       },
     }),
 }));

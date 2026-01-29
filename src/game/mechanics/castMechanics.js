@@ -158,7 +158,7 @@ export function getRandomDepth(quadrant, locationId) {
  * @param {number} x - Cast x position (for hit detection)
  * @param {number} y - Cast y position (for hit detection)
  * @param {object|null} hitItem - Pre-checked engaged item hit (from locationStore)
- * @returns {object} - Cast result with item, distance, depth, magnetPosition
+ * @returns {object} - Cast result with item, distance, depth, magnetSurfacePosition
  */
 export function executeCast(
   quadrant,
@@ -202,7 +202,7 @@ export function executeCast(
       item: null,
       distance: getRandomDistance(quadrant),
       depth: getRandomDepth(quadrant, locationId),
-      magnetPosition: null,
+      magnetSurfacePosition: null,
       magnetContactWidth: 6,
     };
   }
@@ -216,10 +216,10 @@ export function executeCast(
 
   // Roll for magnet landing position (0-100 on item surface)
   const magnetContactWidth = 6;
-  const magnetPosition = rollMagnetLandingPosition(magnetContactWidth);
+  const magnetSurfacePosition = rollMagnetLandingPosition(magnetContactWidth);
 
   // Calculate placement quality based on position
-  const distanceToEdge = getDistanceToNearestEdge(magnetPosition);
+  const distanceToEdge = getDistanceToNearestEdge(magnetSurfacePosition);
   let placementQuality;
   if (distanceToEdge >= 40) {
     placementQuality = { placement: "center", label: "Perfect Center" };
@@ -236,7 +236,7 @@ export function executeCast(
     item: { ...item },
     distance,
     depth,
-    magnetPosition,
+    magnetSurfacePosition,
     magnetContactWidth,
     placementQuality,
     // Engaged item metadata

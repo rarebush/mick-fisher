@@ -112,13 +112,13 @@ function sampleCurve(tension, points) {
  * @param {object} currentState - Current drag state from sessionStore
  * @param {object} item - Item being dragged
  * @param {number} deltaTime - Time since last update (seconds)
- * @returns {object} - Updated state { distance, magnetPosition, tension }
+ * @returns {object} - Updated state { distance, magnetSurfacePosition, tension }
  */
 export function updateDragState(currentState, item, deltaTime) {
   const {
     tension,
     distance,
-    magnetPosition,
+    magnetSurfacePosition,
     magnetContactWidth,
     slipDirection,
     velocity = 0,
@@ -130,7 +130,7 @@ export function updateDragState(currentState, item, deltaTime) {
 
   // Update magnet position
   const newPosition = updateMagnetPosition(
-    magnetPosition,
+    magnetSurfacePosition,
     slipDirection,
     slipRate,
     deltaTime,
@@ -140,7 +140,7 @@ export function updateDragState(currentState, item, deltaTime) {
   if (hasMagnetSlippedOff(newPosition, magnetContactWidth)) {
     return {
       distance: distance,
-      magnetPosition: newPosition,
+      magnetSurfacePosition: newPosition,
       tension: tension,
       velocity: velocity,
       accelerationTime: accelerationTime,
@@ -153,7 +153,7 @@ export function updateDragState(currentState, item, deltaTime) {
   if (tension >= 99.9) {
     return {
       distance: distance,
-      magnetPosition: newPosition,
+      magnetSurfacePosition: newPosition,
       tension: 100,
       velocity: velocity,
       accelerationTime: accelerationTime,
@@ -191,7 +191,7 @@ export function updateDragState(currentState, item, deltaTime) {
   if (newDistance <= 0) {
     return {
       distance: 0,
-      magnetPosition: newPosition,
+      magnetSurfacePosition: newPosition,
       tension: tension,
       velocity: newVelocity,
       accelerationTime: newAccelerationTime,
@@ -201,7 +201,7 @@ export function updateDragState(currentState, item, deltaTime) {
 
   return {
     distance: newDistance,
-    magnetPosition: newPosition,
+    magnetSurfacePosition: newPosition,
     tension: tension,
     velocity: newVelocity,
     accelerationTime: newAccelerationTime,

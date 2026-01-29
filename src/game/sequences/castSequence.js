@@ -139,7 +139,7 @@ export async function executeCastSequence(
       success: true,
       itemName: castResult.item.name,
       distance: castResult.distance,
-      magnetPosition: castResult.magnetPosition,
+      magnetSurfacePosition: castResult.magnetSurfacePosition,
       placement: castResult.placementQuality.label,
       isEngaged: castResult.isEngagedItem,
     });
@@ -201,13 +201,15 @@ export async function executeCastSequence(
         : { x: riverbedScreen.x, y: riverbedScreen.y };
 
       // Calculate slip direction from magnet position (pure function)
-      const slipDirection = calculateSlipDirection(castResult.magnetPosition);
+      const slipDirection = calculateSlipDirection(
+        castResult.magnetSurfacePosition,
+      );
 
       // Start drag phase with magnet position and final cast tension
       const { startDrag } = sessionStore.getState();
       startDrag(
         castResult.distance,
-        castResult.magnetPosition,
+        castResult.magnetSurfacePosition,
         castResult.magnetContactWidth,
         initialPosition,
         quadrant,
@@ -246,7 +248,7 @@ export async function executeCastSequence(
         castResult.distance.toFixed(1),
         "m",
         "| Magnet position:",
-        castResult.magnetPosition.toFixed(1),
+        castResult.magnetSurfacePosition.toFixed(1),
         "|",
         castResult.placementQuality.label,
       );

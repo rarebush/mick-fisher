@@ -235,8 +235,8 @@ export class DebugOverlay {
           const distText =
             entry.distance != null ? `${entry.distance.toFixed(1)}m` : "N/A";
           const magText =
-            entry.magnetPosition != null
-              ? entry.magnetPosition.toFixed(1)
+            entry.magnetSurfacePosition != null
+              ? entry.magnetSurfacePosition.toFixed(1)
               : "N/A";
           const details = this.createText(
             `  ${statusTag} Dist: ${distText} | Mag: ${magText} | ${entry.placement}`,

@@ -28,6 +28,7 @@ export const SEGMENTED_ROPE_CONFIG = {
   ropeSagMin: 0,
   ropeSagMax: 1.0,
   ropeSagSmoothing: 0.25,
+  ropeSagFirstSegmentMultiplier: 0.1,
   cornerIntersectSamples: 24,
   cornerIntersectDepth: 0.35,
   cornerTransitionMs: 450,
@@ -163,7 +164,11 @@ const getSegmentTargetSag = (segment) => {
     segment.end.y - segment.start.y,
   );
   const sagScale = SEGMENTED_ROPE_CONFIG.ropeSagScale ?? 0.5;
-  const sag = segment.slack * horizontalDistance * sagScale;
+  const sagMultiplier =
+    Number.isFinite(segment.sagMultiplier) && segment.sagMultiplier >= 0
+      ? segment.sagMultiplier
+      : 1;
+  const sag = segment.slack * horizontalDistance * sagScale * sagMultiplier;
   return clamp(
     sag,
     SEGMENTED_ROPE_CONFIG.ropeSagMin,
@@ -234,6 +239,10 @@ const getSegmentsFromWaypoints = (waypoints, tension, castOrigin, lastSags) => {
     );
     const nextSags = [];
     for (let i = 0; i < segments.length; i += 1) {
+      const isFirstSegment = segments.length > 1 && i === 0;
+      segments[i].sagMultiplier = isFirstSegment
+        ? (SEGMENTED_ROPE_CONFIG.ropeSagFirstSegmentMultiplier ?? 1)
+        : 1;
       const targetSag = getSegmentTargetSag(segments[i]);
       const prevSag = lastSags[i];
       const smoothedSag =

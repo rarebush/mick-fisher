@@ -13,19 +13,19 @@ function SlipMeter() {
   }
 
   // Get magnet position from appropriate phase
-  const magnetPosition =
+  const magnetSurfacePosition =
     gamePhase === "dragging"
-      ? dragState.magnetPosition
-      : liftState.magnetPosition || 50;
+      ? dragState.magnetSurfacePosition
+      : liftState.magnetSurfacePosition || 50;
 
   const magnetContactWidth =
     gamePhase === "dragging" ? dragState.magnetContactWidth : 10;
 
   // Calculate distance to nearest edge
-  const distanceToEdge = getDistanceToNearestEdge(magnetPosition);
+  const distanceToEdge = getDistanceToNearestEdge(magnetSurfacePosition);
 
   // Determine which edge is nearest for visual display
-  const isNearLeftEdge = magnetPosition < 50;
+  const isNearLeftEdge = magnetSurfacePosition < 50;
 
   // Color coding based on distance to edge (from documentation)
   let barColor = "#4CAF50"; // Green (safe, 40+ units)
@@ -43,8 +43,8 @@ function SlipMeter() {
   }
 
   // Calculate magnet edges for display
-  const magnetLeftEdge = magnetPosition - magnetContactWidth / 2;
-  const magnetRightEdge = magnetPosition + magnetContactWidth / 2;
+  const magnetLeftEdge = magnetSurfacePosition - magnetContactWidth / 2;
+  const magnetRightEdge = magnetSurfacePosition + magnetContactWidth / 2;
 
   return (
     <div className={`slip-meter-container ${warningClass}`}>
