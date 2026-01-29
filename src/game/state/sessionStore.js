@@ -73,6 +73,7 @@ const useSessionStore = create((set, get) => ({
 
   // 3D Rope physics state
   rope: null, // Rope3D instance
+  ropeTension: 0, // Single source of truth for rope tension
   phase: "idle", // Current phase: 'idle', 'cast', 'drag', 'lift'
   phaseProgress: 0, // Phase completion (0 to 1)
   castPosition: null, // Cast landing position (set before drag starts, for rope rendering)
@@ -139,6 +140,7 @@ const useSessionStore = create((set, get) => ({
       isDragging: false, // Reset to ensure no auto-dragging
       phase: "drag", // Set phase for 3D rope physics
       phaseProgress: 0,
+      ropeTension: initialTension,
       dragState: {
         active: true,
         tension: initialTension, // Use tension from cast animation
@@ -167,12 +169,17 @@ const useSessionStore = create((set, get) => ({
     ];
 
     set({
+      ropeTension: Math.max(0, tension),
       dragState: {
         ...state.dragState,
         tension: Math.max(0, tension), // Allow tension > 100% for failure detection
         dragMemory: newMemory,
       },
     });
+  },
+
+  setRopeTension: (tension) => {
+    set({ ropeTension: Math.max(0, tension) });
   },
 
   updateDragProgress: (
@@ -201,6 +208,7 @@ const useSessionStore = create((set, get) => ({
     set({
       phase: "idle", // Reset phase
       phaseProgress: 0,
+      ropeTension: 0,
       dragState: {
         ...state.dragState,
         active: false,
@@ -215,6 +223,7 @@ const useSessionStore = create((set, get) => ({
     useMagnetStore.getState().despawnMagnet();
 
     set((state) => ({
+      ropeTension: 0,
       dragState: {
         ...state.dragState,
         active: false,

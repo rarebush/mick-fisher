@@ -262,12 +262,13 @@ export async function updateDragMechanics(
   }
 
   // Calculate tension change
+  const currentTension = sessionStore.getState().ropeTension;
   const tensionChange = calculateTensionBuildRate(
-    dragState.tension,
+    currentTension,
     item.weight,
     isDragging,
   );
-  const newTension = dragState.tension + tensionChange * deltaTime;
+  const newTension = currentTension + tensionChange * deltaTime;
 
   // Update drag progress with slip calculations (checks for failure)
   const result = updateDragState(

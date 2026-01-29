@@ -5,19 +5,19 @@ import "./tension-bar.css";
 
 function TensionBar() {
   // Zustand stores - read only
-  const { dragState, isDragging } = useSessionStore();
-  const { gamePhase, currentCast } = useGameStore();
+  const { dragState, isDragging, ropeTension, phase } = useSessionStore();
+  const { currentCast } = useGameStore();
 
   // Show during casting or dragging phases
-  const isCasting = gamePhase === "casting";
-  const isDragPhase = gamePhase === "dragging" && dragState.active;
+  const isCasting = phase === "cast";
+  const isDragPhase = phase === "drag" && dragState.active;
 
   if (!isCasting && !isDragPhase) {
     return null;
   }
 
-  // Use cast tension during casting, drag tension during dragging
-  const tension = isCasting ? currentCast.tension : dragState.tension;
+  // Single source of truth for tension
+  const tension = ropeTension;
   const distance = isCasting ? currentCast.distance : dragState.distance;
 
   // Clamp tension for display only (actual value can exceed 100 to trigger failure)

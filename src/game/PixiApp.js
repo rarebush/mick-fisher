@@ -289,13 +289,13 @@ export class PixiApp {
 
   // Tap callback invoked by InputManager during drag phase
   handleTap() {
-    const dragState = this.sessionStore?.getState().dragState;
-    if (!dragState) return;
+    const ropeTension = this.sessionStore?.getState().ropeTension;
+    if (!Number.isFinite(ropeTension)) return;
 
-    const newTension = processTap(dragState.tension);
+    const newTension = processTap(ropeTension);
     this.sessionStore.getState().updateDragTension(newTension);
     console.log(
-      `[TAP] Tension: ${dragState.tension.toFixed(0)}% → ${newTension.toFixed(0)}% (+10%)`,
+      `[TAP] Tension: ${ropeTension.toFixed(0)}% → ${newTension.toFixed(0)}% (+10%)`,
     );
   }
 
@@ -545,8 +545,7 @@ export class PixiApp {
     this.lastRopeUpdateTime = now;
 
     // Update 3D rope physics and get screen coordinates
-    const dragState = this.sessionStore?.getState().dragState;
-    const tension = dragState?.tension ?? 50; // Default to medium tension
+    const tension = this.sessionStore?.getState().ropeTension ?? 50;
     updateRopePhysics(
       this.app,
       this.sessionStore,

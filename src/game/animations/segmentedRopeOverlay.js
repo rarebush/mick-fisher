@@ -68,7 +68,6 @@ let cornerLeadX = null;
 let lastWaterEntryScreen = null;
 let lastSingleSegmentSags = [];
 let lastCornerSegmentSags = [];
-let cornerSplitBlend = 0;
 
 const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
@@ -80,7 +79,6 @@ export const resetCornerBlend = () => {
   cornerLeadX = null;
   lastSingleSegmentSags = [];
   lastCornerSegmentSags = [];
-  cornerSplitBlend = 0;
 };
 
 export const getSegmentedWaterEntryScreen = () => lastWaterEntryScreen;
@@ -333,6 +331,7 @@ const computeCornerWaypoints = (
   cornerBlendValue,
   cornerDistanceBlend,
   viewport,
+  shouldIncludeCorner,
 ) => {
   if (!castOrigin || !magnetWorld) {
     return { waypoints: [], segments: [] };
@@ -351,7 +350,10 @@ const computeCornerWaypoints = (
 
   pushWaypoint(castOrigin);
 
-  if (castOrigin.y < WORLD_Y.WALKWAY_FRONT - SEGMENT_EPSILON) {
+  if (
+    shouldIncludeCorner &&
+    castOrigin.y < WORLD_Y.WALKWAY_FRONT - SEGMENT_EPSILON
+  ) {
     const lineCorner = computeLinePlaneIntersection(
       castOrigin,
       ropeEnd,
@@ -464,62 +466,6 @@ export const renderSegmentedRopeOverlay = (
   const now = performance.now();
   const deltaMs = lastCornerBlendTime ? now - lastCornerBlendTime : 0;
   lastCornerBlendTime = now;
-  const shouldUseCorner =
-    castOrigin.y < WORLD_Y.WALKWAY_FRONT - SEGMENT_EPSILON;
-  // Time-based corner blend, scaled by origin->corner distance (XY).
-  let cornerTimeScale = 1;
-  if (shouldUseCorner && SEGMENTED_ROPE_CONFIG.cornerBlendMs) {
-    const lineCorner = computeLinePlaneIntersection(
-      castOrigin,
-      magnetWorld,
-      WORLD_Y.WALKWAY_FRONT,
-      "y",
-      true,
-    );
-    if (lineCorner) {
-      const cornerDistance = Math.hypot(
-        lineCorner.x - castOrigin.x,
-        lineCorner.y - castOrigin.y,
-      );
-      const referenceDistance = Math.max(
-        SEGMENTED_ROPE_CONFIG.cornerBlendDistanceReference ?? 1,
-        SEGMENT_EPSILON,
-      );
-      cornerTimeScale = clamp(
-        cornerDistance / referenceDistance,
-        SEGMENTED_ROPE_CONFIG.cornerBlendDistanceScaleMin ?? 1,
-        SEGMENTED_ROPE_CONFIG.cornerBlendDistanceScaleMax ?? 1,
-      );
-    }
-  }
-  const effectiveCornerBlendMs = SEGMENTED_ROPE_CONFIG.cornerBlendMs
-    ? SEGMENTED_ROPE_CONFIG.cornerBlendMs * cornerTimeScale
-    : 0;
-  const blendDelta = effectiveCornerBlendMs
-    ? deltaMs / effectiveCornerBlendMs
-    : 1;
-  if (shouldUseCorner) {
-    cornerBlend = clamp(cornerBlend + blendDelta, 0, 1);
-  } else {
-    cornerBlend = clamp(cornerBlend - blendDelta, 0, 1);
-    cornerLeadX = null;
-  }
-  const easedCornerBlend = smoothstep01(cornerBlend);
-  // Distance-based corner blend (magnet Y vs walkway front).
-  const cornerDistanceBlend = SEGMENTED_ROPE_CONFIG.cornerBlendDistance
-    ? smoothstep01(
-        clamp(
-          (magnetWorld.y -
-            (WORLD_Y.WALKWAY_FRONT -
-              SEGMENTED_ROPE_CONFIG.cornerBlendDistance)) /
-            SEGMENTED_ROPE_CONFIG.cornerBlendDistance,
-          0,
-          1,
-        ),
-      )
-    : 1;
-  // Use the stricter of time or distance so both must progress.
-  const blendedCorner = Math.min(easedCornerBlend, cornerDistanceBlend);
 
   const singleWaypoints = [castOrigin, magnetWorld];
   const { segments: singleSegments, nextSags: nextSingleSags } =
@@ -531,30 +477,31 @@ export const renderSegmentedRopeOverlay = (
     );
   lastSingleSegmentSags = nextSingleSags;
 
-  const intersectionFactor =
-    shouldUseCorner && singleSegments.length
-      ? computeCornerIntersectionFactor(singleSegments)
-      : 0;
+  const intersectionFactor = singleSegments.length
+    ? computeCornerIntersectionFactor(singleSegments)
+    : 0;
 
   const cornerBlendDelta = SEGMENTED_ROPE_CONFIG.cornerTransitionMs
     ? deltaMs / SEGMENTED_ROPE_CONFIG.cornerTransitionMs
     : 1;
-  const cornerBlendTarget = intersectionFactor > 0 ? 1 : 0;
-  cornerSplitBlend = clamp(
-    cornerSplitBlend +
-      Math.sign(cornerBlendTarget - cornerSplitBlend) * cornerBlendDelta,
+  cornerBlend = clamp(
+    lerp(cornerBlend, intersectionFactor, cornerBlendDelta),
     0,
     1,
   );
-  const timeCornerBlend = smoothstep01(cornerSplitBlend);
-  const cornerSplitFactor = clamp(timeCornerBlend * intersectionFactor, 0, 1);
+  if (cornerBlend <= SEGMENT_EPSILON) {
+    cornerLeadX = null;
+  }
+  const easedCornerBlend = smoothstep01(cornerBlend);
 
+  const shouldIncludeCorner = cornerBlend > 0.001;
   const { waypoints: cornerWaypoints } = computeCornerWaypoints(
     castOrigin,
     magnetWorld,
     easedCornerBlend,
-    blendedCorner,
+    easedCornerBlend,
     viewport,
+    shouldIncludeCorner,
   );
   const { segments: cornerSegments, nextSags: nextCornerSags } =
     getSegmentsFromWaypoints(
@@ -565,20 +512,11 @@ export const renderSegmentedRopeOverlay = (
     );
   lastCornerSegmentSags = nextCornerSags;
 
-  const singleWaterEntry = findWaterEntryOnSegments(singleSegments);
-  const cornerWaterEntry = findWaterEntryOnSegments(cornerSegments);
-  const waterEntry =
-    singleWaterEntry && cornerWaterEntry
-      ? {
-          x: lerp(singleWaterEntry.x, cornerWaterEntry.x, cornerSplitFactor),
-          y: lerp(singleWaterEntry.y, cornerWaterEntry.y, cornerSplitFactor),
-          z: WORLD_Z.WATER_SURFACE,
-        }
-      : cornerSplitFactor > 0
-        ? (cornerWaterEntry ?? singleWaterEntry)
-        : (singleWaterEntry ?? cornerWaterEntry);
-
-  const segments = cornerSplitFactor > 0.001 ? cornerSegments : singleSegments;
+  const activeWaypoints = shouldIncludeCorner
+    ? cornerWaypoints
+    : singleWaypoints;
+  const segments = shouldIncludeCorner ? cornerSegments : singleSegments;
+  const waterEntry = findWaterEntryOnSegments(segments);
   if (!segments.length) {
     return;
   }
@@ -664,10 +602,7 @@ export const renderSegmentedRopeOverlay = (
     });
   };
 
-  renderSegments(singleSegments, 1 - cornerSplitFactor);
-  if (cornerSplitFactor > 0.001) {
-    renderSegments(cornerSegments, cornerSplitFactor);
-  }
+  renderSegments(segments, 1);
 
   if (SEGMENTED_ROPE_CONFIG.debug.drawSingleCurve && singleSegments.length) {
     renderSegments(
@@ -691,8 +626,6 @@ export const renderSegmentedRopeOverlay = (
   }
 
   if (SEGMENTED_ROPE_CONFIG.debug.drawWaypoints) {
-    const activeWaypoints =
-      cornerSplitFactor >= 0.5 ? cornerWaypoints : singleWaypoints;
     activeWaypoints.forEach((point, index) => {
       const screenPoint = worldToScreen(point, viewport);
       debugLine

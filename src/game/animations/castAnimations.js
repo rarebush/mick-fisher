@@ -351,9 +351,8 @@ export function animateCastLine(
 
         // Animate tension: 95 -> 15 as rope extends
         currentTension = 95 - 80 * progress;
-        if (gameStore) {
-          gameStore.getState().updateCastTension(currentTension);
-        }
+        sessionStore?.getState().setRopeTension(currentTension);
+        // Tension is now tracked in sessionStore only.
 
         // Update session phase progress
         if (sessionStore) {
@@ -407,6 +406,7 @@ export function animateCastLine(
 
         // Render rope
         render3DRopeWithViewport(line, rope3D, viewport, waterSurfaceScreenY, {
+          tension: sessionStore?.getState().ropeTension,
           hideUnderwaterSegments,
           lineUnderwater,
           lineDebug,
@@ -490,9 +490,8 @@ Z: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
 
         // Animate tension: 15 -> 10 as magnet sinks
         currentTension = 15 - 5 * sinkProgress;
-        if (gameStore) {
-          gameStore.getState().updateCastTension(currentTension);
-        }
+        sessionStore?.getState().setRopeTension(currentTension);
+        // Tension is now tracked in sessionStore only.
 
         // Update session phase progress
         if (sessionStore) {
@@ -512,6 +511,7 @@ Z: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
 
         // Render rope
         render3DRopeWithViewport(line, rope3D, viewport, waterSurfaceScreenY, {
+          tension: sessionStore?.getState().ropeTension,
           hideUnderwaterSegments,
           lineUnderwater,
           lineDebug,
@@ -566,9 +566,8 @@ Z: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
 
         // Final tension settling
         currentTension = 10;
-        if (gameStore) {
-          gameStore.getState().updateCastTension(currentTension);
-        }
+        sessionStore?.getState().setRopeTension(currentTension);
+        // Tension is now tracked in sessionStore only.
 
         // Update session phase progress
         if (sessionStore) {
@@ -588,6 +587,7 @@ Z: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
 
         // Render rope
         render3DRopeWithViewport(line, rope3D, viewport, waterSurfaceScreenY, {
+          tension: sessionStore?.getState().ropeTension,
           hideUnderwaterSegments,
           lineUnderwater,
           lineDebug,
