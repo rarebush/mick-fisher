@@ -292,9 +292,14 @@ export async function updateDragMechanics(
       slipDirection: dragState.slipDirection,
       velocity: dragState.velocity,
       accelerationTime: dragState.accelerationTime,
+      overloadTimer: dragState.overloadTimer,
     },
     item,
     deltaTime,
+    {
+      previousTension: currentTension,
+      isHolding: isDragging,
+    },
   );
 
   // Only update tension if not failing (prevent decay after failure is detected)
@@ -307,6 +312,7 @@ export async function updateDragMechanics(
         result.magnetSurfacePosition,
         result.velocity,
         result.accelerationTime,
+        result.overloadTimer,
       );
     // Keep magnet world position in sync for this frame
     getItemWorldPosition(app, sessionStore);

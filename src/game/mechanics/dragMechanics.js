@@ -23,11 +23,11 @@ export function calculateTensionBuildRate(
 ) {
   if (!isHolding) {
     // Decay rate when not holding
-    return -8; // -8% per second (slower decay = harder)
+    return -50; // -8% per second (slower decay = harder)
   }
 
   // Base build rate
-  const BASE_BUILD_RATE = 20; // % per second at 0% tension (faster build = harder)
+  const BASE_BUILD_RATE = 90; // % per second at 0% tension (faster build = harder)
 
   // Weight modifier (heavier = faster tension build)
   let weightMod = 1.0;
@@ -51,7 +51,7 @@ export function calculateTensionBuildRate(
  * @returns {number} - New tension value (can exceed 100% for failure detection)
  */
 export function processTap(currentTension) {
-  const TAP_BOOST = 10; // Fixed 10% per tap
+  const TAP_BOOST = 20; // Fixed 10% per tap
   // Allow tension to exceed 100% so tension-overload failure can trigger
   return currentTension + TAP_BOOST;
 }
@@ -60,20 +60,34 @@ export function processTap(currentTension) {
  * Calculate drag speed based on tension
  * @param {number} tension - Current tension (0-100%)
  * @param {number} itemWeight - Item weight in kg
+ * @param {object} options - Optional config
+ * @param {number} options.pullThreshold - Tension % required to start moving
  * @returns {number} - Drag speed in meters per second
  */
-export function calculateDragSpeed(tension, itemWeight = 10) {
-  if (tension >= 100) return 0; // Ripped off
+export const DRAG_TENSION_PULL_THRESHOLD = 80; // % tension required to start pulling
+
+export function calculateDragSpeed(
+  tension,
+  itemWeight = 10,
+  { pullThreshold = DRAG_TENSION_PULL_THRESHOLD } = {},
+) {
+  // Require high tension before the magnet starts moving.
+  const threshold = Math.max(0, Math.min(99, pullThreshold));
+  const effectiveTension = Math.max(0, tension);
+  const normalizedTension =
+    effectiveTension <= threshold
+      ? 0
+      : ((effectiveTension - threshold) / (100 - threshold)) * 100;
 
   // Base speed from tension (smooth curve through the table points)
-  const speedMultiplier = sampleCurve(tension, [
+  const speedMultiplier = sampleCurve(normalizedTension, [
     { tension: 0, multiplier: 0 },
     { tension: 10, multiplier: 0.45 },
     { tension: 31, multiplier: 0.8 },
     { tension: 51, multiplier: 1.2 },
     { tension: 71, multiplier: 1.6 },
     { tension: 86, multiplier: 1.9 },
-    { tension: 100, multiplier: 0 },
+    { tension: 100, multiplier: 2.0 },
   ]);
 
   // Weight resistance (heavier = slower, but less punishing)
@@ -114,7 +128,23 @@ function sampleCurve(tension, points) {
  * @param {number} deltaTime - Time since last update (seconds)
  * @returns {object} - Updated state { distance, magnetSurfacePosition, tension }
  */
-export function updateDragState(currentState, item, deltaTime) {
+export const OVERLOAD_TENSION_THRESHOLD = 99.9; // % tension to start overload timer
+export const OVERLOAD_FAIL_SECONDS = 0.25; // seconds at/above threshold to fail
+export const OVERLOAD_DECAY_RATE = 0.1; // seconds per second (timer decay rate)
+
+export function updateDragState(
+  currentState,
+  item,
+  deltaTime,
+  {
+    previousTension = null,
+    pullThreshold = DRAG_TENSION_PULL_THRESHOLD,
+    overloadThreshold = OVERLOAD_TENSION_THRESHOLD,
+    overloadFailSeconds = OVERLOAD_FAIL_SECONDS,
+    overloadDecayRate = OVERLOAD_DECAY_RATE,
+    isHolding = false,
+  } = {},
+) {
   const {
     tension,
     distance,
@@ -123,10 +153,21 @@ export function updateDragState(currentState, item, deltaTime) {
     slipDirection,
     velocity = 0,
     accelerationTime = 0,
+    overloadTimer = 0,
   } = currentState;
 
+  const tensionIncreasePerSecond =
+    previousTension === null || deltaTime <= 0
+      ? 0
+      : (tension - previousTension) / deltaTime;
+
   // Calculate slip rate in units per second
-  const slipRate = calculateSlipRate(item, tension);
+  const slipRate = calculateSlipRate(
+    item,
+    tensionIncreasePerSecond,
+    tension,
+    pullThreshold,
+  );
 
   // Update magnet position
   const newPosition = updateMagnetPosition(
@@ -144,19 +185,35 @@ export function updateDragState(currentState, item, deltaTime) {
       tension: tension,
       velocity: velocity,
       accelerationTime: accelerationTime,
+      overloadTimer: overloadTimer,
       failed: true,
       failReason: "slip-failure",
     };
   }
 
-  // Check for instant fail at or near 100% tension (rare, catastrophic failure)
-  if (tension >= 99.9) {
+  // Overload timer: builds only while holding at/above threshold, decays otherwise
+  const atOverload = tension >= overloadThreshold;
+  let nextOverloadTimer = overloadTimer;
+  if (deltaTime > 0) {
+    if (isHolding && atOverload) {
+      nextOverloadTimer += deltaTime;
+    } else {
+      nextOverloadTimer = Math.max(
+        0,
+        nextOverloadTimer - overloadDecayRate * deltaTime,
+      );
+    }
+  }
+
+  // Check for overload failure after sustained max tension
+  if (isHolding && atOverload && nextOverloadTimer >= overloadFailSeconds) {
     return {
       distance: distance,
       magnetSurfacePosition: newPosition,
       tension: 100,
       velocity: velocity,
       accelerationTime: accelerationTime,
+      overloadTimer: overloadFailSeconds,
       failed: true,
       failReason: "tension-overload",
     };
@@ -195,6 +252,7 @@ export function updateDragState(currentState, item, deltaTime) {
       tension: tension,
       velocity: newVelocity,
       accelerationTime: newAccelerationTime,
+      overloadTimer: nextOverloadTimer,
       complete: true,
     };
   }
@@ -205,6 +263,7 @@ export function updateDragState(currentState, item, deltaTime) {
     tension: tension,
     velocity: newVelocity,
     accelerationTime: newAccelerationTime,
+    overloadTimer: nextOverloadTimer,
     failed: false,
     complete: false,
   };

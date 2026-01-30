@@ -44,12 +44,23 @@ export function getDistanceToNearestEdge(position) {
 
 /**
  * Calculate slip rate in units per second (positional model)
- * Based on documentation: slip rate × surface modifier × tension modifier
+ * Based on documentation: slip rate × surface modifier × tension-increase modifier
+ * Slip only occurs while tension is increasing and above minimum threshold.
  * @param {object} item - Item being retrieved
- * @param {number} tension - Current tension (0-100%)
+ * @param {number} tensionIncreasePerSecond - Positive tension increase rate (%/s)
+ * @param {number} currentTension - Current tension (0-100%)
+ * @param {number} minTensionToSlip - Minimum tension to allow slip
  * @returns {number} - Slip rate in units per second
  */
-export function calculateSlipRate(item, tension) {
+export function calculateSlipRate(
+  item,
+  tensionIncreasePerSecond,
+  currentTension,
+  minTensionToSlip,
+) {
+  if (currentTension < minTensionToSlip || tensionIncreasePerSecond <= 0) {
+    return 0;
+  }
   // Base slip rate from item (units per second at baseline)
   const baseSlipRate = item.slipRate || 1.0;
 
@@ -61,24 +72,26 @@ export function calculateSlipRate(item, tension) {
   };
   const surfaceMultiplier = surfaceModifiers[item.surfaceCondition] || 1.0;
 
-  // Tension modifier (from documentation table)
-  const tensionMultiplier = getTensionSlipMultiplier(tension);
+  // Tension increase modifier (scaled for %/s)
+  const tensionMultiplier = getTensionIncreaseMultiplier(
+    tensionIncreasePerSecond,
+  );
 
   return baseSlipRate * surfaceMultiplier * tensionMultiplier;
 }
 
 /**
- * Get tension-based slip multiplier
- * Based on documentation table
- * @param {number} tension - Current tension (0-100%)
+ * Get tension-increase-based slip multiplier
+ * Uses % per second thresholds to avoid absolute-tension bias
+ * @param {number} tensionIncreasePerSecond - Tension increase rate (%/s)
  * @returns {number} - Slip rate multiplier
  */
-export function getTensionSlipMultiplier(tension) {
-  if (tension >= 81) return 5.0; // Danger zone (increased from 4.0)
-  if (tension >= 61) return 2.5; // High (increased from 2.0)
-  if (tension >= 31) return 1.3; // Medium (increased from 1.0)
-  if (tension >= 1) return 0.5; // Low
-  return 0; // No tension = no slip
+export function getTensionIncreaseMultiplier(tensionIncreasePerSecond) {
+  if (tensionIncreasePerSecond >= 81) return 5.0; // Extreme increase
+  if (tensionIncreasePerSecond >= 61) return 2.5; // High increase
+  if (tensionIncreasePerSecond >= 31) return 1.3; // Medium increase
+  if (tensionIncreasePerSecond >= 1) return 0.5; // Low increase
+  return 0; // No increase = no slip
 }
 
 /**

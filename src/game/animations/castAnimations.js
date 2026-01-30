@@ -26,6 +26,12 @@ import {
   renderSegmentedRopeOverlay,
   resetCornerBlend,
 } from "./segmentedRopeOverlay.js";
+import {
+  CORNER_PROJECTION_CONFIG,
+  drawProjectedRopeDebug,
+  getSingleCurveWithCornerProjection,
+  renderProjectedRopePoints,
+} from "./projectedRopeRenderer.js";
 
 /**
  * Animate casting line from shore to target position with 3D rope physics
@@ -708,12 +714,43 @@ export function render3DRopeWithViewport(
   const magnetWorld =
     trackedMagnetWorld ?? worldPoints[worldPoints.length - 1].pos;
 
-  renderSegmentedRopeOverlay(line, castOrigin, magnetWorld, tension, viewport, {
-    hideUnderwaterSegments: options.hideUnderwaterSegments,
-    lineAbove: line,
-    lineBelow: options.lineUnderwater ?? null,
-    debugLine: options.lineDebug ?? null,
-  });
+  const useProjectedRope = options.useProjectedRope ?? true;
+  if (useProjectedRope) {
+    const projectedConfig =
+      options.projectedRopeConfig ?? CORNER_PROJECTION_CONFIG;
+    const projectedPoints = getSingleCurveWithCornerProjection(
+      castOrigin,
+      magnetWorld,
+      tension,
+      projectedConfig,
+    );
+    renderProjectedRopePoints(projectedPoints, line, viewport, projectedConfig);
+
+    if (options.lineDebug) {
+      drawProjectedRopeDebug(
+        options.lineDebug,
+        castOrigin,
+        magnetWorld,
+        tension,
+        viewport,
+        projectedConfig,
+      );
+    }
+  } else {
+    renderSegmentedRopeOverlay(
+      line,
+      castOrigin,
+      magnetWorld,
+      tension,
+      viewport,
+      {
+        hideUnderwaterSegments: options.hideUnderwaterSegments,
+        lineAbove: line,
+        lineBelow: options.lineUnderwater ?? null,
+        debugLine: options.lineDebug ?? null,
+      },
+    );
+  }
 }
 
 /**

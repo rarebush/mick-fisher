@@ -1,6 +1,7 @@
 import { useEffect, useRef } from "react";
 import useSessionStore from "../../game/state/sessionStore";
 import useGameStore from "../../game/state/gameStore";
+import { OVERLOAD_FAIL_SECONDS } from "../../game/mechanics/dragMechanics";
 import "./tension-bar.css";
 
 function TensionBar() {
@@ -19,6 +20,12 @@ function TensionBar() {
   // Single source of truth for tension
   const tension = ropeTension;
   const distance = isCasting ? currentCast.distance : dragState.distance;
+  const overloadTimer = dragState.overloadTimer || 0;
+  const overloadProgress =
+    OVERLOAD_FAIL_SECONDS > 0
+      ? Math.min(1, overloadTimer / OVERLOAD_FAIL_SECONDS)
+      : 0;
+  const shakeIntensity = overloadProgress > 0 ? 1 + 4 * overloadProgress : 0;
 
   // Clamp tension for display only (actual value can exceed 100 to trigger failure)
   const displayTension = Math.max(0, Math.min(100, tension));
@@ -35,36 +42,62 @@ function TensionBar() {
 
   return (
     <div className="tension-bar-container">
-      <div className="drag-info">
-        <div className="info-item">
-          <span className="label">Dist</span>
-          <span className="value">{distance.toFixed(1)}m</span>
+      <div
+        className={`tension-bar-inner ${
+          overloadProgress > 0 ? "tension-bar-inner--shaking" : ""
+        }`}
+        style={{ "--shake-intensity": `${shakeIntensity}px` }}
+      >
+        <div className="drag-info">
+          <div className="info-item">
+            <span className="label">Dist</span>
+            <span className="value">{distance.toFixed(1)}m</span>
+          </div>
+          <div className="info-item">
+            <span className="label">Tension</span>
+            <span className="value">{Math.round(displayTension)}%</span>
+          </div>
         </div>
-        <div className="info-item">
-          <span className="label">Tension</span>
-          <span className="value">{Math.round(displayTension)}%</span>
+
+        <div className="tension-bar">
+          <div
+            className="tension-fill"
+            style={{
+              height: `${displayTension}%`,
+              backgroundColor: barColor,
+            }}
+          />
         </div>
-      </div>
 
-      <div className="tension-bar">
-        <div
-          className="tension-fill"
-          style={{
-            height: `${displayTension}%`,
-            backgroundColor: barColor,
-          }}
-        />
-      </div>
+        {isDragPhase && (
+          <div className="overload-meter">
+            <div className="overload-label">Overload</div>
+            <div
+              className={`overload-track ${
+                overloadProgress >= 0.8 ? "overload-track--danger" : ""
+              }`}
+            >
+              <div
+                className="overload-fill"
+                style={{ width: `${Math.round(overloadProgress * 100)}%` }}
+              />
+            </div>
+            <div className="overload-value">
+              {Math.round(overloadProgress * 100)}%
+            </div>
+          </div>
+        )}
 
-      <div className="drag-instruction">
-        {isCasting && "Casting..."}
-        {isDragPhase && (isDragging ? "Pulling..." : "Click to pull")}
-      </div>
+        <div className="drag-instruction">
+          {isCasting && "Casting..."}
+          {isDragPhase && (isDragging ? "Pulling..." : "Click to pull")}
+        </div>
 
-      <div className="tension-hint">
-        {displayTension >= 85 && "⚠️ DANGER!"}
-        {displayTension >= 60 && displayTension < 85 && "Careful"}
-        {displayTension < 60 && ""}
+        <div className="tension-hint">
+          {displayTension >= 85 && "⚠️ DANGER!"}
+          {displayTension >= 60 && displayTension < 85 && "Careful"}
+          {displayTension < 60 && ""}
+        </div>
       </div>
     </div>
   );

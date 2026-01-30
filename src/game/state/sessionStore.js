@@ -57,6 +57,7 @@ const useSessionStore = create((set, get) => ({
     quadrant: 0, // Which quadrant was cast into
     velocity: 0, // Current drag velocity (m/s) - for easing acceleration
     accelerationTime: 0, // Time since last speed change (for easing)
+    overloadTimer: 0, // Seconds at/above max tension while holding
   },
 
   // Lift phase state
@@ -148,6 +149,7 @@ const useSessionStore = create((set, get) => ({
         slipDirection,
         dragMemory: [],
         quadrant,
+        overloadTimer: 0,
       },
     });
   },
@@ -182,6 +184,7 @@ const useSessionStore = create((set, get) => ({
     magnetSurfacePosition,
     velocity,
     accelerationTime,
+    overloadTimer,
   ) => {
     set((state) => ({
       dragState: {
@@ -190,6 +193,10 @@ const useSessionStore = create((set, get) => ({
         magnetSurfacePosition: magnetSurfacePosition, // Allow position to go beyond 0-100 for slip-off detection
         velocity: velocity || 0,
         accelerationTime: accelerationTime || 0,
+        overloadTimer:
+          overloadTimer === undefined
+            ? state.dragState.overloadTimer
+            : Math.max(0, overloadTimer),
       },
     }));
   },
@@ -502,6 +509,7 @@ const useSessionStore = create((set, get) => ({
         magnetContactWidth: 6,
         slipDirection: 0,
         dragMemory: [],
+        overloadTimer: 0,
       },
       liftState: {
         active: false,
