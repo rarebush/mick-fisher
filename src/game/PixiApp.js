@@ -10,7 +10,6 @@
 import * as PIXI from "pixi.js";
 import { DebugOverlay } from "./graphics/debugOverlay.js";
 import useLocationStore from "./state/locationStore.js";
-import { processTap } from "./mechanics/dragMechanics.js";
 
 // Import new modules
 import {
@@ -268,7 +267,6 @@ export class PixiApp {
       this.debugOverlay,
       {
         onCast: this.handleCast.bind(this),
-        onTap: this.handleTap.bind(this),
       },
     );
 
@@ -287,18 +285,6 @@ export class PixiApp {
       waterHeight: waterSurface.height,
       opaque: isOpaque,
     });
-  }
-
-  // Tap callback invoked by InputManager during drag phase
-  handleTap() {
-    const ropeTension = this.sessionStore?.getState().ropeTension;
-    if (!Number.isFinite(ropeTension)) return;
-
-    const newTension = processTap(ropeTension);
-    this.sessionStore.getState().updateDragTension(newTension);
-    console.log(
-      `[TAP] Tension: ${ropeTension.toFixed(0)}% → ${newTension.toFixed(0)}% (+10%)`,
-    );
   }
 
   // Cast callback invoked by InputManager

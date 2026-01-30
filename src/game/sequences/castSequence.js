@@ -94,7 +94,7 @@ export async function executeCastSequence(
   }
 
   // Animate casting line and get graphics for continued rendering
-  const { line, lineUnderwater, lineDebug, playerX, playerY, finalTension } =
+  const { line, lineUnderwater, lineDebug, playerX, playerY } =
     await animateCastLine(
       app,
       x,
@@ -217,7 +217,6 @@ export async function executeCastSequence(
         castResult.magnetSurfacePosition,
         castResult.magnetContactWidth,
         quadrant,
-        finalTension || 10, // Use final cast tension or default to 10
         slipDirection,
       );
 

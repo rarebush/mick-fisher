@@ -126,7 +126,6 @@ const useSessionStore = create((set, get) => ({
     magnetSurfacePosition = 50,
     magnetContactWidth = 6,
     quadrant = 0,
-    initialTension = 10, // Tension from end of cast animation
     slipDirection = 0, // Calculated by caller using calculateSlipDirection()
   ) => {
     // Reset rope physics state to prevent velocity carryover from animation
@@ -139,7 +138,6 @@ const useSessionStore = create((set, get) => ({
       isDragging: false, // Reset to ensure no auto-dragging
       phase: "drag", // Set phase for 3D rope physics
       phaseProgress: 0,
-      ropeTension: initialTension,
       dragState: {
         active: true,
         distance,
@@ -214,6 +212,10 @@ const useSessionStore = create((set, get) => ({
       dragState: {
         ...state.dragState,
         active: false,
+        dragMemory: [],
+        velocity: 0,
+        accelerationTime: 0,
+        overloadTimer: 0,
       },
     });
     return state.dragState.magnetSurfacePosition;
@@ -229,6 +231,10 @@ const useSessionStore = create((set, get) => ({
       dragState: {
         ...state.dragState,
         active: false,
+        dragMemory: [],
+        velocity: 0,
+        accelerationTime: 0,
+        overloadTimer: 0,
       },
     }));
   },

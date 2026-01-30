@@ -1,7 +1,10 @@
 import { useEffect, useRef } from "react";
 import useSessionStore from "../../game/state/sessionStore";
 import useGameStore from "../../game/state/gameStore";
-import { OVERLOAD_FAIL_SECONDS } from "../../game/mechanics/dragMechanics";
+import {
+  DRAG_TENSION_PULL_THRESHOLD,
+  OVERLOAD_FAIL_SECONDS,
+} from "../../game/mechanics/dragMechanics";
 import "./tension-bar.css";
 
 function TensionBar() {
@@ -9,23 +12,29 @@ function TensionBar() {
   const { dragState, isDragging, ropeTension, phase } = useSessionStore();
   const { currentCast } = useGameStore();
 
-  // Show during casting or dragging phases
-  const isCasting = phase === "cast";
+  // Show during cast phases and dragging
+  const isCastPhase =
+    phase === "cast" ||
+    phase === "throwing" ||
+    phase === "splashing" ||
+    phase === "sinking" ||
+    phase === "settling";
   const isDragPhase = phase === "drag" && dragState.active;
 
-  if (!isCasting && !isDragPhase) {
+  if (!isCastPhase && !isDragPhase) {
     return null;
   }
 
   // Single source of truth for tension
   const tension = ropeTension;
-  const distance = isCasting ? currentCast.distance : dragState.distance;
+  const distance = isCastPhase ? currentCast.distance : dragState.distance;
   const overloadTimer = dragState.overloadTimer || 0;
   const overloadProgress =
     OVERLOAD_FAIL_SECONDS > 0
       ? Math.min(1, overloadTimer / OVERLOAD_FAIL_SECONDS)
       : 0;
   const shakeIntensity = overloadProgress > 0 ? 1 + 4 * overloadProgress : 0;
+  const pullThreshold = Math.max(0, Math.min(100, DRAG_TENSION_PULL_THRESHOLD));
 
   // Clamp tension for display only (actual value can exceed 100 to trigger failure)
   const displayTension = Math.max(0, Math.min(100, tension));
@@ -67,6 +76,12 @@ function TensionBar() {
               backgroundColor: barColor,
             }}
           />
+          {isDragPhase && (
+            <div
+              className="tension-threshold-line"
+              style={{ bottom: `${pullThreshold}%` }}
+            />
+          )}
         </div>
 
         {isDragPhase && (
@@ -89,7 +104,7 @@ function TensionBar() {
         )}
 
         <div className="drag-instruction">
-          {isCasting && "Casting..."}
+          {isCastPhase && "Casting..."}
           {isDragPhase && (isDragging ? "Pulling..." : "Click to pull")}
         </div>
 

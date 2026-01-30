@@ -39,14 +39,10 @@ export class InputManager {
     this.locationStore = locationStore;
     this.debugOverlay = debugOverlay;
     this.onCast = callbacks?.onCast;
-    this.onTap = callbacks?.onTap;
 
-    // Track input state - improved tap/hold detection
+    // Track input state - hold detection for drag
     this.isPointerDown = false; // Physical pointer state
     this.isHoldingForDrag = false; // Logical drag hold state
-    this.pointerDownTime = 0; // When pointer went down
-    this.lastTapReleaseTime = 0; // When last tap was released
-    this.holdDetectionTimeout = null; // Timer for hold detection
     this.isCasting = false;
     this.activePointerId = null; // Track which pointer is active
 
@@ -240,10 +236,9 @@ export class InputManager {
     if (event.code === "Space" || event.key === " ") {
       event.preventDefault();
       if (!this.isPointerDown) {
-        // Treat keyboard as immediate hold (no tap detection needed)
+        // Treat keyboard as immediate hold
         this.isPointerDown = true;
         this.isHoldingForDrag = true;
-        this.pointerDownTime = performance.now();
         if (this.sessionStore) {
           this.sessionStore.setState({ isDragging: true });
         }
@@ -257,7 +252,7 @@ export class InputManager {
 
     if (event.code === "Space" || event.key === " ") {
       event.preventDefault();
-      // For keyboard, just clear hold state directly (no tap processing)
+      // For keyboard, just clear hold state directly
       this.isPointerDown = false;
       this.isHoldingForDrag = false;
       if (this.sessionStore) {
@@ -272,12 +267,6 @@ export class InputManager {
   }
 
   resetInputState() {
-    // Clear hold detection timeout
-    if (this.holdDetectionTimeout) {
-      clearTimeout(this.holdDetectionTimeout);
-      this.holdDetectionTimeout = null;
-    }
-
     // Reset all input state
     this.isPointerDown = false;
     this.isHoldingForDrag = false;
@@ -289,50 +278,17 @@ export class InputManager {
   }
 
   handleDragMouseDown() {
-    const now = performance.now();
-
-    // Clear any pending hold detection from previous input
-    if (this.holdDetectionTimeout) {
-      clearTimeout(this.holdDetectionTimeout);
-      this.holdDetectionTimeout = null;
-    }
-
     // Mark pointer as physically down
     this.isPointerDown = true;
-    this.pointerDownTime = now;
-
-    // Start hold detection with 100ms delay
-    // If pointer is still down after delay, it's a hold, not a tap
-    this.holdDetectionTimeout = setTimeout(() => {
-      if (this.isPointerDown) {
-        // Pointer still down after 100ms = definite hold
-        this.isHoldingForDrag = true;
-        if (this.sessionStore) {
-          this.sessionStore.setState({ isDragging: true });
-        }
-      }
-    }, 100);
+    this.isHoldingForDrag = true;
+    if (this.sessionStore) {
+      this.sessionStore.setState({ isDragging: true });
+    }
   }
 
   handleDragMouseUp() {
-    const now = performance.now();
-    const pressDuration = now - this.pointerDownTime;
-
-    // Clear hold detection timeout
-    if (this.holdDetectionTimeout) {
-      clearTimeout(this.holdDetectionTimeout);
-      this.holdDetectionTimeout = null;
-    }
-
     // Mark pointer as physically up
     this.isPointerDown = false;
-
-    // If this was a tap (released before 100ms OR never triggered hold mode)
-    if (pressDuration < 100 || !this.isHoldingForDrag) {
-      // Delegate tap processing to orchestrator via callback
-      this.onTap?.();
-      this.lastTapReleaseTime = now;
-    }
 
     // Always clear hold state when pointer released
     this.isHoldingForDrag = false;
@@ -650,12 +606,6 @@ export class InputManager {
    * Cleanup event listeners
    */
   destroy() {
-    // Clear any pending hold detection timeout
-    if (this.holdDetectionTimeout) {
-      clearTimeout(this.holdDetectionTimeout);
-      this.holdDetectionTimeout = null;
-    }
-
     if (this.app && this.app.stage) {
       this.app.stage.off("pointerdown", this.handlePointerDown);
       this.app.stage.off("pointerup", this.handlePointerUp);

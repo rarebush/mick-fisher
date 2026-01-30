@@ -23,11 +23,11 @@ export function calculateTensionBuildRate(
 ) {
   if (!isHolding) {
     // Decay rate when not holding
-    return -50; // -8% per second (slower decay = harder)
+    return -50; // -% per second (slower decay = harder)
   }
 
   // Base build rate
-  const BASE_BUILD_RATE = 90; // % per second at 0% tension (faster build = harder)
+  const BASE_BUILD_RATE = 120; // % per second at 0% tension (faster build = harder)
 
   // Weight modifier (heavier = faster tension build)
   let weightMod = 1.0;
@@ -46,17 +46,6 @@ export function calculateTensionBuildRate(
 }
 
 /**
- * Process a tap input (instant tension boost)
- * @param {number} currentTension - Current tension (0-100%)
- * @returns {number} - New tension value (can exceed 100% for failure detection)
- */
-export function processTap(currentTension) {
-  const TAP_BOOST = 20; // Fixed 10% per tap
-  // Allow tension to exceed 100% so tension-overload failure can trigger
-  return currentTension + TAP_BOOST;
-}
-
-/**
  * Calculate drag speed based on tension
  * @param {number} tension - Current tension (0-100%)
  * @param {number} itemWeight - Item weight in kg
@@ -64,7 +53,7 @@ export function processTap(currentTension) {
  * @param {number} options.pullThreshold - Tension % required to start moving
  * @returns {number} - Drag speed in meters per second
  */
-export const DRAG_TENSION_PULL_THRESHOLD = 80; // % tension required to start pulling
+export const DRAG_TENSION_PULL_THRESHOLD = 50; // % tension required to start pulling
 
 export function calculateDragSpeed(
   tension,

@@ -487,7 +487,7 @@ Z: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
             (WORLD_Z.WATER_SURFACE - WORLD_Z.RIVERBED);
 
         // Animate tension: 15 -> 10 as magnet sinks
-        currentTension = 15 - 5 * sinkProgress;
+        currentTension = 15 - 15 * sinkProgress;
         sessionStore?.getState().setRopeTension(currentTension);
         // Tension is now tracked in sessionStore only.
 
@@ -563,7 +563,7 @@ Z: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
         const settleProgress = Math.min(settleElapsed / settleDuration, 1);
 
         // Final tension settling
-        currentTension = 10;
+        currentTension = 0;
         sessionStore?.getState().setRopeTension(currentTension);
         // Tension is now tracked in sessionStore only.
 
