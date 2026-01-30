@@ -11,8 +11,8 @@ import {
 import {
   createViewport,
   getWorldDirectionScreenAngle,
-  WORLD_Y,
   WORLD_Z,
+  getAvatarWorldPosition,
 } from "../mechanics/worldConstants.js";
 import useMagnetStore from "../state/magnetStore.js";
 
@@ -109,7 +109,7 @@ export class SpriteManager {
         this.app.screen.width,
         this.app.screen.height,
       );
-      const avatarWorld = { x: 0, y: WORLD_Y.AVATAR };
+      const avatarWorld = getAvatarWorldPosition();
       const planeZ = magnetWorld.z ?? WORLD_Z.RIVERBED;
       const orientation = getWorldDirectionScreenAngle(
         magnetWorld,

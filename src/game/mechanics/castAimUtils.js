@@ -1,5 +1,10 @@
 import { MAX_QUADRANT_DISTANCE } from "../data/locationDatabase.js";
-import { WORLD_Y, WORLD_Z, worldToScreen } from "./worldConstants.js";
+import {
+  WORLD_Y,
+  WORLD_Z,
+  worldToScreen,
+  getAvatarWorldPosition,
+} from "./worldConstants.js";
 
 export const CAST_AIM_ANGLE_MIN_DEG = -90;
 export const CAST_AIM_ANGLE_MAX_DEG = 90;
@@ -7,7 +12,8 @@ export const CAST_AIM_ANGLE_MAX_DEG = 90;
 const EPSILON = 1e-6;
 
 export function getAvatarCastOrigin() {
-  return { x: 0, y: WORLD_Y.AVATAR };
+  const avatarWorld = getAvatarWorldPosition();
+  return { x: avatarWorld.x, y: avatarWorld.y };
 }
 
 export function metersToWorldRange(meters) {
@@ -22,7 +28,10 @@ export function metersToWorldRange(meters) {
 }
 
 export function clampCastAngleDeg(angleDeg) {
-  return Math.max(CAST_AIM_ANGLE_MIN_DEG, Math.min(CAST_AIM_ANGLE_MAX_DEG, angleDeg));
+  return Math.max(
+    CAST_AIM_ANGLE_MIN_DEG,
+    Math.min(CAST_AIM_ANGLE_MAX_DEG, angleDeg),
+  );
 }
 
 export function clampCastPower(power) {
@@ -97,7 +106,10 @@ export function clampTargetToRiverbed(
   z = WORLD_Z.RIVERBED,
 ) {
   return {
-    x: Math.max(viewport.worldXMin, Math.min(viewport.worldXMax, worldTarget.x)),
+    x: Math.max(
+      viewport.worldXMin,
+      Math.min(viewport.worldXMax, worldTarget.x),
+    ),
     y: Math.max(
       WORLD_Y.RIVERBED_NEAR,
       Math.min(WORLD_Y.RIVERBED_FAR, worldTarget.y),

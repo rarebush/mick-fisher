@@ -54,7 +54,6 @@ const useSessionStore = create((set, get) => ({
     magnetContactWidth: 6, // width of magnet contact area (reduced for more slip risk)
     slipDirection: 0, // -1 = left, 1 = right, 0 = not yet determined
     dragMemory: [], // Array of {timestamp, tension, distance} for pattern detection
-    castPosition: { x: 0, y: 0 }, // Where the cast landed (for visual effects)
     quadrant: 0, // Which quadrant was cast into
     velocity: 0, // Current drag velocity (m/s) - for easing acceleration
     accelerationTime: 0, // Time since last speed change (for easing)
@@ -125,7 +124,6 @@ const useSessionStore = create((set, get) => ({
     distance,
     magnetSurfacePosition = 50,
     magnetContactWidth = 6,
-    castPosition = { x: 0, y: 0 },
     quadrant = 0,
     initialTension = 10, // Tension from end of cast animation
     slipDirection = 0, // Calculated by caller using calculateSlipDirection()
@@ -149,7 +147,6 @@ const useSessionStore = create((set, get) => ({
         magnetContactWidth,
         slipDirection,
         dragMemory: [],
-        castPosition,
         quadrant,
       },
     });
@@ -309,7 +306,10 @@ const useSessionStore = create((set, get) => ({
   setPhaseProgress: (progress) =>
     set({ phaseProgress: Math.max(0, Math.min(1, progress)) }),
 
-  setCastPosition: (x, y) => set({ castPosition: { x, y } }),
+  setCastPosition: (x, y) =>
+    set({
+      castPosition: Number.isFinite(x) && Number.isFinite(y) ? { x, y } : null,
+    }),
 
   setCastInputMode: (mode) => set({ castInputMode: mode }),
 

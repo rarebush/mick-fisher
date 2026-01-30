@@ -42,6 +42,8 @@ import {
   worldToScreen,
   WORLD_Y,
   WORLD_Z,
+  getAvatarWorldPosition,
+  getAvatarHandWorldPosition,
 } from "./mechanics/worldConstants.js";
 import {
   computeCastTargetWorld,
@@ -680,7 +682,7 @@ export class PixiApp {
       );
       const targetScreen = worldToScreen(targetWorld, viewport);
       const avatarScreen = worldToScreen(
-        { x: 0, y: WORLD_Y.AVATAR, z: WORLD_Z.AVATAR_HAND },
+        getAvatarHandWorldPosition(),
         viewport,
       );
 
@@ -761,7 +763,7 @@ export class PixiApp {
         this.app.screen.height,
       );
       drawCastRangeRing(viewport);
-      const avatarWorld = { x: 0, y: WORLD_Y.AVATAR };
+      const avatarWorld = getAvatarWorldPosition();
       const targetWorld = screenToWorld(
         updatedDonut.target.x,
         updatedDonut.target.y,

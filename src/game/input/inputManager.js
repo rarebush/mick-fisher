@@ -13,6 +13,7 @@ import {
   getWorldDirectionScreenAngle,
   screenToWorld,
   worldToScreen,
+  getAvatarWorldPosition,
 } from "../mechanics/worldConstants.js";
 import {
   computeCastTargetScreen,
@@ -362,8 +363,7 @@ export class InputManager {
         this.app.screen.width,
         this.app.screen.height,
       );
-      const equipmentId =
-        this.gameStore?.getState().selectedCastingEquipmentId;
+      const equipmentId = this.gameStore?.getState().selectedCastingEquipmentId;
       const maxRangeMeters = getCastingEquipmentMaxRange(equipmentId);
       const targetScreen = computeCastTargetScreen(
         aimState.angle,
@@ -403,8 +403,7 @@ export class InputManager {
       if (!this.isWithinWaterSurface(x, y)) {
         return;
       }
-      const equipmentId =
-        this.gameStore?.getState().selectedCastingEquipmentId;
+      const equipmentId = this.gameStore?.getState().selectedCastingEquipmentId;
       const maxRangeMeters = getCastingEquipmentMaxRange(equipmentId);
       if (!this.isWithinCastRange(x, y, maxRangeMeters)) {
         this.showAccessMessageAtPosition(x, y);
@@ -425,8 +424,7 @@ export class InputManager {
       if (!this.isWithinWaterSurface(x, y)) {
         return;
       }
-      const equipmentId =
-        this.gameStore?.getState().selectedCastingEquipmentId;
+      const equipmentId = this.gameStore?.getState().selectedCastingEquipmentId;
       const maxRangeMeters = getCastingEquipmentMaxRange(equipmentId);
       if (!this.isWithinCastRange(x, y, maxRangeMeters)) {
         this.showAccessMessageAtPosition(x, y);
@@ -448,8 +446,7 @@ export class InputManager {
         sessionState.resetDonutAim();
         return;
       }
-      const equipmentId =
-        this.gameStore?.getState().selectedCastingEquipmentId;
+      const equipmentId = this.gameStore?.getState().selectedCastingEquipmentId;
       const maxRangeMeters = getCastingEquipmentMaxRange(equipmentId);
       if (!this.isWithinCastRange(target.x, target.y, maxRangeMeters)) {
         this.showAccessMessageAtPosition(target.x, target.y);
@@ -468,7 +465,7 @@ export class InputManager {
         this.app.screen.width,
         this.app.screen.height,
       );
-      const avatarWorld = { x: 0, y: WORLD_Y.AVATAR };
+      const avatarWorld = getAvatarWorldPosition();
       const targetWorld = screenToWorld(
         target.x,
         target.y,
@@ -546,13 +543,8 @@ export class InputManager {
       this.app.screen.width,
       this.app.screen.height,
     );
-    const worldTarget = screenToWorld(
-      x,
-      y,
-      WORLD_Z.WATER_SURFACE,
-      viewport,
-    );
-    const origin = { x: 0, y: WORLD_Y.AVATAR };
+    const worldTarget = screenToWorld(x, y, WORLD_Z.WATER_SURFACE, viewport);
+    const origin = getAvatarWorldPosition();
     const worldDistance = Math.hypot(
       worldTarget.x - origin.x,
       worldTarget.y - origin.y,
@@ -565,8 +557,7 @@ export class InputManager {
     const quadrant = this.getQuadrantFromPosition(x, y);
     if (quadrant === null) return null;
 
-    const equipmentId =
-      this.gameStore?.getState().selectedCastingEquipmentId;
+    const equipmentId = this.gameStore?.getState().selectedCastingEquipmentId;
     const maxRangeMeters = getCastingEquipmentMaxRange(equipmentId);
     if (!this.isWithinCastRange(x, y, maxRangeMeters)) {
       this.showAccessMessageAtPosition(x, y);
@@ -613,8 +604,7 @@ export class InputManager {
 
   getRiverbedScreenFromWaterScreen(x, y, viewport = null) {
     const resolvedViewport =
-      viewport ||
-      createViewport(this.app.screen.width, this.app.screen.height);
+      viewport || createViewport(this.app.screen.width, this.app.screen.height);
     const waterWorld = screenToWorld(
       x,
       y,

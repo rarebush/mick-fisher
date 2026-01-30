@@ -13,6 +13,7 @@ import {
   lerp,
   isUnderwater as worldIsUnderwater,
   getWaterDepth,
+  getAvatarHandWorldPosition,
 } from "./worldConstants.js";
 
 /**
@@ -90,12 +91,8 @@ export function getMagnetHeight(phase, progress) {
  * @param {Object} viewport - Viewport configuration from worldConstants
  * @returns {{x: number, y: number, z: number}} World coordinates
  */
-export function getAvatarWorldPosition(viewport) {
-  return {
-    x: viewport.screenWidth / 2, // Center of screen (world X = screen X)
-    y: WORLD_Y.AVATAR, // At the front of the scene
-    z: WORLD_Z.AVATAR_HAND, // Hand height for rope attachment
-  };
+export function getAvatarWorldPosition() {
+  return getAvatarHandWorldPosition();
 }
 
 /**
@@ -108,16 +105,15 @@ export function getAvatarWorldPosition(viewport) {
  */
 export function getAvatarPosition(screenX, screenY, viewport = null) {
   // Avatar is at a fixed world position, not derived from screen coordinates
-  const z = HEIGHTS.AVATAR_HAND;
-  const worldY = WORLD_Y.AVATAR;
+  const base = getAvatarHandWorldPosition();
 
   // Convert screen X to world units if viewport provided
   const worldX = viewport ? screenX / viewport.pixelsPerUnit : screenX;
 
   return {
     x: worldX,
-    y: worldY,
-    z: z,
+    y: base.y,
+    z: base.z,
   };
 }
 

@@ -3,6 +3,7 @@ import {
   WORLD_Z,
   worldToScreen,
   lerp,
+  getAvatarWorldPosition,
 } from "../mechanics/worldConstants.js";
 
 export const SEGMENTED_ROPE_CONFIG = {
@@ -591,9 +592,10 @@ export const renderSegmentedRopeOverlay = (
   }
 
   if (SEGMENTED_ROPE_CONFIG.debug.drawAvatarFeet) {
+    const avatarWorld = getAvatarWorldPosition();
     const avatarFeetWorld = {
       x: castOrigin.x,
-      y: WORLD_Y.AVATAR,
+      y: avatarWorld.y,
       z: WORLD_Z.AVATAR_FEET,
     };
     const avatarFeetScreen = worldToScreen(avatarFeetWorld, viewport);

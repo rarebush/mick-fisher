@@ -16,7 +16,7 @@ import {
   worldToScreen,
   screenToWorld,
   lerp,
-  AVATAR_CAST_OFFSET,
+  getAvatarHandWorldPosition,
 } from "../mechanics/worldConstants.js";
 import { calculateRopeSegments } from "../mechanics/heightMechanics.js";
 import { createMagnetSprite } from "../graphics/placeholderSprites.js";
@@ -90,19 +90,11 @@ export function animateCastLine(
     // ===========================================
     // AVATAR POSITION (fixed in world space, used for magnet throw)
     // ===========================================
-    const avatarWorld = {
-      x: 0, // Avatar at world center
-      y: WORLD_Y.AVATAR, // Front of scene (Y=0)
-      z: WORLD_Z.AVATAR_HAND, // Hand height (Z=4.2)
-    };
+    const avatarWorld = getAvatarHandWorldPosition();
     const avatarScreen = worldToScreen(avatarWorld, viewport);
 
     // Rope anchor starts at cast origin (avatar hand)
-    const ropeAnchorWorld = {
-      x: 0,
-      y: WORLD_Y.AVATAR,
-      z: WORLD_Z.AVATAR_HAND,
-    };
+    const ropeAnchorWorld = getAvatarHandWorldPosition();
 
     // ===========================================
     // CLICK POSITION (where user clicked = water surface)
@@ -708,14 +700,9 @@ export function render3DRopeWithViewport(
     Number.isFinite(options?.tension) && options.tension !== null
       ? options.tension
       : (rope3D.tension ?? 50);
-  const castOrigin = {
-    x: AVATAR_CAST_OFFSET.x,
-    y:
-      WORLD_Y.AVATAR +
-      AVATAR_CAST_OFFSET.y +
-      SEGMENTED_ROPE_CONFIG.castOriginYOffset,
-    z: WORLD_Z.AVATAR_FEET + AVATAR_CAST_OFFSET.z,
-  };
+  const castOrigin = getAvatarHandWorldPosition({
+    y: SEGMENTED_ROPE_CONFIG.castOriginYOffset,
+  });
   const magnetStore = useMagnetStore.getState();
   const trackedMagnetWorld = magnetStore?.getMagnetWorld?.();
   const magnetWorld =

@@ -247,14 +247,18 @@ export function checkForSnag(distance, totalDistance, dragMemory) {
 /**
  * Get recommended tension range for optimal balance (positional slip model)
  * @param {object} item - Item being dragged
- * @param {number} magnetPosition - Current magnet position on surface
+ * @param {number} magnetSurfacePosition - Current magnet position on surface
  * @param {number} slipDirection - Direction of slip (-1 or 1)
  * @returns {object} - { min, max, label }
  */
-export function getRecommendedTension(item, magnetPosition, slipDirection) {
+export function getRecommendedTension(
+  item,
+  magnetSurfacePosition,
+  slipDirection,
+) {
   // Calculate distance to edge in slip direction
   const distanceToEdge =
-    slipDirection === -1 ? magnetPosition : 100 - magnetPosition;
+    slipDirection === -1 ? magnetSurfacePosition : 100 - magnetSurfacePosition;
 
   // If close to edge, recommend lower tension
   if (distanceToEdge < 15) {

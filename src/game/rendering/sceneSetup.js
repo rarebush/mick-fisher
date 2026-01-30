@@ -19,6 +19,7 @@ import {
   projectToScreen,
   getSurfaceScreenBounds,
   RENDER_LAYERS,
+  getAvatarWorldPosition,
 } from "../mechanics/worldConstants.js";
 
 const WATER_COLORS = {
@@ -191,10 +192,23 @@ export function setupEnvironmentLayers(container, width, height) {
 
   // Debug: stick figure at walkway edge (cast origin at chest)
   const stickMan = new PIXI.Graphics();
-  const headWorld = { x: 0, y: WORLD_Y.AVATAR, z: WORLD_Z.AVATAR_HAND + 0.6 };
-  const chestWorld = { x: 0, y: WORLD_Y.AVATAR, z: WORLD_Z.AVATAR_HAND };
-  const waistWorld = { x: 0, y: WORLD_Y.AVATAR, z: WORLD_Z.WALKWAY + 0.6 };
-  const footWorld = { x: 0, y: WORLD_Y.AVATAR, z: WORLD_Z.WALKWAY };
+  const avatarWorld = getAvatarWorldPosition();
+  const headWorld = {
+    x: avatarWorld.x,
+    y: avatarWorld.y,
+    z: WORLD_Z.AVATAR_HAND + 0.6,
+  };
+  const chestWorld = {
+    x: avatarWorld.x,
+    y: avatarWorld.y,
+    z: WORLD_Z.AVATAR_HAND,
+  };
+  const waistWorld = {
+    x: avatarWorld.x,
+    y: avatarWorld.y,
+    z: WORLD_Z.WALKWAY + 0.6,
+  };
+  const footWorld = { x: avatarWorld.x, y: avatarWorld.y, z: WORLD_Z.WALKWAY };
 
   const headScreen = projectToScreen(
     headWorld.x,
@@ -304,7 +318,13 @@ export function setupEnvironmentLayers(container, width, height) {
 
   // Layer 6: Water Surface (semi-transparent, overlays riverbed)
   const water = new PIXI.Graphics();
-  drawWaterSurface(water, { width, height, waterY, waterHeight, opaque: false });
+  drawWaterSurface(water, {
+    width,
+    height,
+    waterY,
+    waterHeight,
+    opaque: false,
+  });
   container.addChild(water);
 
   // Layer 7: Magnet would be added here with dynamic Z-based ordering (handled separately)

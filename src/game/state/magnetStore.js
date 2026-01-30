@@ -4,7 +4,11 @@
  */
 
 import { create } from "zustand";
-import { WORLD_Z, WORLD_Y } from "../mechanics/worldConstants.js";
+import {
+  WORLD_Z,
+  WORLD_Y,
+  getAvatarHandWorldPosition,
+} from "../mechanics/worldConstants.js";
 
 const useMagnetStore = create((set, get) => ({
   // Magnet world position (null when not spawned)
@@ -24,10 +28,11 @@ const useMagnetStore = create((set, get) => ({
    * @param {number} avatarWorldX - Avatar world X position
    */
   spawnMagnet: (avatarWorldX) => {
+    const avatarHandWorld = getAvatarHandWorldPosition();
     const initialPos = {
       x: avatarWorldX,
-      y: WORLD_Y.AVATAR,
-      z: WORLD_Z.AVATAR_HAND,
+      y: avatarHandWorld.y,
+      z: avatarHandWorld.z,
     };
     set({
       magnetWorld: initialPos,

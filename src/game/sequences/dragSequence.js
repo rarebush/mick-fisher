@@ -17,6 +17,8 @@ import {
   worldToScreen,
   screenToWorld,
   lerp,
+  getAvatarWorldPosition,
+  getAvatarHandWorldPosition,
 } from "../mechanics/worldConstants.js";
 import useMagnetStore from "../state/magnetStore.js";
 
@@ -31,7 +33,8 @@ export function getItemWorldPosition(app, sessionStore) {
   const dragState = sessionStore.getState().dragState;
   if (!dragState.active) return null;
 
-  const { castPosition, distance, totalDistance } = dragState;
+  const { distance, totalDistance } = dragState;
+  const castPosition = sessionStore.getState().castPosition;
   if (!castPosition) return null;
 
   // Create viewport for projection
@@ -46,9 +49,10 @@ export function getItemWorldPosition(app, sessionStore) {
   );
 
   // Avatar position (where item is dragged toward)
-  const avatarWorld = {
-    x: 0, // Avatar at world center
-    y: WORLD_Y.AVATAR,
+  const avatarWorld = getAvatarWorldPosition();
+  const targetWorld = {
+    x: avatarWorld.x,
+    y: avatarWorld.y,
     z: WORLD_Z.RIVERBED, // Item approaches at riverbed level
   };
 
@@ -57,8 +61,8 @@ export function getItemWorldPosition(app, sessionStore) {
 
   // Interpolate world position
   const itemWorld = {
-    x: lerp(castWorld.x, avatarWorld.x, progress),
-    y: lerp(castWorld.y, avatarWorld.y, progress),
+    x: lerp(castWorld.x, targetWorld.x, progress),
+    y: lerp(castWorld.y, targetWorld.y, progress),
     z: WORLD_Z.RIVERBED, // Always on riverbed during drag
   };
 
@@ -141,26 +145,29 @@ export function updateRopePhysics(
   );
 
   // Rope anchor world position (cast origin at avatar hand)
-  const avatarWorld = {
-    x: 0, // Avatar at world center
-    y: WORLD_Y.AVATAR,
-    z: WORLD_Z.AVATAR_HAND,
-  };
+  const avatarWorld = getAvatarHandWorldPosition();
 
   // Get magnet/item world position based on game state
   const dragState = sessionStore.getState().dragState;
   const castPosition = sessionStore.getState().castPosition;
+  const magnetStore = useMagnetStore.getState();
   let magnetWorld;
 
   if (dragState.active) {
-    // During drag, get moving item world position
-    const itemWorld = getItemWorldPosition(app, sessionStore);
-    if (itemWorld) {
-      magnetWorld = {
-        x: itemWorld.x,
-        y: itemWorld.y,
-        z: itemWorld.z,
-      };
+    // During drag, use centralized magnet world position when available
+    const trackedMagnetWorld = magnetStore.getMagnetWorld();
+    if (trackedMagnetWorld) {
+      magnetWorld = trackedMagnetWorld;
+    } else {
+      // Fallback: compute from current drag state
+      const itemWorld = getItemWorldPosition(app, sessionStore);
+      if (itemWorld) {
+        magnetWorld = {
+          x: itemWorld.x,
+          y: itemWorld.y,
+          z: itemWorld.z,
+        };
+      }
     }
   } else if (castPosition) {
     // During cast/settle phase, use stored cast position
@@ -301,6 +308,8 @@ export async function updateDragMechanics(
         result.velocity,
         result.accelerationTime,
       );
+    // Keep magnet world position in sync for this frame
+    getItemWorldPosition(app, sessionStore);
   }
 
   // Verbose logging (~2% of frames)

@@ -40,6 +40,32 @@ export const AVATAR_CAST_OFFSET = {
   z: WORLD_Z.AVATAR_HAND - WORLD_Z.AVATAR_FEET,
 };
 
+/**
+ * Get avatar world position (feet/base).
+ * @returns {{x:number,y:number,z:number}}
+ */
+export function getAvatarWorldPosition() {
+  return {
+    x: 0,
+    y: WORLD_Y.AVATAR,
+    z: WORLD_Z.AVATAR_FEET,
+  };
+}
+
+/**
+ * Get avatar cast origin (hand) position.
+ * @param {{x?:number,y?:number,z?:number}} offset - Optional extra offset
+ * @returns {{x:number,y:number,z:number}}
+ */
+export function getAvatarHandWorldPosition(offset = {}) {
+  const avatar = getAvatarWorldPosition();
+  return {
+    x: avatar.x + AVATAR_CAST_OFFSET.x + (offset.x || 0),
+    y: avatar.y + AVATAR_CAST_OFFSET.y + (offset.y || 0),
+    z: avatar.z + AVATAR_CAST_OFFSET.z + (offset.z || 0),
+  };
+}
+
 // =============================================================================
 // WORLD DEPTH (Y-axis) - Abstract units
 // How far the scene extends from avatar toward the back
@@ -236,7 +262,10 @@ export function getWorldDirectionScreenAngle(
     },
     viewport,
   );
-  return Math.atan2(screenAhead.y - screenOrigin.y, screenAhead.x - screenOrigin.x);
+  return Math.atan2(
+    screenAhead.y - screenOrigin.y,
+    screenAhead.x - screenOrigin.x,
+  );
 }
 
 /**

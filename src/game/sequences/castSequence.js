@@ -206,12 +206,16 @@ export async function executeCastSequence(
       );
 
       // Start drag phase with magnet position and final cast tension
+      // Update cast position for drag path (re-engaged items may differ)
+      sessionStore
+        .getState()
+        .setCastPosition(initialPosition.x, initialPosition.y);
+
       const { startDrag } = sessionStore.getState();
       startDrag(
         castResult.distance,
         castResult.magnetSurfacePosition,
         castResult.magnetContactWidth,
-        initialPosition,
         quadrant,
         finalTension || 10, // Use final cast tension or default to 10
         slipDirection,
@@ -327,7 +331,7 @@ export async function handleDragFailure(
   const stopPosition = calculatePositionAtDistance(
     app,
     failureDistance,
-    dragState.castPosition,
+    sessionStore.getState().castPosition,
     dragState.totalDistance,
   );
 
@@ -392,7 +396,7 @@ function calculatePositionAtDistance(
   castPosition,
   totalDistance,
 ) {
-  if (!app) return null;
+  if (!app || !castPosition) return null;
 
   // Get wall base position from world constants
   const viewport = createViewport(app.screen.width, app.screen.height);
