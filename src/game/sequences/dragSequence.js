@@ -333,7 +333,7 @@ export async function updateDragMechanics(
     // Immediately deactivate drag to prevent re-triggering failure on next frame
     sessionStore.getState().deactivateDrag();
 
-    // Set phase to prevent ticker from updating rope physics during reel-in
+    // Set phase to prevent ticker from updating rope visuals during reel-in
     sessionStore.getState().setPhase("reeling");
 
     // Update item position to where it stopped (includes reel-in animation)

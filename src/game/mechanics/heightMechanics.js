@@ -1,6 +1,6 @@
 /**
  * heightMechanics.js
- * Z-axis height management for 3D rope physics
+ * Z-axis height management for rope visualization
  * Defines height levels and phase-based magnet positioning
  *
  * This module provides game-phase-aware position calculations.

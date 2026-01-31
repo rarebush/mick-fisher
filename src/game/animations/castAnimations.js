@@ -19,12 +19,7 @@ import {
 } from "../mechanics/worldConstants.js";
 import { createMagnetSprite } from "../graphics/placeholderSprites.js";
 import useMagnetStore from "../state/magnetStore.js";
-import {
-  CORNER_PROJECTION_CONFIG,
-  drawProjectedRopeDebug,
-  getSingleCurveWithCornerProjection,
-  renderProjectedRopePoints,
-} from "./projectedRopeRenderer.js";
+import { renderProjectedRope } from "./projectedRopeRenderer.js";
 
 /**
  * Animate casting line from shore to target position
@@ -334,7 +329,7 @@ export function animateCastLine(
           magnetWorld.z,
         );
 
-        render3DRopeWithViewport(line, viewport, ropeAnchorWorld, magnetWorld, {
+        renderProjectedRope(line, viewport, ropeAnchorWorld, magnetWorld, {
           tension: sessionStore?.getState().ropeTension,
           lineUnderwater,
           lineDebug,
@@ -427,7 +422,7 @@ Z: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
         }
 
         // Render rope
-        render3DRopeWithViewport(line, viewport, ropeAnchorWorld, magnetWorld, {
+        renderProjectedRope(line, viewport, ropeAnchorWorld, magnetWorld, {
           tension: sessionStore?.getState().ropeTension,
           lineUnderwater,
           lineDebug,
@@ -491,7 +486,7 @@ Z: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
         }
 
         // Render rope
-        render3DRopeWithViewport(line, viewport, ropeAnchorWorld, magnetWorld, {
+        renderProjectedRope(line, viewport, ropeAnchorWorld, magnetWorld, {
           tension: sessionStore?.getState().ropeTension,
           lineUnderwater,
           lineDebug,
@@ -572,58 +567,6 @@ Z: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
 }
 
 /**
- * Render rope using projected rope renderer (no physics dependency).
- * @param {PIXI.Graphics} line - Graphics object to draw rope on
- * @param {Object} viewport - Viewport configuration
- * @param {{x:number,y:number,z:number}} castOrigin - Rope anchor in world space
- * @param {{x:number,y:number,z:number}} magnetWorld - Magnet position in world space
- */
-export function render3DRopeWithViewport(
-  line,
-  viewport,
-  castOrigin,
-  magnetWorld,
-  options = {},
-) {
-  if (!line || line.destroyed || !viewport || !castOrigin || !magnetWorld) {
-    return;
-  }
-
-  line.clear();
-  if (options.lineUnderwater) {
-    options.lineUnderwater.clear();
-  }
-  if (options.lineDebug) {
-    options.lineDebug.clear();
-  }
-
-  const tension =
-    Number.isFinite(options?.tension) && options.tension !== null
-      ? options.tension
-      : 50;
-  const projectedConfig =
-    options.projectedRopeConfig ?? CORNER_PROJECTION_CONFIG;
-  const projectedPoints = getSingleCurveWithCornerProjection(
-    castOrigin,
-    magnetWorld,
-    tension,
-    projectedConfig,
-  );
-  renderProjectedRopePoints(projectedPoints, line, viewport, projectedConfig);
-
-  if (options.lineDebug) {
-    drawProjectedRopeDebug(
-      options.lineDebug,
-      castOrigin,
-      magnetWorld,
-      tension,
-      viewport,
-      projectedConfig,
-    );
-  }
-}
-
-/**
  * Animate rope reeling in after drag failure.
  * Uses projected rope rendering (no physics dependency).
  */
@@ -686,7 +629,7 @@ export function animateReelIn(
         z: lerp(startWorld.z, castOrigin.z, progress),
       };
 
-      render3DRopeWithViewport(line, viewport, castOrigin, magnetWorld, {
+      renderProjectedRope(line, viewport, castOrigin, magnetWorld, {
         tension: sessionStore?.getState().ropeTension,
         lineUnderwater: options.lineUnderwater ?? null,
         lineDebug: options.lineDebug ?? null,

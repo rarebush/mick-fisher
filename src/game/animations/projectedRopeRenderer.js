@@ -251,3 +251,52 @@ export function renderProjectedRopePoints(points, line, viewport, config = {}) {
   }
   line.stroke();
 }
+
+/**
+ * Render rope using projected rope points and optional debug overlay.
+ * This is the shared entrypoint for cast/drag/reel visuals.
+ */
+export function renderProjectedRope(
+  line,
+  viewport,
+  castOrigin,
+  magnetWorld,
+  options = {},
+) {
+  if (!line || line.destroyed || !viewport || !castOrigin || !magnetWorld) {
+    return;
+  }
+
+  line.clear();
+  if (options.lineUnderwater) {
+    options.lineUnderwater.clear();
+  }
+  if (options.lineDebug) {
+    options.lineDebug.clear();
+  }
+
+  const tension =
+    Number.isFinite(options?.tension) && options.tension !== null
+      ? options.tension
+      : 50;
+  const projectedConfig =
+    options.projectedRopeConfig ?? CORNER_PROJECTION_CONFIG;
+  const projectedPoints = getSingleCurveWithCornerProjection(
+    castOrigin,
+    magnetWorld,
+    tension,
+    projectedConfig,
+  );
+  renderProjectedRopePoints(projectedPoints, line, viewport, projectedConfig);
+
+  if (options.lineDebug) {
+    drawProjectedRopeDebug(
+      options.lineDebug,
+      castOrigin,
+      magnetWorld,
+      tension,
+      viewport,
+      projectedConfig,
+    );
+  }
+}

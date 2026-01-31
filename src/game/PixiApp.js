@@ -24,7 +24,7 @@ import {
   executeCastSequence,
   handleDragFailure,
 } from "./sequences/castSequence.js";
-import { render3DRopeWithViewport } from "./animations/castAnimations.js";
+import { renderProjectedRope } from "./animations/projectedRopeRenderer.js";
 import {
   getItemPosition,
   getItemWorldPosition,
@@ -88,7 +88,7 @@ export class PixiApp {
     // Drag timing (for deltaTime calculations)
     this.lastDragUpdateTime = null;
     this.dragStartTime = null;
-    this.lastRopeUpdateTime = null; // For 3D rope physics timing
+    this.lastRopeUpdateTime = null; // For rope render timing
 
     // Drag bubble interval
     this.dragBubbleInterval = null;
@@ -494,7 +494,7 @@ export class PixiApp {
     this.dragStartTime = result.dragStartTime;
   }
 
-  // Ticker method for rope physics updates during drag
+  // Ticker method for rope rendering during drag
   tickerUpdateRope() {
     if (!this.app || !this.dragLine) {
       return;
@@ -520,7 +520,7 @@ export class PixiApp {
 
     this.lastRopeUpdateTime = now;
 
-    // Update 3D rope physics and get screen coordinates
+    // Update rope render state and draw projected rope
     const tension = this.sessionStore?.getState().ropeTension ?? 50;
     const ropeState = updateRopePhysics(
       this.app,
@@ -536,7 +536,7 @@ export class PixiApp {
         this.app.screen.width,
         this.app.screen.height,
       );
-      render3DRopeWithViewport(
+      renderProjectedRope(
         this.dragLine,
         viewport,
         ropeState.castOrigin,
