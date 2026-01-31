@@ -17,14 +17,12 @@ import {
   setupWaterBackground,
   drawQuadrantGrid,
   setupEnvironmentLayers,
-  drawWaterSurface,
 } from "./rendering/sceneSetup.js";
 import { SpriteManager } from "./rendering/spriteManager.js";
 import { InputManager } from "./input/inputManager.js";
 import {
   executeCastSequence,
   handleDragFailure,
-  renderRope,
 } from "./sequences/castSequence.js";
 import { render3DRopeWithViewport } from "./animations/castAnimations.js";
 import {
@@ -36,11 +34,11 @@ import {
 import {
   createViewport,
   getWorldDirectionScreenAngle,
-  getSurfaceScreenBounds,
   screenToWorld,
   worldToScreen,
   WORLD_Y,
   WORLD_Z,
+  WORLD_X,
   getAvatarWorldPosition,
   getAvatarHandWorldPosition,
 } from "./mechanics/worldConstants.js";
@@ -199,13 +197,13 @@ export class PixiApp {
       debug: new PIXI.Container(),
     };
     const waterIndex = this.sceneContainer.getChildIndex(
-      this.environmentLayers.water,
+      this.environmentLayers.waterVolume,
     );
     this.sceneContainer.addChildAt(this.spriteLayers.underwater, waterIndex);
-    const gridIndex = this.sceneContainer.getChildIndex(
-      this.environmentLayers.gridLines,
+    const walkwayIndex = this.sceneContainer.getChildIndex(
+      this.environmentLayers.walkwayVolume,
     );
-    this.sceneContainer.addChildAt(this.spriteLayers.aboveWater, gridIndex);
+    this.sceneContainer.addChildAt(this.spriteLayers.aboveWater, walkwayIndex);
     this.sceneContainer.addChild(this.spriteLayers.debug);
 
     // Initialize managers
@@ -275,16 +273,8 @@ export class PixiApp {
   }
 
   applyWaterSurfaceOpacity(isOpaque) {
-    if (!this.app || !this.environmentLayers?.water) return;
-    const waterSurface = this.environmentLayers.waterSurface;
-    if (!waterSurface) return;
-    drawWaterSurface(this.environmentLayers.water, {
-      width: this.app.screen.width,
-      height: this.app.screen.height,
-      waterY: waterSurface.y,
-      waterHeight: waterSurface.height,
-      opaque: isOpaque,
-    });
+    if (!this.app || !this.environmentLayers?.waterVolume) return;
+    this.environmentLayers.waterVolume.alpha = isOpaque ? 1.0 : 0.6;
   }
 
   // Cast callback invoked by InputManager
@@ -492,9 +482,7 @@ export class PixiApp {
           this.dragLineDebug = null;
         }
 
-        // Clear 3D rope from sessionStore
         if (this.sessionStore) {
-          this.sessionStore.getState().setRope(null);
           this.sessionStore.getState().setPhase("idle");
           this.sessionStore.getState().setPhaseProgress(0);
           this.sessionStore.getState().setCastPosition(null, null);
@@ -534,7 +522,7 @@ export class PixiApp {
 
     // Update 3D rope physics and get screen coordinates
     const tension = this.sessionStore?.getState().ropeTension ?? 50;
-    updateRopePhysics(
+    const ropeState = updateRopePhysics(
       this.app,
       this.sessionStore,
       deltaTime,
@@ -543,26 +531,18 @@ export class PixiApp {
       tension,
     );
 
-    const rope = this.sessionStore?.getState().rope;
-    if (rope && this.dragLine) {
+    if (ropeState && this.dragLine) {
       const viewport = createViewport(
         this.app.screen.width,
         this.app.screen.height,
       );
-      const waterSurfaceScreenY = worldToScreen(
-        { x: 0, y: WORLD_Y.WATER_NEAR, z: WORLD_Z.WATER_SURFACE },
-        viewport,
-      ).y;
-      const hideUnderwaterSegments =
-        this.gameStore?.getState()?.waterSurfaceOpaque ?? false;
       render3DRopeWithViewport(
         this.dragLine,
-        rope,
         viewport,
-        waterSurfaceScreenY,
+        ropeState.castOrigin,
+        ropeState.magnetWorld,
         {
           tension,
-          hideUnderwaterSegments,
           lineUnderwater: this.dragLineUnderwater,
           lineDebug: this.dragLineDebug,
         },
@@ -584,20 +564,46 @@ export class PixiApp {
     const donutAimState = sessionState.donutAimState;
     const castMode = sessionState.castInputMode;
 
+    const drawPolygon = (graphics, points, fill, stroke) => {
+      if (!points.length) return;
+      graphics.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < points.length; i++) {
+        graphics.lineTo(points[i].x, points[i].y);
+      }
+      graphics.closePath();
+      if (fill) graphics.fill(fill);
+      if (stroke) graphics.stroke(stroke);
+    };
+
+    const getWaterSurfacePolygon = (viewport) => {
+      const z = WORLD_Z.WATER_SURFACE;
+      return [
+        { x: WORLD_X.MIN, y: WORLD_Y.WATER_NEAR, z },
+        { x: WORLD_X.MAX, y: WORLD_Y.WATER_NEAR, z },
+        { x: WORLD_X.MAX, y: WORLD_Y.WATER_FAR, z },
+        { x: WORLD_X.MIN, y: WORLD_Y.WATER_FAR, z },
+      ].map((pos) => worldToScreen(pos, viewport));
+    };
+
+    const getCastRangePolygon = (originWorld, rangeWorld, viewport) => {
+      const steps = 96;
+      const points = [];
+      for (let i = 0; i < steps; i++) {
+        const angle = (Math.PI * 2 * i) / steps;
+        const worldPoint = {
+          x: originWorld.x + Math.cos(angle) * rangeWorld,
+          y: originWorld.y + Math.sin(angle) * rangeWorld,
+          z: WORLD_Z.WATER_SURFACE,
+        };
+        points.push(worldToScreen(worldPoint, viewport));
+      }
+      return points;
+    };
+
     const drawCastRangeRing = (viewport) => {
-      const waterBounds = getSurfaceScreenBounds(
-        WORLD_Z.WATER_SURFACE,
-        viewport,
-      );
       this.castAimMask.clear();
-      this.castAimMask
-        .rect(
-          0,
-          waterBounds.top,
-          this.app.screen.width,
-          waterBounds.bottom - waterBounds.top,
-        )
-        .fill({ color: 0xffffff });
+      const waterPolygon = getWaterSurfacePolygon(viewport);
+      drawPolygon(this.castAimMask, waterPolygon, { color: 0xffffff });
 
       const equipmentId = this.gameStore?.getState().selectedCastingEquipmentId;
       const maxRangeMeters = getCastingEquipmentMaxRange(equipmentId);
@@ -606,20 +612,13 @@ export class PixiApp {
       if (!Number.isFinite(rangeWorld) || rangeWorld <= 0) return;
 
       const origin = getAvatarCastOrigin();
-      const originScreen = worldToScreen(
-        { x: origin.x, y: origin.y, z: WORLD_Z.WATER_SURFACE },
-        viewport,
+      const ringPoints = getCastRangePolygon(origin, rangeWorld, viewport);
+      drawPolygon(
+        this.castAimOverlay,
+        ringPoints,
+        { color: 0x00c2ff, alpha: 0.15 },
+        { width: 2, color: 0x00c2ff, alpha: 0.6 },
       );
-      const edgeScreen = worldToScreen(
-        { x: origin.x + rangeWorld, y: origin.y, z: WORLD_Z.WATER_SURFACE },
-        viewport,
-      );
-      const radius = Math.abs(edgeScreen.x - originScreen.x);
-
-      this.castAimOverlay
-        .circle(originScreen.x, originScreen.y, radius)
-        .fill({ color: 0x00c2ff, alpha: 0.15 })
-        .stroke({ width: 2, color: 0x00c2ff, alpha: 0.6 });
     };
 
     if (gamePhase !== "idle") {

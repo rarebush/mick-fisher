@@ -7,31 +7,39 @@
  * - World Y: Depth (distance from avatar toward the river) in world units
  * - World Z: Height (vertical elevation) in world units
  *
- * PROJECTION FORMULA:
- *   screenX = worldX * pixelsPerUnit + screenWidth / 2
- *   screenY = (worldY - worldZ) * pixelsPerUnit + screenYOffset
+ * PROJECTION FORMULA (true isometric, 30°):
+ *   isoX = (worldX - worldY) * cos(30°)
+ *   isoY = (worldX + worldY) * sin(30°) - worldZ
+ *   screenX = isoX * pixelsPerUnit + screenXOffset
+ *   screenY = isoY * pixelsPerUnit + screenYOffset
  *
  * IMPORTANT: ALL three coordinates (X, Y, Z) use the same world unit system.
- * The pixelsPerUnit scale factor (typically ~85.6) converts world units to screen pixels.
+ * The pixelsPerUnit scale factor converts world units to screen pixels.
  * World X=0 is at the center of the screen (avatar position).
  * This ensures 3D distance calculations (sqrt(dx² + dy² + dz²)) are correct.
  *
- * Example with pixelsPerUnit = 85.6, screenWidth = 854px:
- *   - World position (0, 1.5, 4.2) → Screen position (427px, -146.52px) [center]
- *   - World position (-5, 0, 0) → Screen position (0px, 408px) [left edge]
- *   - World position (+5, 0, 0) → Screen position (854px, 408px) [right edge]
+ * Example with 640x360 base resolution:
+ *   - World focus (0, 17.5, 1) → Screen position (320px, 180px) [center]
  */
 
 // =============================================================================
 // WORLD HEIGHTS (Z-axis) - Abstract units
 // =============================================================================
 
+export const WORLD_X = {
+  MIN: -16, // Left bank
+  MAX: 16, // Right bank
+  CENTER: 0,
+  WIDTH: 32,
+};
+
 export const WORLD_Z = {
   RIVERBED: 0, // Ground level - items rest here
   WATER_SURFACE: 1, // Top of water
   WALKWAY: 3, // Pier/walkway surface where avatar stands
   AVATAR_FEET: 3, // Avatar feet position (same as walkway surface)
-  AVATAR_HAND: 4.2, // Avatar's hand when holding rod (above walkway)
+  AVATAR_HAND: 4.5, // Avatar's hand when holding rod (above walkway)
+  MAX: 20, // Vertical world extent
 };
 
 export const AVATAR_CAST_OFFSET = {
@@ -74,20 +82,34 @@ export function getAvatarHandWorldPosition(offset = {}) {
 
 export const WORLD_Y = {
   // Walkway extends behind avatar to fill backdrop
-  WALKWAY_BACK: -4, // Back edge of walkway (toward camera, fills screen top)
+  WALKWAY_BACK: -3, // Back edge of walkway (toward camera)
   WALKWAY_FRONT: 0, // Front edge of walkway (where avatar stands)
 
-  AVATAR: -0.6, // Avatar is set back from the front edge
+  AVATAR: -1, // Avatar is set back from the front edge
 
   // Wall is at the front edge, no Y depth (vertical surface)
   WALL_EDGE: 0, // Wall is at Y=0, spans Z from walkway to water
 
   // Water and riverbed extend from near to far
   WATER_NEAR: 0, // Where water begins (at wall base)
-  WATER_FAR: 6, // Far edge of water
+  WATER_FAR: 35, // Far edge of water
   RIVERBED_NEAR: 0, // Where riverbed begins
-  RIVERBED_FAR: 6, // Far edge of riverbed
+  RIVERBED_FAR: 35, // Far edge of riverbed
+
+  MIN: -3,
+  MAX: 35,
 };
+
+export const CAMERA_FOCUS = {
+  x: 0,
+  y: (WORLD_Y.WATER_NEAR + WORLD_Y.WATER_FAR) / 2,
+  z: WORLD_Z.WATER_SURFACE,
+};
+
+const ISO_ANGLE_RAD = Math.PI / 6;
+const ISO_SIN = Math.sin(ISO_ANGLE_RAD);
+const ISO_COS = Math.cos(ISO_ANGLE_RAD);
+const VIEWPORT_PADDING = 0.05;
 
 // =============================================================================
 // WORLD WIDTH (X-axis) - Abstract units
@@ -102,19 +124,12 @@ export const WORLD_Y = {
  * @param {number} pixelsPerUnit - Scale factor (pixels per world unit)
  * @returns {{min: number, max: number, center: number}} World X boundaries
  */
-export function getWorldXBounds(screenWidth, screenHeight, pixelsPerUnit) {
-  // World width in units based on screen aspect ratio
-  const worldWidth = screenWidth / pixelsPerUnit;
-
-  // Center the world space at X=0 (avatar in middle)
-  const worldXMin = -worldWidth / 2;
-  const worldXMax = worldWidth / 2;
-
+export function getWorldXBounds() {
   return {
-    min: worldXMin,
-    max: worldXMax,
-    center: 0,
-    width: worldWidth,
+    min: WORLD_X.MIN,
+    max: WORLD_X.MAX,
+    center: WORLD_X.CENTER,
+    width: WORLD_X.WIDTH,
   };
 }
 
@@ -124,54 +139,140 @@ export function getWorldXBounds(screenWidth, screenHeight, pixelsPerUnit) {
 // =============================================================================
 
 /**
+ * Project a 3D world position into isometric space (world units, no pixels)
+ * @param {number} worldX
+ * @param {number} worldY
+ * @param {number} worldZ
+ * @returns {{x:number,y:number}}
+ */
+export function projectToIsometric(worldX, worldY, worldZ) {
+  return {
+    x: (worldX - worldY) * ISO_COS,
+    y: (worldX + worldY) * ISO_SIN - worldZ,
+  };
+}
+
+/**
+ * Compute projected bounds for a world-space AABB
+ * @param {{xMin:number,xMax:number,yMin:number,yMax:number,zMin:number,zMax:number}} bounds
+ * @returns {{minX:number,maxX:number,minY:number,maxY:number}}
+ */
+export function getProjectedWorldBounds(bounds) {
+  const corners = [
+    [bounds.xMin, bounds.yMin, bounds.zMin],
+    [bounds.xMin, bounds.yMin, bounds.zMax],
+    [bounds.xMin, bounds.yMax, bounds.zMin],
+    [bounds.xMin, bounds.yMax, bounds.zMax],
+    [bounds.xMax, bounds.yMin, bounds.zMin],
+    [bounds.xMax, bounds.yMin, bounds.zMax],
+    [bounds.xMax, bounds.yMax, bounds.zMin],
+    [bounds.xMax, bounds.yMax, bounds.zMax],
+  ];
+
+  let minX = Infinity;
+  let maxX = -Infinity;
+  let minY = Infinity;
+  let maxY = -Infinity;
+
+  for (const [worldX, worldY, worldZ] of corners) {
+    const projected = projectToIsometric(worldX, worldY, worldZ);
+    minX = Math.min(minX, projected.x);
+    maxX = Math.max(maxX, projected.x);
+    minY = Math.min(minY, projected.y);
+    maxY = Math.max(maxY, projected.y);
+  }
+
+  return { minX, maxX, minY, maxY };
+}
+
+/**
+ * Get screen-space projections for world-space corner samples
+ * Useful for debugging that bounds fit within the viewport
+ * @param {Object} viewport
+ * @returns {{world:{x:number,y:number,z:number},screen:{x:number,y:number}}[]}
+ */
+export function getWorldBoundsProjectionSamples(viewport) {
+  const bounds = {
+    xMin: WORLD_X.MIN,
+    xMax: WORLD_X.MAX,
+    yMin: WORLD_Y.MIN,
+    yMax: WORLD_Y.MAX,
+    zMin: WORLD_Z.RIVERBED,
+    zMax: WORLD_Z.MAX,
+  };
+
+  const corners = [
+    [bounds.xMin, bounds.yMin, bounds.zMin],
+    [bounds.xMin, bounds.yMin, bounds.zMax],
+    [bounds.xMin, bounds.yMax, bounds.zMin],
+    [bounds.xMin, bounds.yMax, bounds.zMax],
+    [bounds.xMax, bounds.yMin, bounds.zMin],
+    [bounds.xMax, bounds.yMin, bounds.zMax],
+    [bounds.xMax, bounds.yMax, bounds.zMin],
+    [bounds.xMax, bounds.yMax, bounds.zMax],
+  ];
+
+  return corners.map(([worldX, worldY, worldZ]) => ({
+    world: { x: worldX, y: worldY, z: worldZ },
+    screen: projectToScreen(worldX, worldY, worldZ, viewport),
+  }));
+}
+
+/**
  * Calculate viewport scale based on screen dimensions
  * @param {number} screenWidth - Viewport width in pixels
  * @param {number} screenHeight - Viewport height in pixels
  * @returns {Object} Viewport configuration
  */
 export function createViewport(screenWidth, screenHeight) {
-  // The scene spans from Y=0 (avatar) to Y=6 (far riverbed)
-  // And from Z=0 (riverbed) to Z=4.2 (avatar hand)
-  // Screen Y range needed: (Y - Z) from (0 - 4.2) = -4.2 to (6 - 0) = 6
-  // Total screen Y range: 10.2 world units
+  const worldBounds = {
+    xMin: WORLD_X.MIN,
+    xMax: WORLD_X.MAX,
+    yMin: WORLD_Y.MIN,
+    yMax: WORLD_Y.MAX,
+    zMin: WORLD_Z.RIVERBED,
+    zMax: WORLD_Z.MAX,
+  };
 
-  const worldYRange = WORLD_Y.RIVERBED_FAR - WORLD_Y.AVATAR; // 6 units of depth
-  const worldZRange = WORLD_Z.AVATAR_HAND - WORLD_Z.RIVERBED; // 4.2 units of height
-  const totalScreenYRange = worldYRange + worldZRange; // 10.2 units
+  const projectedBounds = getProjectedWorldBounds(worldBounds);
+  const focusProjected = projectToIsometric(
+    CAMERA_FOCUS.x,
+    CAMERA_FOCUS.y,
+    CAMERA_FOCUS.z,
+  );
 
-  // Scale to fit the viewport height with some padding
-  const padding = 0.1; // 10% padding
-  const usableHeight = screenHeight * (1 - padding);
-  const pixelsPerUnit = usableHeight / totalScreenYRange;
+  const minXRel = projectedBounds.minX - focusProjected.x;
+  const maxXRel = projectedBounds.maxX - focusProjected.x;
+  const minYRel = projectedBounds.minY - focusProjected.y;
+  const maxYRel = projectedBounds.maxY - focusProjected.y;
+  const maxAbsX = Math.max(Math.abs(minXRel), Math.abs(maxXRel));
+  const maxAbsY = Math.max(Math.abs(minYRel), Math.abs(maxYRel));
 
-  // Calculate the screen Y offset to position the scene
-  // The avatar hand at (Y=0, Z=4.2) should project to screenY = 0 - 4.2 = -4.2
-  // We need to offset this so the top of the scene is visible
-  const topOfSceneWorldY = WORLD_Y.AVATAR - WORLD_Z.AVATAR_HAND; // -4.2
-  const screenYOffset =
-    -topOfSceneWorldY * pixelsPerUnit + (screenHeight * padding) / 2;
+  const pixelsPerUnit =
+    Math.min(screenWidth / (2 * maxAbsX), screenHeight / (2 * maxAbsY)) *
+    (1 - VIEWPORT_PADDING);
+
+  const screenXOffset = screenWidth / 2 - focusProjected.x * pixelsPerUnit;
+  const screenYOffset = screenHeight / 2 - focusProjected.y * pixelsPerUnit;
 
   // Calculate world X bounds based on screen aspect ratio
-  const worldXBounds = getWorldXBounds(
-    screenWidth,
-    screenHeight,
-    pixelsPerUnit,
-  );
+  const worldXBounds = getWorldXBounds();
 
   return {
     screenWidth,
     screenHeight,
     pixelsPerUnit,
+    screenXOffset,
     screenYOffset,
     // World bounds for reference
     worldXMin: worldXBounds.min,
     worldXMax: worldXBounds.max,
     worldXCenter: worldXBounds.center,
     worldXWidth: worldXBounds.width,
-    worldYMin: WORLD_Y.AVATAR,
-    worldYMax: WORLD_Y.RIVERBED_FAR,
+    worldYMin: WORLD_Y.MIN,
+    worldYMax: WORLD_Y.MAX,
     worldZMin: WORLD_Z.RIVERBED,
-    worldZMax: WORLD_Z.AVATAR_HAND,
+    worldZMax: WORLD_Z.MAX,
   };
 }
 
@@ -189,9 +290,10 @@ export function createViewport(screenWidth, screenHeight) {
  * @returns {{x: number, y: number}} Screen coordinates
  */
 export function projectToScreen(worldX, worldY, worldZ, viewport) {
+  const projected = projectToIsometric(worldX, worldY, worldZ);
   return {
-    x: worldX * viewport.pixelsPerUnit + viewport.screenWidth / 2, // World center (X=0) maps to screen center
-    y: (worldY - worldZ) * viewport.pixelsPerUnit + viewport.screenYOffset,
+    x: projected.x * viewport.pixelsPerUnit + viewport.screenXOffset,
+    y: projected.y * viewport.pixelsPerUnit + viewport.screenYOffset,
   };
 }
 
@@ -214,14 +316,18 @@ export function worldToScreen(worldPos, viewport) {
  * @returns {{x: number, y: number, z: number}} World coordinates
  */
 export function screenToWorld(screenX, screenY, worldZ, viewport) {
-  // screenY = (worldY - worldZ) * pixelsPerUnit + offset
-  // (screenY - offset) / pixelsPerUnit = worldY - worldZ
-  // worldY = (screenY - offset) / pixelsPerUnit + worldZ
-  const worldY =
-    (screenY - viewport.screenYOffset) / viewport.pixelsPerUnit + worldZ;
+  const projectedX =
+    (screenX - viewport.screenXOffset) / viewport.pixelsPerUnit;
+  const projectedY =
+    (screenY - viewport.screenYOffset) / viewport.pixelsPerUnit;
+
+  const isoX = projectedX / ISO_COS;
+  const isoY = (projectedY + worldZ) / ISO_SIN;
+  const worldX = (isoX + isoY) / 2;
+  const worldY = (isoY - isoX) / 2;
 
   return {
-    x: (screenX - viewport.screenWidth / 2) / viewport.pixelsPerUnit, // Screen center maps to world center (X=0)
+    x: worldX,
     y: worldY,
     z: worldZ,
   };
@@ -348,10 +454,11 @@ export function getMagnetRenderLayer(worldZ) {
  * Objects with larger sort keys are further back and should render first
  * @param {number} worldY - World Y position (depth)
  * @param {number} worldZ - World Z position (height)
- * @returns {number} Sort key (equals screenY)
+ * @param {number} worldX - World X position (horizontal)
+ * @returns {number} Sort key (matches projected screenY, without offset)
  */
-export function calculateSortKey(worldY, worldZ) {
-  return worldY - worldZ;
+export function calculateSortKey(worldY, worldZ, worldX = 0) {
+  return (worldX + worldY) * ISO_SIN - worldZ;
 }
 
 // =============================================================================

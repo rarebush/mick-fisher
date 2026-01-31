@@ -102,25 +102,22 @@ export function getItemPosition(app, sessionStore) {
 }
 
 /**
- * Update 3D rope physics
- * Called from ticker to simulate rope with gravity
+ * Get rope render state for current frame (no physics).
  * @param {number} tension - Current tension value (0-100)
  */
 export function updateRopePhysics(
   app,
   sessionStore,
-  deltaTime,
-  playerX,
-  playerY,
-  tension = 50, // Default to medium tension
+  _deltaTime,
+  _playerX,
+  _playerY,
+  _tension = 50, // Default to medium tension
 ) {
-  const rope = sessionStore.getState().rope;
-  if (!rope) return null;
-
+  void _tension;
   const phase = sessionStore.getState().phase;
   const phaseProgress = sessionStore.getState().phaseProgress;
 
-  // Don't update rope physics during cast animation or reel-in - those are controlled by animations
+  // Skip updates during cast animation or reel-in - those are controlled by animations
   if (
     phase === "throwing" ||
     phase === "splashing" ||
@@ -134,18 +131,13 @@ export function updateRopePhysics(
         `[ROPE] Skipping physics update during ${phase} phase (progress: ${(phaseProgress * 100).toFixed(0)}%) - animation controls the rope`,
       );
     }
-    return rope.getScreenPoints(); // Just return current points for rendering
+    return null;
   }
 
   // Create viewport for this frame
   const viewport = createViewport(app.screen.width, app.screen.height);
 
-  console.log(
-    `[ROPE] Physics update in phase: ${phase}, deltaTime: ${deltaTime.toFixed(3)}s`,
-  );
-
-  // Rope anchor world position (cast origin at avatar hand)
-  const avatarWorld = getAvatarHandWorldPosition();
+  const castOrigin = getAvatarHandWorldPosition();
 
   // Get magnet/item world position based on game state
   const dragState = sessionStore.getState().dragState;
@@ -182,50 +174,10 @@ export function updateRopePhysics(
 
   if (!magnetWorld) return null;
 
-  // Calculate 3D distance for validation
-  const dx = magnetWorld.x - avatarWorld.x;
-  const dy = magnetWorld.y - avatarWorld.y;
-  const dz = magnetWorld.z - avatarWorld.z;
-  const distance3D = Math.sqrt(dx * dx + dy * dy + dz * dz);
-  const distanceXY = Math.sqrt(dx * dx + dy * dy); // Horizontal distance
-  const distanceZ = Math.abs(dz); // Vertical distance
-
-  // Update rope length based on current 3D distance before tension is applied
-  // As we reel in, the rope gets shorter
-  rope.updateBaseSegmentLength(distance3D);
-
-  console.log(
-    `[ROPE DRAG] 3D Distance: ${distance3D.toFixed(2)} | dX:${dx.toFixed(2)} dY:${dy.toFixed(2)} dZ:${dz.toFixed(2)} | Horizontal (XY): ${distanceXY.toFixed(2)} | Vertical (Z): ${distanceZ.toFixed(2)} | BaseSegment: ${rope.baseSegmentLength.toFixed(3)}`,
-  );
-
-  // Update rope tension - this will recalculate segmentLength from baseSegmentLength
-  rope.setTension(tension);
-
-  // VALIDATION: Log expected length vs actual (unbiased slack multiplier)
-  const actualRopeLength = rope.getTotalLength();
-  const slackMultiplier = rope.getSlackMultiplierForTension(tension);
-  const expectedAtTension = distance3D * slackMultiplier;
-
-  console.log(
-    `[ROPE VALIDATION] Tension: ${tension.toFixed(1)}% | Multiplier: ${slackMultiplier.toFixed(3)}x | 3D Dist: ${distance3D.toFixed(2)} | Expected: ${expectedAtTension.toFixed(2)} | Actual: ${actualRopeLength.toFixed(2)}`,
-  );
-
-  // Project magnet world position to screen for logging
-  const magnetScreen = worldToScreen(magnetWorld, viewport);
-
-  console.log(
-    `[ROPE] Magnet world: (${magnetWorld.x.toFixed(1)}, ${magnetWorld.y.toFixed(1)}, ${magnetWorld.z.toFixed(1)}), Screen: (${magnetScreen.x.toFixed(1)}, ${magnetScreen.y.toFixed(1)})`,
-  );
-
-  // Update rope physics in world space
-  rope.update(deltaTime, avatarWorld, magnetWorld);
-
-  // Get screen coordinates for rendering
-  // The rope points are in world space, so we need to project them
-  const worldPoints = rope.points.map((p) => p.pos);
-  const screenPoints = worldPoints.map((p) => worldToScreen(p, viewport));
-
-  return screenPoints;
+  return {
+    castOrigin,
+    magnetWorld,
+  };
 }
 
 /**

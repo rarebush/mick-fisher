@@ -81,6 +81,26 @@ export class DebugOverlay {
     this.container.addChild(this.textContainer);
   }
 
+  /**
+   * Resize overlay elements on app resize
+   * @param {number} width
+   * @param {number} height
+   */
+  resize(width, height) {
+    this.width = width;
+    this.height = height;
+    if (this.panel) {
+      this.panel.clear();
+      this.panel.rect(10, 10, 400, this.height - 20).fill({
+        color: 0x000000,
+        alpha: 0.85,
+      });
+    }
+    if (this.visible) {
+      this.updateDisplay();
+    }
+  }
+
   toggle() {
     this.visible = !this.visible;
     this.container.visible = this.visible;

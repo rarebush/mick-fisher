@@ -71,8 +71,7 @@ const useSessionStore = create((set, get) => ({
     magnetSurfacePosition: null, // Optional, used by SlipMeter in revealed phase
   },
 
-  // 3D Rope physics state
-  rope: null, // Rope3D instance
+  // Rope visualization state
   ropeTension: 0, // Single source of truth for rope tension
   phase: "idle", // Current phase: 'idle', 'cast', 'drag', 'lift'
   phaseProgress: 0, // Phase completion (0 to 1)
@@ -128,15 +127,9 @@ const useSessionStore = create((set, get) => ({
     quadrant = 0,
     slipDirection = 0, // Calculated by caller using calculateSlipDirection()
   ) => {
-    // Reset rope physics state to prevent velocity carryover from animation
-    const rope = get().rope;
-    if (rope && rope.resetPhysicsState) {
-      rope.resetPhysicsState();
-    }
-
     set({
       isDragging: false, // Reset to ensure no auto-dragging
-      phase: "drag", // Set phase for 3D rope physics
+      phase: "drag",
       phaseProgress: 0,
       dragState: {
         active: true,
@@ -242,7 +235,7 @@ const useSessionStore = create((set, get) => ({
   // Actions - Lift Phase
   startLift: (depth, carryOverSlip = 0) => {
     set({
-      phase: "lift", // Set phase for 3D rope physics
+      phase: "lift",
       phaseProgress: 0,
       liftState: {
         active: true,
@@ -310,9 +303,6 @@ const useSessionStore = create((set, get) => ({
 
     return finalSlip;
   },
-
-  // Actions - 3D Rope Physics
-  setRope: (rope) => set({ rope }),
 
   setPhase: (phase) => set({ phase }),
 
@@ -501,7 +491,6 @@ const useSessionStore = create((set, get) => ({
     set({
       sessionActive: false,
       sessionTimeRemaining: 600,
-      rope: null,
       phase: "idle",
       phaseProgress: 0,
       castInputMode: "click",

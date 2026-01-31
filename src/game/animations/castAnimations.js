@@ -4,11 +4,10 @@
  *
  * All positions are calculated in WORLD SPACE first, then projected to screen space.
  * World coordinates: {x: horizontal, y: depth, z: height}
- * Projection: screenX = worldX, screenY = (worldY - worldZ) * pixelsPerUnit + offset
+ * Projection: use worldToScreen() from worldConstants (isometric).
  */
 
 import * as PIXI from "pixi.js";
-import { Rope3D } from "../physics/RopePhysics3D.js";
 import {
   WORLD_Z,
   WORLD_Y,
@@ -18,14 +17,8 @@ import {
   lerp,
   getAvatarHandWorldPosition,
 } from "../mechanics/worldConstants.js";
-import { calculateRopeSegments } from "../mechanics/heightMechanics.js";
 import { createMagnetSprite } from "../graphics/placeholderSprites.js";
 import useMagnetStore from "../state/magnetStore.js";
-import {
-  SEGMENTED_ROPE_CONFIG,
-  renderSegmentedRopeOverlay,
-  resetCornerBlend,
-} from "./segmentedRopeOverlay.js";
 import {
   CORNER_PROJECTION_CONFIG,
   drawProjectedRopeDebug,
@@ -34,17 +27,17 @@ import {
 } from "./projectedRopeRenderer.js";
 
 /**
- * Animate casting line from shore to target position with 3D rope physics
+ * Animate casting line from shore to target position
  * Shows magnet arc to water surface, splash, then sink to riverbed
  * Returns the graphics object to keep visible during drag
- * The 3D rope is stored in sessionStore for continuous use
+ * Rope visuals are driven by projected rope rendering
  *
  * ALL POSITIONS ARE IN WORLD SPACE:
- * - World X: horizontal position (same as screen X)
+ * - World X: horizontal position (left/right)
  * - World Y: depth into the scene (0 = avatar, increases toward back)
  * - World Z: height (0 = riverbed, increases upward)
  *
- * Projection to screen: screenY = (worldY - worldZ) * pixelsPerUnit + offset
+ * Projection to screen is handled by worldToScreen().
  */
 export function animateCastLine(
   app,
@@ -67,19 +60,11 @@ export function animateCastLine(
       return;
     }
 
-    // Clean up any existing rope state before creating new one
     if (sessionStore) {
-      const existingRope = sessionStore.getState().rope;
-      if (existingRope) {
-        console.log("[CAST] Cleaning up existing rope before new cast");
-      }
-      sessionStore.getState().setRope(null);
       sessionStore.getState().setPhase("idle");
       sessionStore.getState().setPhaseProgress(0);
       sessionStore.getState().setCastPosition(null, null);
     }
-
-    resetCornerBlend();
 
     // ===========================================
     // CREATE VIEWPORT - maps world units to screen pixels
@@ -208,38 +193,19 @@ export function animateCastLine(
     );
 
     // ===========================================
-    // CREATE 3D ROPE
+    // CAST TIMING (no physics rope)
     // ===========================================
-    // Calculate 3D distance from rope anchor to target for segment count
     const dx = targetWorld.x - ropeAnchorWorld.x;
     const dy = targetWorld.y - ropeAnchorWorld.y;
     const dz = targetWorld.z - ropeAnchorWorld.z;
     const distance3D = Math.sqrt(dx * dx + dy * dy + dz * dz);
-
-    // For throw timing, use horizontal distance (XY plane) - more visually relevant
     const horizontalDistance = Math.sqrt(dx * dx + dy * dy);
 
-    const segments = calculateRopeSegments(distance3D, viewport);
-
-    // Create rope from avatar feet to the starting magnet position (hand).
-    // Rope length is still based on the full target distance below.
-    const rope3D = new Rope3D(segments, ropeAnchorWorld, avatarWorld);
-
-    // Set base segment length for the full throw distance
-    const tautSegmentLength = distance3D / (segments - 1);
-    rope3D.segmentLength = tautSegmentLength;
-    rope3D.baseSegmentLength = tautSegmentLength;
-
     console.log(
-      `[CAST] Rope: ${segments} segments, distance: ${distance3D.toFixed(2)} units, segment: ${tautSegmentLength.toFixed(2)}`,
-    );
-    console.log(
-      `[CAST] Horizontal distance: ${horizontalDistance.toFixed(2)} units, throw duration will be: ${Math.max(300, 250 + horizontalDistance * 0.5).toFixed(0)}ms`,
+      `[CAST] Distance: ${distance3D.toFixed(2)} units | Horizontal: ${horizontalDistance.toFixed(2)} units`,
     );
 
-    // Store in sessionStore immediately
     if (sessionStore) {
-      sessionStore.getState().setRope(rope3D);
       sessionStore.getState().setPhase("throwing");
       sessionStore.getState().setPhaseProgress(0);
     }
@@ -300,17 +266,7 @@ export function animateCastLine(
 
     // Tension animation: 95 (throw start) -> 15 (water) -> 10 (settled)
     let currentTension = 95;
-    const deltaTime = 1 / 60;
-
-    // Water surface screen Y for rendering effects
-    const waterSurfaceScreenY = worldToScreen(
-      { x: 0, y: WORLD_Y.WATER_NEAR, z: WORLD_Z.WATER_SURFACE },
-      viewport,
-    ).y;
-
     const animate = (currentTime) => {
-      const hideUnderwaterSegments =
-        gameStore?.getState()?.waterSurfaceOpaque ?? false;
       if (!app) {
         if (line.parent) line.parent.removeChild(line);
         line.destroy();
@@ -378,34 +334,8 @@ export function animateCastLine(
           magnetWorld.z,
         );
 
-        // Calculate actual 3D distance for validation
-        const dx = magnetWorld.x - ropeAnchorWorld.x;
-        const dy = magnetWorld.y - ropeAnchorWorld.y;
-        const dz = magnetWorld.z - ropeAnchorWorld.z;
-        const currentDist3D = Math.sqrt(dx * dx + dy * dy + dz * dz);
-
-        // Update rope length from current distance before tension is applied
-        rope3D.updateBaseSegmentLength(currentDist3D);
-
-        // Update rope physics - tension controls slack
-        rope3D.setTension(currentTension);
-        rope3D.update(deltaTime, ropeAnchorWorld, magnetWorld);
-
-        // VALIDATION: Log rope length vs 3D distance (sample 10% of frames)
-        if (Math.random() < 0.1) {
-          const actualRopeLength = rope3D.getTotalLength();
-          const slackMultiplier =
-            rope3D.getSlackMultiplierForTension(currentTension);
-          const expectedAtTension = currentDist3D * slackMultiplier;
-          console.log(
-            `[CAST ROPE] Tension: ${currentTension.toFixed(1)}% | Multiplier: ${slackMultiplier.toFixed(3)}x | 3D Dist: ${currentDist3D.toFixed(2)} | Expected: ${expectedAtTension.toFixed(2)} | Actual: ${actualRopeLength.toFixed(2)} | dX:${dx.toFixed(2)} dY:${dy.toFixed(2)} dZ:${dz.toFixed(2)}`,
-          );
-        }
-
-        // Render rope
-        render3DRopeWithViewport(line, rope3D, viewport, waterSurfaceScreenY, {
+        render3DRopeWithViewport(line, viewport, ropeAnchorWorld, magnetWorld, {
           tension: sessionStore?.getState().ropeTension,
-          hideUnderwaterSegments,
           lineUnderwater,
           lineDebug,
         });
@@ -496,21 +426,9 @@ Z: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
           sessionStore.getState().setPhaseProgress(0.5 + sinkProgress * 0.4); // 50-90%
         }
 
-        // Update rope length from current distance before tension is applied
-        const dx = magnetWorld.x - ropeAnchorWorld.x;
-        const dy = magnetWorld.y - ropeAnchorWorld.y;
-        const dz = magnetWorld.z - ropeAnchorWorld.z;
-        const currentDist3D = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        rope3D.updateBaseSegmentLength(currentDist3D);
-
-        // Update rope physics
-        rope3D.setTension(currentTension);
-        rope3D.update(deltaTime, ropeAnchorWorld, magnetWorld);
-
         // Render rope
-        render3DRopeWithViewport(line, rope3D, viewport, waterSurfaceScreenY, {
+        render3DRopeWithViewport(line, viewport, ropeAnchorWorld, magnetWorld, {
           tension: sessionStore?.getState().ropeTension,
-          hideUnderwaterSegments,
           lineUnderwater,
           lineDebug,
         });
@@ -572,21 +490,9 @@ Z: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
           sessionStore.getState().setPhaseProgress(0.9 + settleProgress * 0.1); // 90-100%
         }
 
-        // Update rope length from current distance before tension is applied
-        const dx = magnetWorld.x - ropeAnchorWorld.x;
-        const dy = magnetWorld.y - ropeAnchorWorld.y;
-        const dz = magnetWorld.z - ropeAnchorWorld.z;
-        const currentDist3D = Math.sqrt(dx * dx + dy * dy + dz * dz);
-        rope3D.updateBaseSegmentLength(currentDist3D);
-
-        // Update rope physics
-        rope3D.setTension(currentTension);
-        rope3D.update(deltaTime, ropeAnchorWorld, magnetWorld);
-
         // Render rope
-        render3DRopeWithViewport(line, rope3D, viewport, waterSurfaceScreenY, {
+        render3DRopeWithViewport(line, viewport, ropeAnchorWorld, magnetWorld, {
           tension: sessionStore?.getState().ropeTension,
-          hideUnderwaterSegments,
           lineUnderwater,
           lineDebug,
         });
@@ -666,31 +572,20 @@ Z: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
 }
 
 /**
- * Render 3D rope with viewport projection and underwater opacity
+ * Render rope using projected rope renderer (no physics dependency).
  * @param {PIXI.Graphics} line - Graphics object to draw rope on
- * @param {Rope3D} rope3D - 3D rope physics object
  * @param {Object} viewport - Viewport configuration
- * @param {number} waterSurfaceScreenY - Screen Y coordinate of water surface
+ * @param {{x:number,y:number,z:number}} castOrigin - Rope anchor in world space
+ * @param {{x:number,y:number,z:number}} magnetWorld - Magnet position in world space
  */
 export function render3DRopeWithViewport(
   line,
-  rope3D,
   viewport,
-  waterSurfaceScreenY,
+  castOrigin,
+  magnetWorld,
   options = {},
 ) {
-  if (!line || !rope3D || line.destroyed) {
-    return;
-  }
-
-  // Get world-space points from rope
-  const worldPoints = rope3D.points;
-  // Project each point to screen space
-  const screenPoints = worldPoints.map((point) =>
-    worldToScreen(point.pos, viewport),
-  );
-
-  if (screenPoints.length < 2) {
+  if (!line || line.destroyed || !viewport || !castOrigin || !magnetWorld) {
     return;
   }
 
@@ -705,65 +600,39 @@ export function render3DRopeWithViewport(
   const tension =
     Number.isFinite(options?.tension) && options.tension !== null
       ? options.tension
-      : (rope3D.tension ?? 50);
-  const castOrigin = getAvatarHandWorldPosition({
-    y: SEGMENTED_ROPE_CONFIG.castOriginYOffset,
-  });
-  const magnetStore = useMagnetStore.getState();
-  const trackedMagnetWorld = magnetStore?.getMagnetWorld?.();
-  const magnetWorld =
-    trackedMagnetWorld ?? worldPoints[worldPoints.length - 1].pos;
+      : 50;
+  const projectedConfig =
+    options.projectedRopeConfig ?? CORNER_PROJECTION_CONFIG;
+  const projectedPoints = getSingleCurveWithCornerProjection(
+    castOrigin,
+    magnetWorld,
+    tension,
+    projectedConfig,
+  );
+  renderProjectedRopePoints(projectedPoints, line, viewport, projectedConfig);
 
-  const useProjectedRope = options.useProjectedRope ?? true;
-  if (useProjectedRope) {
-    const projectedConfig =
-      options.projectedRopeConfig ?? CORNER_PROJECTION_CONFIG;
-    const projectedPoints = getSingleCurveWithCornerProjection(
-      castOrigin,
-      magnetWorld,
-      tension,
-      projectedConfig,
-    );
-    renderProjectedRopePoints(projectedPoints, line, viewport, projectedConfig);
-
-    if (options.lineDebug) {
-      drawProjectedRopeDebug(
-        options.lineDebug,
-        castOrigin,
-        magnetWorld,
-        tension,
-        viewport,
-        projectedConfig,
-      );
-    }
-  } else {
-    renderSegmentedRopeOverlay(
-      line,
+  if (options.lineDebug) {
+    drawProjectedRopeDebug(
+      options.lineDebug,
       castOrigin,
       magnetWorld,
       tension,
       viewport,
-      {
-        hideUnderwaterSegments: options.hideUnderwaterSegments,
-        lineAbove: line,
-        lineBelow: options.lineUnderwater ?? null,
-        debugLine: options.lineDebug ?? null,
-      },
+      projectedConfig,
     );
   }
 }
 
 /**
- * Animate rope reeling in after drag failure
- * Shows jerk back then gradual reel-in with 3D rope physics
- * Returns a promise that resolves when animation completes
+ * Animate rope reeling in after drag failure.
+ * Uses projected rope rendering (no physics dependency).
  */
 export function animateReelIn(
   app,
-  rope,
+  _rope,
   line,
-  playerX,
-  playerY,
+  _playerX,
+  _playerY,
   startX,
   startY,
   sessionStore,
@@ -775,41 +644,19 @@ export function animateReelIn(
       return;
     }
 
-    resetCornerBlend();
-    const rope3D = sessionStore?.getState().rope;
-    if (!rope3D) {
-      // No 3D rope, just clean up
-      if (line.parent) {
-        line.parent.removeChild(line);
-      }
-      line.destroy();
-      resolve();
-      return;
-    }
-
-    // Clear magnet state immediately; next cast will spawn a new one.
     const magnetStore = useMagnetStore.getState();
     magnetStore?.despawnMagnet?.();
 
     const retractDuration = 500;
     const startTime = performance.now();
-
     const viewport = createViewport(app.screen.width, app.screen.height);
-    const worldPoints = rope3D.points.map((point) => point.pos);
-    const screenPoints = worldPoints.map((point) =>
-      worldToScreen(point, viewport),
+    const castOrigin = getAvatarHandWorldPosition();
+    const startWorld = screenToWorld(
+      startX,
+      startY,
+      WORLD_Z.RIVERBED,
+      viewport,
     );
-    const clipHeight = Number.isFinite(options.reelClipScreenY)
-      ? Math.max(0, Math.min(app.screen.height, options.reelClipScreenY))
-      : app.screen.height;
-    if (screenPoints.length < 2) {
-      if (line.parent) {
-        line.parent.removeChild(line);
-      }
-      line.destroy();
-      resolve();
-      return;
-    }
 
     const reelMagnetSprite = createMagnetSprite();
     reelMagnetSprite.scale.set(2);
@@ -818,180 +665,61 @@ export function animateReelIn(
       reelMagnetSprite.height / 2,
     );
     (line.parent || app.stage).addChild(reelMagnetSprite);
-    const reelMask = new PIXI.Graphics();
-    const reelMaskDebug = new PIXI.Graphics();
 
     const animate = (currentTime) => {
       if (!app) {
-        if (line.parent) {
-          line.parent.removeChild(line);
-        }
+        if (line.parent) line.parent.removeChild(line);
         line.destroy();
         if (reelMagnetSprite.parent) {
           reelMagnetSprite.parent.removeChild(reelMagnetSprite);
         }
         reelMagnetSprite.destroy();
-        if (reelMask.parent) {
-          reelMask.parent.removeChild(reelMask);
-        }
-        reelMask.destroy();
-        if (reelMaskDebug.parent) {
-          reelMaskDebug.parent.removeChild(reelMaskDebug);
-        }
-        reelMaskDebug.destroy();
         resolve();
         return;
       }
 
       const elapsed = currentTime - startTime;
       const progress = Math.min(elapsed / retractDuration, 1);
-      const visiblePoints = Math.min(
-        screenPoints.length,
-        Math.max(2, Math.ceil((1 - progress) * (screenPoints.length - 1)) + 1),
-      );
+      const magnetWorld = {
+        x: lerp(startWorld.x, castOrigin.x, progress),
+        y: lerp(startWorld.y, castOrigin.y, progress),
+        z: lerp(startWorld.z, castOrigin.z, progress),
+      };
 
-      const hideUnderwaterSegments = options.hideUnderwaterSegments ?? false;
-      if (hideUnderwaterSegments) {
-        if (!reelMask.parent) {
-          (line.parent || app.stage).addChild(reelMask);
-        }
-        reelMask.clear();
-        reelMask.rect(0, 0, app.screen.width, clipHeight).fill(0xffffff);
-        line.mask = reelMask;
-        reelMagnetSprite.mask = reelMask;
-
-        const debugParent = line.parent || app.stage;
-        if (!reelMaskDebug.parent) {
-          debugParent.addChild(reelMaskDebug);
-          if (debugParent.sortableChildren !== true) {
-            debugParent.sortableChildren = true;
-          }
-          reelMaskDebug.zIndex = 9999;
-        } else if (reelMaskDebug.parent !== debugParent) {
-          reelMaskDebug.parent.removeChild(reelMaskDebug);
-          debugParent.addChild(reelMaskDebug);
-          if (debugParent.sortableChildren !== true) {
-            debugParent.sortableChildren = true;
-          }
-          reelMaskDebug.zIndex = 9999;
-        }
-        reelMaskDebug.clear();
-        reelMaskDebug
-          .moveTo(0, clipHeight)
-          .lineTo(app.screen.width, clipHeight)
-          .stroke({ width: 2, color: 0xff00ff, alpha: 0.9 });
-      } else {
-        line.mask = null;
-        reelMagnetSprite.mask = null;
-        if (reelMask.parent) {
-          reelMask.parent.removeChild(reelMask);
-        }
-        if (reelMaskDebug.parent) {
-          reelMaskDebug.parent.removeChild(reelMaskDebug);
-        }
-      }
-
-      line.clear();
-      line.setStrokeStyle({
-        width: SEGMENTED_ROPE_CONFIG.overlayWidth,
-        color: SEGMENTED_ROPE_CONFIG.overlayColor,
-        alpha: 1,
+      render3DRopeWithViewport(line, viewport, castOrigin, magnetWorld, {
+        tension: sessionStore?.getState().ropeTension,
+        lineUnderwater: options.lineUnderwater ?? null,
+        lineDebug: options.lineDebug ?? null,
       });
 
-      line.moveTo(screenPoints[0].x, screenPoints[0].y);
-      for (let i = 1; i < visiblePoints; i += 1) {
-        const point = screenPoints[i];
-        if (!point) break;
-        line.lineTo(point.x, point.y);
-      }
+      const magnetScreen = worldToScreen(magnetWorld, viewport);
+      reelMagnetSprite.x = magnetScreen.x;
+      reelMagnetSprite.y = magnetScreen.y;
 
-      line.stroke();
-
-      if (visiblePoints >= 2) {
-        const endPoint = screenPoints[visiblePoints - 1];
-        const prevPoint = screenPoints[visiblePoints - 2];
-        if (!endPoint || !prevPoint) {
-          reelMagnetSprite.visible = false;
-        } else {
-          reelMagnetSprite.x = endPoint.x;
-          reelMagnetSprite.y = endPoint.y;
-          const angle = Math.atan2(
-            endPoint.y - prevPoint.y,
-            endPoint.x - prevPoint.x,
-          );
-          reelMagnetSprite.rotation = angle + Math.PI / 2 + Math.PI;
-          reelMagnetSprite.visible = true;
-        }
-      } else {
-        reelMagnetSprite.visible = false;
-      }
-
-      if (progress >= 1) {
-        // Reel complete - clean up rope and graphics
-        if (sessionStore) {
-          sessionStore.getState().setRope(null);
-          sessionStore.getState().setPhase("idle");
-          sessionStore.getState().setPhaseProgress(0);
-          sessionStore.getState().setCastPosition(null, null);
-        }
-
-        if (line.parent) {
-          line.parent.removeChild(line);
-        }
-        line.destroy();
-        if (reelMagnetSprite.parent) {
-          reelMagnetSprite.parent.removeChild(reelMagnetSprite);
-        }
-        reelMagnetSprite.destroy();
-        if (reelMask.parent) {
-          reelMask.parent.removeChild(reelMask);
-        }
-        reelMask.destroy();
-        if (reelMaskDebug.parent) {
-          reelMaskDebug.parent.removeChild(reelMaskDebug);
-        }
-        reelMaskDebug.destroy();
-
-        console.log("[REEL-IN] Complete, rope cleaned up");
-        resolve();
-      } else {
+      if (progress < 1) {
         requestAnimationFrame(animate);
+        return;
       }
+
+      if (sessionStore) {
+        sessionStore.getState().setPhase("idle");
+        sessionStore.getState().setPhaseProgress(0);
+        sessionStore.getState().setCastPosition(null, null);
+      }
+
+      if (line.parent) line.parent.removeChild(line);
+      line.destroy();
+      if (reelMagnetSprite.parent) {
+        reelMagnetSprite.parent.removeChild(reelMagnetSprite);
+      }
+      reelMagnetSprite.destroy();
+
+      console.log("[REEL-IN] Complete");
+      resolve();
     };
 
     requestAnimationFrame(animate);
   });
-}
-
-/**
- * Render rope with water surface effects
- * Exported for use during drag phase
- */
-export function renderRope(graphics, rope) {
-  // Guard against destroyed or null graphics during async cleanup
-  if (!graphics || graphics.destroyed) return;
-
-  graphics.clear();
-
-  const points = rope.getPoints();
-  if (points.length < 2) return;
-
-  // Draw single continuous rope - simple and consistent
-  graphics.moveTo(Math.round(points[0].x), Math.round(points[0].y));
-
-  for (let i = 1; i < points.length; i++) {
-    graphics.lineTo(Math.round(points[i].x), Math.round(points[i].y));
-  }
-
-  graphics.stroke({ width: 2, color: 0xffffff, alpha: 1.0 });
-
-  // Draw dots for pixel art look
-  for (let i = 0; i < points.length; i += 2) {
-    const p = points[i];
-    graphics
-      .circle(Math.round(p.x), Math.round(p.y), 2)
-      .fill({ color: 0xffffff, alpha: 1.0 });
-  }
 }
 
 /**

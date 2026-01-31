@@ -10,23 +10,12 @@ import {
   createRipple,
   createBubbles,
   startDragBubbles,
-  renderRope as animationRenderRope,
   animateReelIn,
 } from "../animations/castAnimations.js";
-import { getSegmentedWaterEntryScreen } from "../animations/segmentedRopeOverlay.js";
-
-// Re-export renderRope for use by PixiApp
-export { animationRenderRope as renderRope };
 import { showNothingMessage } from "../animations/messageAnimations.js";
-import { Rope3D } from "../physics/RopePhysics3D.js";
-import {
-  getAvatarPosition,
-  getMagnetPosition,
-  calculateRopeSegments,
-  HEIGHTS,
-} from "../mechanics/heightMechanics.js";
 import {
   WORLD_Z,
+  WORLD_Y,
   createViewport,
   getSurfaceScreenBounds,
   screenToWorld,
@@ -104,7 +93,6 @@ export async function executeCastSequence(
       pixiApp?.spriteLayers ?? null,
     );
 
-  // The 3D rope is already stored in sessionStore by animateCastLine
   // Store line and player position on PixiApp instance for rendering
   if (pixiApp) {
     pixiApp.dragLine = line;
@@ -258,7 +246,7 @@ export async function executeCastSequence(
 
       return { dragBubbleInterval, line, playerX, playerY };
     } else {
-      // Nothing found - clean up rope and graphics
+      // Nothing found - clean up graphics
       if (line && line.parent) {
         line.parent.removeChild(line);
         line.destroy();
@@ -272,8 +260,6 @@ export async function executeCastSequence(
         lineDebug.destroy();
       }
 
-      // Clear sessionStore rope state
-      sessionStore.getState().setRope(null);
       sessionStore.getState().setPhase("idle");
       sessionStore.getState().setPhaseProgress(0);
       sessionStore.getState().setCastPosition(null, null);
@@ -313,11 +299,12 @@ export async function handleDragFailure(
   debugOverlay,
   failureDistance,
   getQuadrantFromPosition,
-  rope = null,
+  _rope = null,
   line = null,
   playerX = 0,
   playerY = 0,
 ) {
+  void _rope;
   if (!gameStore || !sessionStore || !locationStore) return;
 
   const currentCast = gameStore.getState().currentCast;
@@ -337,9 +324,11 @@ export async function handleDragFailure(
   if (!stopPosition) return;
 
   // Animate rope reeling in from stop position back to player
-  const reelClipScreenY = Number.isFinite(getSegmentedWaterEntryScreen()?.y)
-    ? getSegmentedWaterEntryScreen().y
-    : null;
+  const reelViewport = createViewport(app.screen.width, app.screen.height);
+  const reelClipScreenY = worldToScreen(
+    { x: 0, y: WORLD_Y.WATER_NEAR, z: WORLD_Z.WATER_SURFACE },
+    reelViewport,
+  ).y;
 
   if (line) {
     await animateReelIn(
