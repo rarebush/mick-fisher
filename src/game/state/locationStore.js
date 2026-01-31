@@ -6,12 +6,17 @@
 import { create } from "zustand";
 import { persist } from "zustand/middleware";
 import { isPointInCircle } from "../mechanics/hitDetection.js";
+import {
+  WORLD_Z,
+  createViewport,
+  screenToWorld,
+} from "../mechanics/worldConstants.js";
 
 const useLocationStore = create(
   persist(
     (set, get) => ({
       // Location-specific engaged items
-      // Structure: { locationId: { itemId: { item, x, y, size, quadrant } } }
+      // Structure: { locationId: { itemId: { item, x, y, worldX, worldY, size, sizeWorld, quadrant } } }
       engagedItems: {},
 
       /**
@@ -33,8 +38,14 @@ const useLocationStore = create(
             },
           },
         }));
+        const logX = Number.isFinite(itemData.worldX)
+          ? itemData.worldX
+          : itemData.x;
+        const logY = Number.isFinite(itemData.worldY)
+          ? itemData.worldY
+          : itemData.y;
         console.log(
-          `[LOCATION] Item engaged: ${itemData.item.name} at (${itemData.x.toFixed(1)}, ${itemData.y.toFixed(1)})`,
+          `[LOCATION] Item engaged: ${itemData.item.name} at (${logX.toFixed(1)}, ${logY.toFixed(1)})`,
         );
       },
 
@@ -76,19 +87,46 @@ const useLocationStore = create(
        */
       checkForHit: (locationId, x, y, quadrant) => {
         const locationItems = get().engagedItems[locationId] || {};
+        const viewport = createViewport(window.innerWidth, window.innerHeight);
+        const castWorld = screenToWorld(x, y, WORLD_Z.RIVERBED, viewport);
 
         // Check each engaged item in this quadrant
         for (const [itemId, itemData] of Object.entries(locationItems)) {
           if (itemData.quadrant !== quadrant) continue;
 
+          const itemWorld =
+            Number.isFinite(itemData.worldX) && Number.isFinite(itemData.worldY)
+              ? { x: itemData.worldX, y: itemData.worldY }
+              : screenToWorld(
+                  itemData.x,
+                  itemData.y,
+                  WORLD_Z.RIVERBED,
+                  viewport,
+                );
+          const sizeWorld = Number.isFinite(itemData.sizeWorld)
+            ? itemData.sizeWorld
+            : itemData.size / viewport.pixelsPerUnit;
+
           // Use pure function for hit detection
           if (
-            isPointInCircle(x, y, itemData.x, itemData.y, itemData.size / 2)
+            isPointInCircle(
+              castWorld.x,
+              castWorld.y,
+              itemWorld.x,
+              itemWorld.y,
+              sizeWorld / 2,
+            )
           ) {
             console.log(
               `[LOCATION] HIT! Cast hit engaged item: ${itemData.item.name}`,
             );
-            return { itemId, ...itemData };
+            return {
+              itemId,
+              ...itemData,
+              worldX: itemWorld.x,
+              worldY: itemWorld.y,
+              sizeWorld,
+            };
           }
         }
 

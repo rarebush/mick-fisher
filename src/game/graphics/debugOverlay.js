@@ -5,6 +5,11 @@
 
 import * as PIXI from "pixi.js";
 import { getLocation, getQuadrantZone } from "../data/locationDatabase.js";
+import {
+  WORLD_Z,
+  createViewport,
+  worldToScreen,
+} from "../mechanics/worldConstants.js";
 
 export class DebugOverlay {
   constructor(app, width, height, locationStore = null) {
@@ -343,25 +348,40 @@ export class DebugOverlay {
       noItemsText.y = 150;
       this.engagedItemMarkers.addChild(noItemsText);
     } else {
+      const viewport = createViewport(
+        this.app.screen.width,
+        this.app.screen.height,
+      );
       Object.entries(engagedItems).forEach(([, data]) => {
+        const hasWorldPosition =
+          Number.isFinite(data.worldX) && Number.isFinite(data.worldY);
+        const screenPos = hasWorldPosition
+          ? worldToScreen(
+              { x: data.worldX, y: data.worldY, z: WORLD_Z.RIVERBED },
+              viewport,
+            )
+          : { x: data.x, y: data.y };
+        const sizePixels = Number.isFinite(data.sizeWorld)
+          ? data.sizeWorld * viewport.pixelsPerUnit
+          : data.size;
         console.log(
-          `[DEBUG] Creating marker at (${data.x}, ${data.y}) for ${data.item.name}, size: ${data.size}px`,
+          `[DEBUG] Creating marker at (${screenPos.x}, ${screenPos.y}) for ${data.item.name}, size: ${sizePixels}px`,
         );
 
         // Draw circle at item position
         const marker = new PIXI.Graphics();
         marker
-          .circle(0, 0, data.size / 2)
+          .circle(0, 0, sizePixels / 2)
           .stroke({ width: 3, color: 0xff8800, alpha: 0.9 });
         marker.circle(0, 0, 5).fill({ color: 0xff8800 }); // Center dot (larger)
-        marker.x = data.x;
-        marker.y = data.y;
+        marker.x = screenPos.x;
+        marker.y = screenPos.y;
         marker.zIndex = 9999; // Ensure markers are on top
 
         // Add label with background
         const labelBg = new PIXI.Graphics();
         const labelText = new PIXI.Text({
-          text: `${data.item.name} (${data.size}px)`,
+          text: `${data.item.name} (${sizePixels.toFixed(0)}px)`,
           style: {
             fontSize: 11,
             fill: 0xffaa00,
@@ -371,7 +391,7 @@ export class DebugOverlay {
         });
         labelText.anchor.set(0.5, 1);
         labelText.x = 0;
-        labelText.y = -data.size / 2 - 8;
+        labelText.y = -sizePixels / 2 - 8;
 
         // Background for label
         const padding = 4;

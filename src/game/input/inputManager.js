@@ -10,7 +10,6 @@ import {
   WORLD_Y,
   createViewport,
   getSurfaceScreenBounds,
-  getWorldDirectionScreenAngle,
   screenToWorld,
   worldToScreen,
   getAvatarWorldPosition,
@@ -87,14 +86,6 @@ export class InputManager {
     }
 
     const { x, y } = event.global;
-    // Block interaction in walkway area (derived from world coordinates)
-    const viewport = createViewport(
-      this.app.screen.width,
-      this.app.screen.height,
-    );
-    const walkwayBounds = getSurfaceScreenBounds(WORLD_Z.WALKWAY, viewport);
-    if (y < walkwayBounds.bottom) return; // Walkway area, no interaction
-
     const gamePhase = this.gameStore?.getState().gamePhase;
 
     // Handle dragging phase
@@ -428,27 +419,34 @@ export class InputManager {
         WORLD_Z.WATER_SURFACE,
         viewport,
       );
-      const orientation = getWorldDirectionScreenAngle(
-        avatarWorld,
-        targetWorld,
-        WORLD_Z.WATER_SURFACE,
-        viewport,
-      );
-      const cosOrientation = Math.cos(orientation);
-      const sinOrientation = Math.sin(orientation);
+      const deltaX = targetWorld.x - avatarWorld.x;
+      const deltaY = targetWorld.y - avatarWorld.y;
+      const distance = Math.hypot(deltaX, deltaY);
+      const forward =
+        distance > 0
+          ? { x: deltaX / distance, y: deltaY / distance }
+          : { x: 0, y: 1 };
+      const right = { x: -forward.y, y: forward.x };
+      const minRadiusWorld = minRadius / viewport.pixelsPerUnit;
+      const maxRadiusWorld = maxRadius / viewport.pixelsPerUnit;
       let targetX = null;
       let targetY = null;
       for (let attempt = 0; attempt < 10; attempt += 1) {
         const angle = Math.random() * Math.PI * 2;
         const radius = Math.sqrt(
-          Math.random() * (maxRadius ** 2 - minRadius ** 2) + minRadius ** 2,
+          Math.random() * (maxRadiusWorld ** 2 - minRadiusWorld ** 2) +
+            minRadiusWorld ** 2,
         );
         const localX = radius * Math.cos(angle) * aspectRatioX;
         const localY = radius * Math.sin(angle) * aspectRatioY;
-        const rotatedX = localX * cosOrientation - localY * sinOrientation;
-        const rotatedY = localX * sinOrientation + localY * cosOrientation;
-        const candidateX = target.x + rotatedX;
-        const candidateY = target.y + rotatedY;
+        const worldPoint = {
+          x: targetWorld.x + forward.x * localX + right.x * localY,
+          y: targetWorld.y + forward.y * localX + right.y * localY,
+          z: WORLD_Z.WATER_SURFACE,
+        };
+        const screenPoint = worldToScreen(worldPoint, viewport);
+        const candidateX = screenPoint.x;
+        const candidateY = screenPoint.y;
         if (this.isWithinWaterSurface(candidateX, candidateY)) {
           targetX = candidateX;
           targetY = candidateY;
@@ -486,9 +484,12 @@ export class InputManager {
       this.app.screen.height,
     );
     const waterBounds = getSurfaceScreenBounds(WORLD_Z.WATER_SURFACE, viewport);
+    const worldPos = screenToWorld(x, y, WORLD_Z.WATER_SURFACE, viewport);
     return (
-      x >= 0 &&
-      x <= this.app.screen.width &&
+      worldPos.x >= viewport.worldXMin &&
+      worldPos.x <= viewport.worldXMax &&
+      worldPos.y >= WORLD_Y.WATER_NEAR &&
+      worldPos.y <= WORLD_Y.WATER_FAR &&
       y >= waterBounds.top &&
       y <= waterBounds.bottom
     );
@@ -533,26 +534,35 @@ export class InputManager {
       this.app.screen.width,
       this.app.screen.height,
     );
-    const riverbedScreen =
+    const worldPos =
       inputPlane === "riverbed"
-        ? { x, y }
-        : this.getRiverbedScreenFromWaterScreen(x, y, viewport);
-    const riverbedBounds = getSurfaceScreenBounds(WORLD_Z.RIVERBED, viewport);
+        ? screenToWorld(x, y, WORLD_Z.RIVERBED, viewport)
+        : screenToWorld(x, y, WORLD_Z.WATER_SURFACE, viewport);
+    const worldXMin = viewport.worldXMin;
+    const worldXMax = viewport.worldXMax;
+    const worldYMin = WORLD_Y.RIVERBED_NEAR;
+    const worldYMax = WORLD_Y.RIVERBED_FAR;
 
-    // Per diagram: riverbed is at Z=0, from riverbedBounds.top to riverbedBounds.bottom
-    const riverbedStartY = riverbedBounds.top;
-    if (riverbedScreen.y < riverbedStartY) return null; // Above riverbed, no quadrants
+    if (
+      worldPos.x < worldXMin ||
+      worldPos.x > worldXMax ||
+      worldPos.y < worldYMin ||
+      worldPos.y > worldYMax
+    ) {
+      return null;
+    }
 
-    const riverbedHeight = riverbedBounds.bottom - riverbedBounds.top;
-    const quadrantWidth = this.app.screen.width / 3;
-    const quadrantHeight = riverbedHeight / 3;
+    const quadrantWidth = (worldXMax - worldXMin) / 3;
+    const quadrantHeight = (worldYMax - worldYMin) / 3;
 
-    const col = Math.floor(riverbedScreen.x / quadrantWidth);
-    const row = Math.floor(
-      (riverbedScreen.y - riverbedStartY) / quadrantHeight,
+    const col = Math.min(
+      2,
+      Math.floor((worldPos.x - worldXMin) / quadrantWidth),
     );
-
-    if (col < 0 || col > 2 || row < 0 || row > 2) return null;
+    const row = Math.min(
+      2,
+      Math.floor((worldPos.y - worldYMin) / quadrantHeight),
+    );
 
     // Map to quadrant numbers (1-9)
     return row * 3 + col + 1;

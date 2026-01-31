@@ -8,48 +8,36 @@ import {
   getQuadrantZone,
   getQuadrantDistance,
   getQuadrantDepth,
+  MAX_QUADRANT_DISTANCE,
 } from "../data/locationDatabase.js";
 import { getItem } from "../data/itemDatabase.js";
 import {
   rollMagnetLandingPosition,
   getDistanceToNearestEdge,
 } from "./slipCalculations.js";
-import {
-  WORLD_Z,
-  createViewport,
-  getSurfaceScreenBounds,
-} from "./worldConstants.js";
+import { WORLD_Y, getAvatarWorldPosition } from "./worldConstants.js";
 
 /**
  * Calculate distance from avatar based on item's X and Y position
  * Used for re-engaged items to derive distance from screen coordinates
  * Distance is the 2D distance from item to avatar (wall base center)
- * @param {number} itemX - Item's X position on screen
- * @param {number} itemY - Item's Y position on screen
+ * @param {number} itemWorldX - Item's X position in world space
+ * @param {number} itemWorldY - Item's Y position in world space
  * @returns {number} - Estimated distance in meters
  */
-function calculateDistanceFromPosition(itemX, itemY) {
-  // Get positions from world constants
-  const viewport = createViewport(window.innerWidth, window.innerHeight);
-  const waterBounds = getSurfaceScreenBounds(WORLD_Z.WATER_SURFACE, viewport);
-  const riverbedBounds = getSurfaceScreenBounds(WORLD_Z.RIVERBED, viewport);
-
-  // Avatar is at center of screen, at wall base (water surface near edge)
-  const avatarX = window.innerWidth / 2;
-  const avatarY = waterBounds.top;
-
-  // Calculate pixel distance from item to avatar
-  const dx = itemX - avatarX;
-  const dy = itemY - avatarY;
-  const pixelDistance = Math.sqrt(dx * dx + dy * dy);
-
-  // Convert to meters
-  // Max riverbed extent is from water surface to riverbed far edge
-  const maxPixelDistance = riverbedBounds.bottom - waterBounds.top;
-  const maxDistance = 15; // Max distance in meters
-
-  // Scale pixel distance to meters
-  return (pixelDistance / maxPixelDistance) * maxDistance;
+function calculateDistanceFromPosition(itemWorldX, itemWorldY) {
+  const avatarWorld = getAvatarWorldPosition();
+  const worldDistance = Math.hypot(
+    itemWorldX - avatarWorld.x,
+    itemWorldY - avatarWorld.y,
+  );
+  const worldDepthRange = WORLD_Y.RIVERBED_FAR - WORLD_Y.AVATAR;
+  if (!Number.isFinite(worldDepthRange) || worldDepthRange <= 0) {
+    return 0;
+  }
+  const meters =
+    (worldDistance / worldDepthRange) * (MAX_QUADRANT_DISTANCE || 0);
+  return Math.max(0, Math.min(MAX_QUADRANT_DISTANCE, meters));
 }
 
 /**
@@ -163,14 +151,13 @@ export function getRandomDepth(quadrant, locationId) {
 export function executeCast(
   quadrant,
   locationId,
-  x = 0,
-  y = 0,
+  castWorld = { x: 0, y: 0 },
   hitItem = null,
 ) {
   let item;
   let isEngagedItem = false;
   let itemInstanceId = null;
-  let itemPosition = { x, y };
+  let itemPositionWorld = { x: castWorld.x, y: castWorld.y };
   let itemSize = 50; // Default size in pixels
 
   // Check if we hit an engaged item
@@ -179,7 +166,7 @@ export function executeCast(
     isEngagedItem = true;
     itemInstanceId = hitItem.itemId;
     // Use the item's SAVED position for progressive retrieval
-    itemPosition = { x: hitItem.x, y: hitItem.y };
+    itemPositionWorld = { x: hitItem.worldX, y: hitItem.worldY };
     itemSize = hitItem.size;
     console.log(
       `[CAST] Re-engaging with lost item: ${item.name} at saved position`,
@@ -210,7 +197,7 @@ export function executeCast(
   // Calculate distance based on item position
   // For re-engaged items, use 2D distance to avatar; for new items, use random
   const distance = isEngagedItem
-    ? calculateDistanceFromPosition(itemPosition.x, itemPosition.y)
+    ? calculateDistanceFromPosition(itemPositionWorld.x, itemPositionWorld.y)
     : getRandomDistance(quadrant);
   const depth = getRandomDepth(quadrant, locationId);
 
@@ -242,7 +229,7 @@ export function executeCast(
     // Engaged item metadata
     isEngagedItem,
     itemInstanceId,
-    itemPosition,
+    itemPositionWorld,
     itemSize,
   };
 }

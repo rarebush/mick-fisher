@@ -115,8 +115,7 @@ export async function executeCastSequence(
   const castResult = executeCast(
     quadrant,
     currentLocation,
-    riverbedScreen.x,
-    riverbedScreen.y,
+    riverbedWorld,
     hitItem,
   );
 
@@ -144,6 +143,15 @@ export async function executeCastSequence(
     startCast(quadrant, castResult.distance, castResult.depth);
 
     if (castResult.success) {
+      const itemPositionScreen = worldToScreen(
+        {
+          x: castResult.itemPositionWorld.x,
+          y: castResult.itemPositionWorld.y,
+          z: WORLD_Z.RIVERBED,
+        },
+        viewport,
+      );
+      const itemSizeWorld = castResult.itemSize / viewport.pixelsPerUnit;
       // Item found!
       setCaughtItem(castResult.item.id);
 
@@ -155,8 +163,10 @@ export async function executeCastSequence(
           placementQuality: castResult.placementQuality,
           itemInstanceId: castResult.itemInstanceId,
           isEngagedItem: castResult.isEngagedItem,
-          itemPosition: castResult.itemPosition,
+          itemPosition: itemPositionScreen,
+          itemPositionWorld: castResult.itemPositionWorld,
           itemSize: castResult.itemSize,
+          itemSizeWorld,
         },
       }));
 
@@ -167,9 +177,12 @@ export async function executeCastSequence(
           .getState()
           .engageItem(currentLocation, castResult.itemInstanceId, {
             item: castResult.item,
-            x: castResult.itemPosition.x,
-            y: castResult.itemPosition.y,
+            x: itemPositionScreen.x,
+            y: itemPositionScreen.y,
+            worldX: castResult.itemPositionWorld.x,
+            worldY: castResult.itemPositionWorld.y,
             size: castResult.itemSize,
+            sizeWorld: itemSizeWorld,
             quadrant,
           });
 
@@ -178,14 +191,14 @@ export async function executeCastSequence(
       }
 
       console.log(
-        `[CAST] ${castResult.isEngagedItem ? "Re-engaged" : "New"} item: ${castResult.item.name} at (${castResult.itemPosition.x.toFixed(1)}, ${castResult.itemPosition.y.toFixed(1)})`,
+        `[CAST] ${castResult.isEngagedItem ? "Re-engaged" : "New"} item: ${castResult.item.name} at (${itemPositionScreen.x.toFixed(1)}, ${itemPositionScreen.y.toFixed(1)})`,
       );
 
       // Calculate initial position based on distance
       // For new items, use cast location
       // For re-engaged items, use saved position for progressive retrieval
       const initialPosition = castResult.isEngagedItem
-        ? castResult.itemPosition
+        ? itemPositionScreen
         : { x: riverbedScreen.x, y: riverbedScreen.y };
 
       // Calculate slip direction from magnet position (pure function)
@@ -355,6 +368,17 @@ export async function handleDragFailure(
     "riverbed",
   );
 
+  const stopViewport = createViewport(app.screen.width, app.screen.height);
+  const stopWorld = screenToWorld(
+    stopPosition.x,
+    stopPosition.y,
+    WORLD_Z.RIVERBED,
+    stopViewport,
+  );
+  const sizeWorld =
+    currentCast.itemSizeWorld ??
+    currentCast.itemSize / stopViewport.pixelsPerUnit;
+
   // Update engaged item position
   locationStore
     .getState()
@@ -362,7 +386,10 @@ export async function handleDragFailure(
       item: currentCast.item,
       x: stopPosition.x,
       y: stopPosition.y,
+      worldX: stopWorld.x,
+      worldY: stopWorld.y,
       size: currentCast.itemSize,
+      sizeWorld,
       quadrant: actualQuadrant !== null ? actualQuadrant : dragState.quadrant, // Use actual quadrant or fallback
     });
 

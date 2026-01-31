@@ -117,72 +117,6 @@ export function animateCastLine(
     };
     const waterHitScreen = worldToScreen(waterHitWorld, viewport);
 
-    // ===========================================
-    // VISUAL DEBUG: Draw horizontal lines showing layer boundaries
-    // ===========================================
-    const debugLines = new PIXI.Graphics();
-    debugLines.zIndex = 9999;
-    app.stage.addChild(debugLines);
-
-    // Draw layer boundaries using world-to-screen projection
-    const waterNearScreen = worldToScreen(
-      { x: 0, y: WORLD_Y.WATER_NEAR, z: WORLD_Z.WATER_SURFACE },
-      viewport,
-    );
-    const riverbedFarScreen = worldToScreen(
-      { x: 0, y: WORLD_Y.RIVERBED_FAR, z: WORLD_Z.RIVERBED },
-      viewport,
-    );
-
-    // RED = water surface (near edge)
-    debugLines.moveTo(0, waterNearScreen.y);
-    debugLines.lineTo(app.screen.width, waterNearScreen.y);
-    debugLines.stroke({ width: 2, color: 0xff0000 });
-
-    // GREEN = riverbed far edge
-    debugLines.moveTo(0, riverbedFarScreen.y);
-    debugLines.lineTo(app.screen.width, riverbedFarScreen.y);
-    debugLines.stroke({ width: 2, color: 0x00ff00 });
-
-    // BLUE = avatar position
-    debugLines.moveTo(0, avatarScreen.y);
-    debugLines.lineTo(app.screen.width, avatarScreen.y);
-    debugLines.stroke({ width: 2, color: 0x0000ff });
-
-    // YELLOW = water hit position for this cast
-    debugLines.circle(waterHitScreen.x, waterHitScreen.y, 8);
-    debugLines.stroke({ width: 2, color: 0xffff00 });
-
-    // MAGENTA = target riverbed position
-    debugLines.circle(targetScreen.x, targetScreen.y, 10);
-    debugLines.stroke({ width: 2, color: 0xff00ff });
-
-    // Add labels
-    const style = { fontSize: 12, fill: 0xffffff };
-    const labelWater = new PIXI.Text({
-      text: `Water (Z=${WORLD_Z.WATER_SURFACE})`,
-      style,
-    });
-    labelWater.x = 10;
-    labelWater.y = waterNearScreen.y - 18;
-    debugLines.addChild(labelWater);
-
-    const labelAvatar = new PIXI.Text({
-      text: `Avatar (Z=${WORLD_Z.AVATAR_HAND})`,
-      style,
-    });
-    labelAvatar.x = 10;
-    labelAvatar.y = avatarScreen.y + 2;
-    debugLines.addChild(labelAvatar);
-
-    const labelViewport = new PIXI.Text({
-      text: `Viewport: ${viewport.pixelsPerUnit.toFixed(1)} px/unit`,
-      style,
-    });
-    labelViewport.x = 10;
-    labelViewport.y = 10;
-    debugLines.addChild(labelViewport);
-
     console.log(
       `[CAST DEBUG] Avatar screen: ${avatarScreen.y.toFixed(0)}px | Water hit screen: ${waterHitScreen.y.toFixed(0)}px | Target: ${targetScreen.y.toFixed(0)}px`,
     );
@@ -532,10 +466,7 @@ Z: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
           magnetDebugText.destroy();
 
           // Clean up debug graphics
-          if (debugLines.parent) {
-            app.stage.removeChild(debugLines);
-          }
-          debugLines.destroy();
+          // debug overlay removed
 
           console.log(
             `[CAST] Animation complete, tension: ${currentTension.toFixed(1)}`,

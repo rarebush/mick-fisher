@@ -33,7 +33,6 @@ import {
 } from "./sequences/dragSequence.js";
 import {
   createViewport,
-  getWorldDirectionScreenAngle,
   screenToWorld,
   worldToScreen,
   WORLD_Y,
@@ -755,29 +754,38 @@ export class PixiApp {
         WORLD_Z.WATER_SURFACE,
         viewport,
       );
-      const orientation = getWorldDirectionScreenAngle(
-        avatarWorld,
-        targetWorld,
-        WORLD_Z.WATER_SURFACE,
-        viewport,
-      );
+      const deltaX = targetWorld.x - avatarWorld.x;
+      const deltaY = targetWorld.y - avatarWorld.y;
+      const distance = Math.hypot(deltaX, deltaY);
+      const forward =
+        distance > 0
+          ? { x: deltaX / distance, y: deltaY / distance }
+          : { x: 0, y: 1 };
+      const right = { x: -forward.y, y: forward.x };
+      const targetScreen = worldToScreen(targetWorld, viewport);
+      const aspectRatioX = updatedDonut.aspectRatioX ?? 1;
+      const aspectRatioY = updatedDonut.aspectRatioY ?? 1;
+      const toWorldRadius = (radiusPixels) =>
+        radiusPixels / viewport.pixelsPerUnit;
 
-      const drawOrientedEllipse = (centerX, centerY, radiusX, radiusY) => {
+      const drawOrientedEllipse = (radiusPixels) => {
         const steps = 72;
-        const cosOrientation = Math.cos(orientation);
-        const sinOrientation = Math.sin(orientation);
+        const radiusWorldX = toWorldRadius(radiusPixels) * aspectRatioX;
+        const radiusWorldY = toWorldRadius(radiusPixels) * aspectRatioY;
         for (let i = 0; i <= steps; i += 1) {
           const angle = (i / steps) * Math.PI * 2;
-          const localX = Math.cos(angle) * radiusX;
-          const localY = Math.sin(angle) * radiusY;
-          const rotatedX = localX * cosOrientation - localY * sinOrientation;
-          const rotatedY = localX * sinOrientation + localY * cosOrientation;
-          const x = centerX + rotatedX;
-          const y = centerY + rotatedY;
+          const localX = Math.cos(angle) * radiusWorldX;
+          const localY = Math.sin(angle) * radiusWorldY;
+          const worldPoint = {
+            x: targetWorld.x + forward.x * localX + right.x * localY,
+            y: targetWorld.y + forward.y * localX + right.y * localY,
+            z: WORLD_Z.WATER_SURFACE,
+          };
+          const screenPoint = worldToScreen(worldPoint, viewport);
           if (i === 0) {
-            this.castAimOverlay.moveTo(x, y);
+            this.castAimOverlay.moveTo(screenPoint.x, screenPoint.y);
           } else {
-            this.castAimOverlay.lineTo(x, y);
+            this.castAimOverlay.lineTo(screenPoint.x, screenPoint.y);
           }
         }
         this.castAimOverlay.stroke();
@@ -789,22 +797,12 @@ export class PixiApp {
         color: 0x6bdcff,
         alpha: 0.8,
       });
-      drawOrientedEllipse(
-        updatedDonut.target.x,
-        updatedDonut.target.y,
-        updatedDonut.minRadiusX,
-        updatedDonut.minRadiusY,
-      );
-      drawOrientedEllipse(
-        updatedDonut.target.x,
-        updatedDonut.target.y,
-        updatedDonut.maxRadiusX,
-        updatedDonut.maxRadiusY,
-      );
+      drawOrientedEllipse(updatedDonut.minRadius);
+      drawOrientedEllipse(updatedDonut.maxRadius);
 
       // Target marker
       this.castAimOverlay
-        .circle(updatedDonut.target.x, updatedDonut.target.y, 3)
+        .circle(targetScreen.x, targetScreen.y, 3)
         .fill({ color: 0xffffff });
 
       if (updatedDonut.phase === "oscillate") {
@@ -813,12 +811,7 @@ export class PixiApp {
           color: 0xffd700,
           alpha: 0.9,
         });
-        drawOrientedEllipse(
-          updatedDonut.target.x,
-          updatedDonut.target.y,
-          updatedDonut.currentRadiusX,
-          updatedDonut.currentRadiusY,
-        );
+        drawOrientedEllipse(updatedDonut.currentRadius);
       }
       return;
     }

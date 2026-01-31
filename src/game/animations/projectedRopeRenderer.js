@@ -19,9 +19,9 @@ export const CORNER_PROJECTION_CONFIG = {
     idealColor: 0x66ccff,
     projectedColor: 0xffaa33,
     transitionColor: 0xff33aa,
-    idealRadius: 3,
-    projectedRadius: 4,
-    transitionRadius: 3,
+    idealRadius: 2,
+    projectedRadius: 3,
+    transitionRadius: 2,
     alpha: 0.9,
   },
 };
