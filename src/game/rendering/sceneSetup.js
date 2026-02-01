@@ -175,7 +175,7 @@ export async function setupWaterBackground(app) {
       waterContainer,
       waterSpritesheet,
       app.screen.width,
-      app.screen.height - 80, // Height minus shore area
+      app.screen.height,
       tileWidth,
       tileHeight,
       0.1, // Animation speed
@@ -241,4 +241,26 @@ export function drawQuadrantGrid(app) {
   console.log(
     `[QUADRANTS] Grid: worldX ${xMin}-${xMax}, worldY ${yMin}-${yMax}, Z=${z}`,
   );
+}
+
+/**
+ * Draw the world-space bounding box used for viewport fitting.
+ * Helpful for visualizing why the projection appears zoomed out.
+ */
+export function drawWorldBoundsWireframe(app, color = 0xff0000) {
+  if (!app) return;
+
+  const viewport = createViewport(app.screen.width, app.screen.height);
+  const bounds = {
+    xMin: WORLD_X.MIN,
+    xMax: WORLD_X.MAX,
+    yMin: WORLD_Y.MIN,
+    yMax: WORLD_Y.MAX,
+    zMin: WORLD_Z.RIVERBED,
+    zMax: WORLD_Z.MAX,
+  };
+
+  const wireframe = new PIXI.Graphics();
+  drawWireframeBox(wireframe, bounds, viewport, color);
+  app.stage.addChild(wireframe);
 }

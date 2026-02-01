@@ -10,6 +10,7 @@ import {
 } from "../graphics/placeholderSprites.js";
 import {
   createViewport,
+  worldToScreen,
   getWorldDirectionScreenAngle,
   WORLD_Z,
   getAvatarWorldPosition,
@@ -28,10 +29,16 @@ export class SpriteManager {
   /**
    * Update sprite positions during drag phase (called by ticker)
    * @param {Object} item - The item being dragged
-   * @param {Object} itemPos - Screen position of the item
+   * @param {Object} itemWorld - World position of the item
    */
-  updateSprites(item, itemPos) {
-    if (!this.app || !itemPos) return;
+  updateSprites(item, itemWorld) {
+    if (!this.app || !itemWorld) return;
+
+    const viewport = createViewport(
+      this.app.screen.width,
+      this.app.screen.height,
+    );
+    const itemScreen = worldToScreen(itemWorld, viewport);
 
     // Get magnet world position from central store
     const magnetWorld = useMagnetStore.getState().getMagnetWorld();
@@ -94,21 +101,17 @@ export class SpriteManager {
 
     // Update positions
     if (this.itemSprite) {
-      this.itemSprite.x = itemPos.x;
-      this.itemSprite.y = itemPos.y;
+      this.itemSprite.x = itemScreen.x;
+      this.itemSprite.y = itemScreen.y;
     }
 
     if (this.magnetSprite) {
       // Magnet positioned above the item
-      this.magnetSprite.x = itemPos.x;
-      this.magnetSprite.y = itemPos.y - this.magnetSprite.height / 2 - 5;
+      this.magnetSprite.x = itemScreen.x;
+      this.magnetSprite.y = itemScreen.y - this.magnetSprite.height / 2 - 5;
     }
 
     if (magnetWorld) {
-      const viewport = createViewport(
-        this.app.screen.width,
-        this.app.screen.height,
-      );
       const avatarWorld = getAvatarWorldPosition();
       const planeZ = magnetWorld.z ?? WORLD_Z.RIVERBED;
       const orientation = getWorldDirectionScreenAngle(

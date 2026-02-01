@@ -22,7 +22,7 @@ export const CORNER_PROJECTION_CONFIG = {
     idealRadius: 2,
     projectedRadius: 3,
     transitionRadius: 2,
-    alpha: 0.9,
+    alpha: 0.5,
   },
 };
 

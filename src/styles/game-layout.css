@@ -1,44 +1,9 @@
 .game-layout {
-  display: grid;
   height: 100vh;
   width: 100vw;
   position: relative;
-}
-
-/* Desktop landscape */
-@media (min-width: 1024px) and (orientation: landscape) {
-  .game-layout {
-    grid-template-columns: 320px 1fr;
-    gap: 16px;
-    padding: 16px;
-  }
-
-  .game-main {
-    border-radius: 8px;
-    overflow: hidden;
-  }
-}
-
-/* Tablet landscape */
-@media (min-width: 768px) and (max-width: 1023px) and (orientation: landscape) {
-  .game-layout {
-    grid-template-columns: 280px 1fr;
-    gap: 12px;
-    padding: 12px;
-  }
-}
-
-/* Portrait (all devices) */
-@media (orientation: portrait) {
-  .game-layout {
-    grid-template-rows: 25% 1fr;
-    grid-template-columns: 1fr;
-    gap: 0;
-  }
-
-  .sidebar {
-    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  }
+  padding: 0;
+  overflow: hidden;
 }
 
 .game-main {
@@ -47,6 +12,8 @@
   align-items: center;
   justify-content: center;
   position: relative;
+  width: 100%;
+  height: 100%;
 }
 
 .quit-btn {

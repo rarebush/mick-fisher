@@ -14,6 +14,7 @@ import {
   isUnderwater as worldIsUnderwater,
   getWaterDepth,
   getAvatarHandWorldPosition,
+  screenToWorld,
 } from "./worldConstants.js";
 
 /**
@@ -158,23 +159,21 @@ export function getMagnetWorldPosition(
  * @deprecated Use getMagnetWorldPosition() instead
  * @param {number} screenX - Magnet screen X position
  * @param {number} screenY - Magnet screen Y position
+ * @param {Object} viewport - Viewport configuration from worldConstants
  * @param {string} phase - Current game phase
  * @param {number} progress - Phase completion (0 to 1)
  * @returns {{x: number, y: number, z: number}} World coordinates
  */
-export function getMagnetPosition(screenX, screenY, phase, progress) {
+export function getMagnetPosition(screenX, screenY, viewport, phase, progress) {
   const z = getMagnetHeight(phase, progress);
 
-  // For legacy compatibility, derive worldY from screenY
-  // screenY = worldY - z, so worldY = screenY + z
-  // But this is problematic - screenY is in pixels, z is in world units
-  // This function should be deprecated in favor of getMagnetWorldPosition
+  if (!viewport) {
+    throw new Error(
+      "getMagnetPosition requires a viewport; use getMagnetWorldPosition instead.",
+    );
+  }
 
-  return {
-    x: screenX,
-    y: screenY, // This should be worldY, not screenY - keeping for compatibility
-    z: z,
-  };
+  return screenToWorld(screenX, screenY, z, viewport);
 }
 
 /**

@@ -17,6 +17,7 @@ import {
   setupWaterBackground,
   drawQuadrantGrid,
   setupEnvironmentLayers,
+  drawWorldBoundsWireframe,
 } from "./rendering/sceneSetup.js";
 import { SpriteManager } from "./rendering/spriteManager.js";
 import { InputManager } from "./input/inputManager.js";
@@ -123,6 +124,8 @@ export class PixiApp {
     try {
       // PixiJS v8 async initialization
       this.app = new PIXI.Application();
+      const initialRenderResolutionScale =
+        this.gameStore?.getState()?.renderResolutionScale ?? 1;
 
       await this.app.init({
         canvas: this.canvas,
@@ -130,8 +133,8 @@ export class PixiApp {
         height: this.height,
         backgroundColor: 0x4a7c9e,
         antialias: false, // Disable antialiasing for pixel art
-        resolution: window.devicePixelRatio || 1,
-        autoDensity: true,
+        resolution: initialRenderResolutionScale,
+        autoDensity: false,
         roundPixels: true, // Round coordinates to whole pixels
       });
 
@@ -211,11 +214,17 @@ export class PixiApp {
     const initialWaterOpaque =
       this.gameStore?.getState()?.waterSurfaceOpaque ?? false;
     this.applyWaterSurfaceOpacity(initialWaterOpaque);
+    const initialRenderResolutionScale =
+      this.gameStore?.getState()?.renderResolutionScale ?? 1;
+    this.setRenderResolutionScale(initialRenderResolutionScale);
     if (this.gameStore && !this.gameStoreUnsubscribe) {
       this.gameStoreUnsubscribe = this.gameStore.subscribe(
         (state, prevState) => {
           if (state.waterSurfaceOpaque !== prevState.waterSurfaceOpaque) {
             this.applyWaterSurfaceOpacity(state.waterSurfaceOpaque);
+          }
+          if (state.renderResolutionScale !== prevState.renderResolutionScale) {
+            this.setRenderResolutionScale(state.renderResolutionScale);
           }
         },
       );
@@ -240,6 +249,9 @@ export class PixiApp {
 
     // Draw quadrant grid on top
     drawQuadrantGrid(this.app);
+
+    // Debug: visualize viewport-fitting world bounds
+    drawWorldBoundsWireframe(this.app);
 
     // Overlay for cast aim UI
     this.castAimOverlay = new PIXI.Graphics();
@@ -274,6 +286,24 @@ export class PixiApp {
   applyWaterSurfaceOpacity(isOpaque) {
     if (!this.app || !this.environmentLayers?.waterVolume) return;
     this.environmentLayers.waterVolume.alpha = isOpaque ? 1.0 : 0.6;
+  }
+
+  setRenderResolutionScale(scale) {
+    if (!this.app || this.isDestroyed) return;
+    const nextScale = Number.isFinite(scale)
+      ? Math.min(4, Math.max(1, scale))
+      : 1;
+    if (this.app.renderer.resolution === nextScale) return;
+
+    try {
+      this.app.renderer.resolution = nextScale;
+      this.app.renderer.resize(this.width, this.height);
+      if (this.debugOverlay) {
+        this.debugOverlay.resize(this.width, this.height);
+      }
+    } catch (err) {
+      console.warn("Error updating render resolution:", err);
+    }
   }
 
   // Cast callback invoked by InputManager
@@ -424,8 +454,8 @@ export class PixiApp {
       return;
     }
 
-    const itemPos = getItemPosition(this.app, this.sessionStore);
-    this.spriteManager.updateSprites(item, itemPos);
+    const itemWorld = getItemWorldPosition(this.app, this.sessionStore);
+    this.spriteManager.updateSprites(item, itemWorld);
   }
 
   // Ticker method for drag mechanics updates

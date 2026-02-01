@@ -36,18 +36,22 @@ World-Space Positioning:
 
 ## Layer Definitions
 
-**World-Space Architecture:** All layers are positioned using orthogonal projection from 3D world coordinates. See `worldConstants.js` for dimensions.
+**World-Space Architecture:** All layers are positioned using true isometric projection from 3D world coordinates. See `worldConstants.js` for dimensions.
 
 ### Projection Formula
 
 ```
-screenX = worldX
-screenY = worldY - worldZ
+isoX = (worldX - worldY) * cos(30°)
+isoY = (worldX + worldY) * sin(30°) - worldZ
+screenX = isoX * pixelsPerUnit + screenXOffset
+screenY = isoY * pixelsPerUnit + screenYOffset
 
 Where:
-  worldX = horizontal position (passes through unchanged)
+  worldX = horizontal position
   worldY = depth into scene (toward river)
   worldZ = height/elevation
+  pixelsPerUnit = screen pixels per world unit
+  screenXOffset/screenYOffset = viewport offsets
 ```
 
 ### 1. Walkway Layer (Z=3)

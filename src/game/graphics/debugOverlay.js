@@ -372,7 +372,7 @@ export class DebugOverlay {
         const marker = new PIXI.Graphics();
         marker
           .circle(0, 0, sizePixels / 2)
-          .stroke({ width: 3, color: 0xff8800, alpha: 0.9 });
+          .stroke({ width: 1, color: 0xff8800, alpha: 0.9 });
         marker.circle(0, 0, 5).fill({ color: 0xff8800 }); // Center dot (larger)
         marker.x = screenPos.x;
         marker.y = screenPos.y;
@@ -457,10 +457,15 @@ export class DebugOverlay {
       this.highlight.destroy();
     }
 
-    // Create highlight circle at click position
-    this.highlight = new PIXI.Graphics();
-    this.highlight.circle(x, y, 30).fill({ color: 0xffff00, alpha: 0.3 });
-    this.highlight.circle(x, y, 30).stroke({ width: 2, color: 0xffff00 });
+    // Create highlight container at click position
+    this.highlight = new PIXI.Container();
+    this.highlight.x = x;
+    this.highlight.y = y;
+
+    const highlightCircle = new PIXI.Graphics();
+    highlightCircle.circle(0, 0, 30).fill({ color: 0xffff00, alpha: 0.3 });
+    highlightCircle.circle(0, 0, 30).stroke({ width: 2, color: 0xffff00 });
+    this.highlight.addChild(highlightCircle);
 
     // Add quadrant label
     const label = new PIXI.Text({
@@ -472,8 +477,8 @@ export class DebugOverlay {
       },
     });
     label.anchor.set(0.5);
-    label.x = x;
-    label.y = y;
+    label.x = 0;
+    label.y = 0;
     this.highlight.addChild(label);
 
     this.app.stage.addChild(this.highlight);

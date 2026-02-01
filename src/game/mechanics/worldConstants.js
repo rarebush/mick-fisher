@@ -109,7 +109,17 @@ export const CAMERA_FOCUS = {
 const ISO_ANGLE_RAD = Math.PI / 6;
 const ISO_SIN = Math.sin(ISO_ANGLE_RAD);
 const ISO_COS = Math.cos(ISO_ANGLE_RAD);
-const VIEWPORT_PADDING = 0.05;
+const VIEWPORT_PADDING = 0;
+
+// Bounds used for viewport fitting (environment-only, not full Z range)
+const VIEWPORT_FIT_BOUNDS = {
+  xMin: WORLD_X.MIN,
+  xMax: WORLD_X.MAX,
+  yMin: WORLD_Y.WALKWAY_BACK,
+  yMax: WORLD_Y.WATER_FAR,
+  zMin: WORLD_Z.RIVERBED,
+  zMax: WORLD_Z.WALKWAY,
+};
 
 // =============================================================================
 // WORLD WIDTH (X-axis) - Abstract units
@@ -225,16 +235,7 @@ export function getWorldBoundsProjectionSamples(viewport) {
  * @returns {Object} Viewport configuration
  */
 export function createViewport(screenWidth, screenHeight) {
-  const worldBounds = {
-    xMin: WORLD_X.MIN,
-    xMax: WORLD_X.MAX,
-    yMin: WORLD_Y.MIN,
-    yMax: WORLD_Y.MAX,
-    zMin: WORLD_Z.RIVERBED,
-    zMax: WORLD_Z.MAX,
-  };
-
-  const projectedBounds = getProjectedWorldBounds(worldBounds);
+  const projectedBounds = getProjectedWorldBounds(VIEWPORT_FIT_BOUNDS);
   const focusProjected = projectToIsometric(
     CAMERA_FOCUS.x,
     CAMERA_FOCUS.y,

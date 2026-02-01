@@ -1,0 +1,46 @@
+.render-scale-toggle {
+  position: absolute;
+  top: 52px;
+  right: 16px;
+  z-index: 900;
+  background: rgba(0, 0, 0, 0.7);
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 6px;
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #ffffff;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.render-scale-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  user-select: none;
+}
+
+.render-scale-checkbox {
+  accent-color: #00c2ff;
+}
+
+.render-resolution-control {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.render-resolution-label {
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.render-resolution-select {
+  background: rgba(10, 10, 10, 0.8);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 4px;
+  color: #ffffff;
+  padding: 2px 6px;
+}

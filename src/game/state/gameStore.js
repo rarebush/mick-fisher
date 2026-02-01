@@ -42,6 +42,8 @@ const useGameStore = create((set, get) => ({
 
   // Visual toggles
   waterSurfaceOpaque: false,
+  renderScaleMode: "auto", // 'auto' | 'integer'
+  renderResolutionScale: 1, // Internal render resolution multiplier
 
   // Actions
   setGamePhase: (phase) => set({ gamePhase: phase }),
@@ -56,6 +58,18 @@ const useGameStore = create((set, get) => ({
 
   toggleWaterSurfaceOpaque: () =>
     set((state) => ({ waterSurfaceOpaque: !state.waterSurfaceOpaque })),
+
+  setRenderScaleMode: (mode) =>
+    set({
+      renderScaleMode: mode === "integer" ? "integer" : "auto",
+    }),
+
+  setRenderResolutionScale: (scale) => {
+    const nextScale = Number.isFinite(scale) ? scale : 1;
+    set({
+      renderResolutionScale: Math.min(4, Math.max(1, nextScale)),
+    });
+  },
 
   startCast: (quadrant, distance, depth) => {
     set({
@@ -126,6 +140,8 @@ const useGameStore = create((set, get) => ({
       currentCast: { quadrant: null, distance: 0, depth: 0, itemId: null },
       selectedCastingEquipmentId: "hand",
       waterSurfaceOpaque: false,
+      renderScaleMode: "auto",
+      renderResolutionScale: 1,
       sessionStats: {
         castsTotal: 0,
         castsSuccessful: 0,

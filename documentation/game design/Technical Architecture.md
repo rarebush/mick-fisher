@@ -461,7 +461,7 @@ this.holdDetectionTimeout = setTimeout(() => {
 
 > "Build the world in world space, then project it to screen space."
 
-The game operates in a true 3D world coordinate system that projects to 2D screen space using orthogonal projection. All game mechanics, physics, and positioning use world coordinates exclusively.
+The game operates in a true 3D world coordinate system that projects to 2D screen space using true isometric projection. All game mechanics, physics, and positioning use world coordinates exclusively.
 
 **Coordinate System:**
 
@@ -471,14 +471,16 @@ World Space Axes:
 - Y: Depth into the scene (toward the river, away from avatar)
 - Z: Height/elevation (vertical)
 
-Orthogonal Projection Formula:
-  screenX = worldX
-  screenY = worldY - worldZ
+Isometric Projection Formula (30°):
+  isoX = (worldX - worldY) * cos(30°)
+  isoY = (worldX + worldY) * sin(30°) - worldZ
+  screenX = isoX * pixelsPerUnit + screenXOffset
+  screenY = isoY * pixelsPerUnit + screenYOffset
 
 Why this projection?
-- Preserves horizontal positions (X passes through)
-- Creates isometric-like depth (higher Z = higher on screen)
-- Simple, fast, mathematically consistent
+- Preserves consistent 3D distances in world units
+- Creates isometric depth (higher Z = higher on screen)
+- Fits full world bounds within viewport with consistent scaling
 ```
 
 **World Dimensions (`worldConstants.js`):**
