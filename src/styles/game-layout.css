@@ -16,17 +16,75 @@
   height: 100%;
 }
 
-.quit-btn {
+.ui-overlay {
   position: absolute;
-  top: 16px;
-  right: 16px;
+  inset: 0;
+  z-index: 10;
+  pointer-events: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 16px;
+  gap: 16px;
+}
+
+.ui-row {
+  display: flex;
+  width: 100%;
+  gap: 16px;
+  pointer-events: none;
+}
+
+.ui-row--top,
+.ui-row--bottom {
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.ui-row--center {
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+}
+
+.ui-column {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  min-width: 0;
+  pointer-events: none;
+}
+
+.ui-column--left,
+.ui-column--right {
+  align-items: flex-start;
+}
+
+.ui-column--right {
+  align-items: flex-end;
+}
+
+.ui-row--top .ui-column--right {
+  min-height: 1px;
+}
+
+.ui-overlay button,
+.ui-overlay input,
+.ui-overlay select,
+.ui-overlay textarea,
+.ui-overlay label,
+.ui-overlay a,
+.ui-overlay [role="button"] {
+  pointer-events: auto;
+}
+
+.quit-btn {
   padding: 8px 16px;
   background: rgba(0, 0, 0, 0.7);
   color: white;
   border: 1px solid rgba(255, 255, 255, 0.2);
   border-radius: 4px;
   cursor: pointer;
-  z-index: 1000;
   font-size: 14px;
   transition: background 0.2s;
 }

@@ -4,10 +4,11 @@
  */
 
 import { create } from "zustand";
+import { getDefaultFishingEquipment } from "../data/fishingEquipmentDatabase.js";
 
 const useGameStore = create((set, get) => ({
   // Game phase state machine
-  gamePhase: "idle", // 'idle' | 'casting' | 'sinking' | 'dragging' | 'lifting-blind' | 'revealing' | 'lifting-revealed' | 'complete'
+  gamePhase: "idle", // 'idle' | 'casting' | 'waiting' | 'attaching' | 'dragging' | 'lifting-blind' | 'revealing' | 'lifting-revealed' | 'complete'
 
   // Current location
   currentLocation: "picturesque-river",
@@ -19,6 +20,7 @@ const useGameStore = create((set, get) => ({
     hasWinch: false, // Phase 2 feature
   },
   selectedCastingEquipmentId: "hand",
+  fishingEquipment: getDefaultFishingEquipment(),
 
   // Current cast data
   currentCast: {
@@ -52,6 +54,14 @@ const useGameStore = create((set, get) => ({
 
   setCastingEquipmentId: (equipmentId) =>
     set({ selectedCastingEquipmentId: equipmentId }),
+
+  setFishingEquipment: (type, tierId) =>
+    set({
+      fishingEquipment: {
+        type,
+        tierId,
+      },
+    }),
 
   setWaterSurfaceOpaque: (isOpaque) =>
     set({ waterSurfaceOpaque: Boolean(isOpaque) }),
@@ -139,6 +149,7 @@ const useGameStore = create((set, get) => ({
       gamePhase: "idle",
       currentCast: { quadrant: null, distance: 0, depth: 0, itemId: null },
       selectedCastingEquipmentId: "hand",
+      fishingEquipment: getDefaultFishingEquipment(),
       waterSurfaceOpaque: false,
       renderScaleMode: "auto",
       renderResolutionScale: 1,

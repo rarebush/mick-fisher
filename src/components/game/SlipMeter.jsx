@@ -1,93 +1,60 @@
 import useSessionStore from "../../game/state/sessionStore";
 import useGameStore from "../../game/state/gameStore";
-import { getDistanceToNearestEdge } from "../../game/mechanics/slipCalculations";
 import "./slip-meter.css";
 
 function SlipMeter() {
-  const { dragState, liftState } = useSessionStore();
+  const { physicsState } = useSessionStore();
   const { gamePhase } = useGameStore();
 
-  // Show during dragging or revealed lift phase (for debugging)
-  if (gamePhase !== "dragging" && gamePhase !== "lifting-revealed") {
+  if (gamePhase !== "dragging") {
     return null;
   }
 
-  // Get magnet position from appropriate phase
-  const magnetSurfacePosition =
-    gamePhase === "dragging"
-      ? dragState.magnetSurfacePosition
-      : liftState.magnetSurfacePosition || 50;
+  if (physicsState.targetType !== "metallic") {
+    return null;
+  }
 
-  const magnetContactWidth =
-    gamePhase === "dragging" ? dragState.magnetContactWidth : 10;
+  const slipPercent = Math.min(1, Math.max(0, physicsState.slip.percent || 0));
 
-  // Calculate distance to nearest edge
-  const distanceToEdge = getDistanceToNearestEdge(magnetSurfacePosition);
-
-  // Determine which edge is nearest for visual display
-  const isNearLeftEdge = magnetSurfacePosition < 50;
-
-  // Color coding based on distance to edge (from documentation)
+  // Color coding based on slip percent
   let barColor = "#4CAF50"; // Green (safe, 40+ units)
   let warningClass = "";
 
-  if (distanceToEdge < 15) {
+  if (slipPercent >= 0.8) {
     barColor = "#F44336"; // Red (danger zone, 0-14 units)
     warningClass = "critical";
-  } else if (distanceToEdge < 25) {
+  } else if (slipPercent >= 0.6) {
     barColor = "#FF9800"; // Orange (edge grip, 15-24 units)
     warningClass = "danger";
-  } else if (distanceToEdge < 40) {
+  } else if (slipPercent >= 0.4) {
     barColor = "#FFEB3B"; // Yellow (good center, 25-39 units)
     warningClass = "warning";
   }
 
-  // Calculate magnet edges for display
-  const magnetLeftEdge = magnetSurfacePosition - magnetContactWidth / 2;
-  const magnetRightEdge = magnetSurfacePosition + magnetContactWidth / 2;
-
   return (
     <div className={`slip-meter-container ${warningClass}`}>
       <div className="slip-info">
-        <span className="label">Magnet Position:</span>
-        <span className="value">
-          {distanceToEdge.toFixed(0)} units from edge
-        </span>
+        <span className="label">Magnet Slip:</span>
+        <span className="value">{Math.round(slipPercent * 100)}%</span>
       </div>
 
       <div className="slip-bar">
-        {/* Red danger zones on both edges (0-15 units) */}
-        <div className="slip-danger-zone left" />
-        <div className="slip-danger-zone right" />
-
-        {/* Yellow caution zones (15-40 units) */}
-        <div className="slip-caution-zone left" />
-        <div className="slip-caution-zone right" />
-
-        {/* Magnet indicator - shows position and contact width */}
         <div
-          className="slip-magnet"
+          className="slip-fill"
           style={{
-            left: `${magnetLeftEdge}%`,
-            width: `${magnetContactWidth}%`,
+            width: `${Math.round(slipPercent * 100)}%`,
             backgroundColor: barColor,
           }}
-        >
-          <div
-            className="magnet-center"
-            style={{ left: `${magnetContactWidth / 2}%` }}
-          />
-        </div>
+        />
       </div>
 
       <div className="slip-hint">
-        {distanceToEdge < 15 &&
-          `⚠️ DANGER! ${distanceToEdge.toFixed(0)} units from ${isNearLeftEdge ? "left" : "right"} edge!`}
-        {distanceToEdge >= 15 &&
-          distanceToEdge < 25 &&
+        {slipPercent >= 0.8 && "⚠️ DANGER! Magnet slipping!"}
+        {slipPercent >= 0.6 &&
+          slipPercent < 0.8 &&
           "Edge grip - reduce tension!"}
-        {distanceToEdge >= 25 && distanceToEdge < 40 && "Good position"}
-        {distanceToEdge >= 40 && "Perfect center - safe"}
+        {slipPercent >= 0.4 && slipPercent < 0.6 && "Good position"}
+        {slipPercent < 0.4 && "Perfect center - safe"}
       </div>
     </div>
   );

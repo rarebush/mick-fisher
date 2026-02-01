@@ -27,7 +27,6 @@ import {
 } from "./sequences/castSequence.js";
 import { renderProjectedRope } from "./animations/projectedRopeRenderer.js";
 import {
-  getItemPosition,
   getItemWorldPosition,
   updateDragMechanics,
   updateRopePhysics,
@@ -361,18 +360,19 @@ export class PixiApp {
     // Handle manual "Give Up" button
     this.handleManualFailure = async (event) => {
       const gamePhase = this.gameStore?.getState().gamePhase;
-      const dragState = this.sessionStore?.getState().dragState;
+      const physicsState = this.sessionStore?.getState().physicsState;
 
       // Only allow during active dragging
-      if (gamePhase === "dragging" && dragState?.active) {
+      if (gamePhase === "dragging" && physicsState?.active) {
         console.log("[MANUAL FAILURE] Player gave up");
+        this.inputManager?.resetInputState();
 
         // Immediately deactivate drag and set reeling phase to stop ticker physics
         this.sessionStore.getState().deactivateDrag();
         this.sessionStore.getState().setPhase("reeling");
 
         // Trigger failure at current distance (with rope reel-in animation)
-        const currentDistance = event.detail.distance || dragState.distance;
+        const currentTarget = physicsState?.target?.position;
         if (this.dragLineUnderwater && this.dragLineUnderwater.parent) {
           this.dragLineUnderwater.parent.removeChild(this.dragLineUnderwater);
           this.dragLineUnderwater.destroy();
@@ -390,7 +390,7 @@ export class PixiApp {
           this.sessionStore,
           this.locationStore,
           this.debugOverlay,
-          currentDistance,
+          currentTarget,
           this.inputManager
             ? this.inputManager.getQuadrantFromPosition.bind(this.inputManager)
             : null,
@@ -438,10 +438,10 @@ export class PixiApp {
   tickerUpdateSprites() {
     if (!this.spriteManager) return;
 
-    const dragState = this.sessionStore?.getState().dragState;
+    const physicsState = this.sessionStore?.getState().physicsState;
     const gamePhase = this.gameStore?.getState().gamePhase;
 
-    if (gamePhase !== "dragging" || !dragState?.active) {
+    if (gamePhase !== "dragging" || !physicsState?.active) {
       this.spriteManager.clearSprites();
       return;
     }
@@ -455,7 +455,7 @@ export class PixiApp {
     }
 
     const itemWorld = getItemWorldPosition(this.app, this.sessionStore);
-    this.spriteManager.updateSprites(item, itemWorld);
+    this.spriteManager.updateSprites(item, itemWorld, physicsState);
   }
 
   // Ticker method for drag mechanics updates
@@ -469,19 +469,15 @@ export class PixiApp {
       this.debugOverlay,
       this.lastDragUpdateTime,
       this.dragStartTime,
-      async (failureDistance) => {
-        if (this.dragLineDebug && this.dragLineDebug.parent) {
-          this.dragLineDebug.parent.removeChild(this.dragLineDebug);
-          this.dragLineDebug.destroy();
-        }
-        this.dragLineDebug = null;
+      async (failureWorldPosition) => {
+        this.inputManager?.resetInputState();
         await handleDragFailure(
           this.app,
           this.gameStore,
           this.sessionStore,
           this.locationStore,
           this.debugOverlay,
-          failureDistance,
+          failureWorldPosition,
           this.inputManager
             ? this.inputManager.getQuadrantFromPosition.bind(this.inputManager)
             : null,
@@ -489,9 +485,13 @@ export class PixiApp {
           this.dragLine,
           this.dragPlayerX,
           this.dragPlayerY,
+          this.dragLineUnderwater,
+          this.dragLineDebug,
         );
         // Clear line reference after reel-in
         this.dragLine = null;
+        this.dragLineUnderwater = null;
+        this.dragLineDebug = null;
       },
       () => {
         // Clean up line and rope state on successful retrieval
@@ -516,6 +516,7 @@ export class PixiApp {
           this.sessionStore.getState().setPhaseProgress(0);
           this.sessionStore.getState().setCastPosition(null, null);
         }
+        this.inputManager?.resetInputState();
       },
     );
 

@@ -1,0 +1,31 @@
+.line-stress-meter {
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  padding: 10px 12px;
+  border-radius: 8px;
+  width: 200px;
+  font-size: 12px;
+}
+
+.line-stress-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.line-stress-bar {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.line-stress-fill {
+  height: 100%;
+  transition: width 0.2s ease-out;
+}
+
+.line-stress-value {
+  margin-top: 6px;
+  color: #ddd;
+  font-size: 11px;
+}

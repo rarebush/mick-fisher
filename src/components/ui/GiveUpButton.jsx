@@ -10,19 +10,19 @@ import "./give-up-button.css";
  */
 function GiveUpButton() {
   const gamePhase = useGameStore((state) => state.gamePhase);
-  const dragState = useSessionStore((state) => state.dragState);
+  const physicsState = useSessionStore((state) => state.physicsState);
   const [isVisible, setIsVisible] = useState(false);
 
   // Only show during active dragging
   useEffect(() => {
-    setIsVisible(gamePhase === "dragging" && dragState.active);
-  }, [gamePhase, dragState.active]);
+    setIsVisible(gamePhase === "dragging" && physicsState.active);
+  }, [gamePhase, physicsState.active]);
 
   const handleGiveUp = () => {
     // Trigger manual failure via custom event
     // This will be caught by PixiApp which has access to onDragFailure callback
     const event = new CustomEvent("manualDragFailure", {
-      detail: { distance: dragState.distance },
+      detail: { position: physicsState.target?.position || null },
     });
     window.dispatchEvent(event);
   };

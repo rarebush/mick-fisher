@@ -261,6 +261,7 @@ export class InputManager {
     // Reset all input state
     this.isPointerDown = false;
     this.isHoldingForDrag = false;
+    this.isCasting = false;
     this.activePointerId = null;
 
     if (this.sessionStore) {

@@ -1,8 +1,4 @@
 .casting-equipment-bar {
-  position: absolute;
-  top: 16px;
-  left: 16px;
-  z-index: 900;
   display: flex;
   gap: 10px;
   font-size: 12px;
@@ -43,7 +39,9 @@
   padding: 4px 8px;
   cursor: pointer;
   font-size: 12px;
-  transition: background 0.2s, border-color 0.2s;
+  transition:
+    background 0.2s,
+    border-color 0.2s;
 }
 
 .equipment-btn:hover {

@@ -1,16 +1,12 @@
-import { useEffect, useRef } from "react";
 import useSessionStore from "../../game/state/sessionStore";
 import useGameStore from "../../game/state/gameStore";
-import {
-  DRAG_TENSION_PULL_THRESHOLD,
-  OVERLOAD_FAIL_SECONDS,
-} from "../../game/mechanics/dragMechanics";
+import { TENSION_ZONES } from "../../game/physics/physicsSystem";
 import "./tension-bar.css";
 
 function TensionBar() {
   // Zustand stores - read only
-  const { dragState, isDragging, ropeTension, phase } = useSessionStore();
-  const { currentCast } = useGameStore();
+  const { physicsState, isDragging, phase } = useSessionStore();
+  const { currentCast, gamePhase } = useGameStore();
 
   // Show during cast phases and dragging
   const isCastPhase =
@@ -19,22 +15,26 @@ function TensionBar() {
     phase === "splashing" ||
     phase === "sinking" ||
     phase === "settling";
-  const isDragPhase = phase === "drag" && dragState.active;
+  const isDragPhase = gamePhase === "dragging";
+  const isWaiting = gamePhase === "waiting";
 
-  if (!isCastPhase && !isDragPhase) {
+  if (!isCastPhase && !isDragPhase && !isWaiting) {
     return null;
   }
 
-  // Single source of truth for tension
-  const tension = ropeTension;
-  const distance = isCastPhase ? currentCast.distance : dragState.distance;
-  const overloadTimer = dragState.overloadTimer || 0;
-  const overloadProgress =
-    OVERLOAD_FAIL_SECONDS > 0
-      ? Math.min(1, overloadTimer / OVERLOAD_FAIL_SECONDS)
+  const tension = isCastPhase ? currentCast.tension : physicsState.tension;
+  const distance = isCastPhase
+    ? currentCast.distance
+    : physicsState.distanceToShore || 0;
+  const heatPercent =
+    physicsState.heat && physicsState.heat > 0
+      ? Math.min(1, physicsState.heat / 100)
       : 0;
-  const shakeIntensity = overloadProgress > 0 ? 1 + 4 * overloadProgress : 0;
-  const pullThreshold = Math.max(0, Math.min(100, DRAG_TENSION_PULL_THRESHOLD));
+  const shakeIntensity = heatPercent > 0 ? 1 + 4 * heatPercent : 0;
+  const tensionZones = [
+    { id: "low", value: TENSION_ZONES.LOW_MAX },
+    { id: "working", value: TENSION_ZONES.WORKING_MAX },
+  ];
 
   // Clamp tension for display only (actual value can exceed 100 to trigger failure)
   const displayTension = Math.max(0, Math.min(100, tension));
@@ -53,7 +53,7 @@ function TensionBar() {
     <div className="tension-bar-container">
       <div
         className={`tension-bar-inner ${
-          overloadProgress > 0 ? "tension-bar-inner--shaking" : ""
+          heatPercent > 0 ? "tension-bar-inner--shaking" : ""
         }`}
         style={{ "--shake-intensity": `${shakeIntensity}px` }}
       >
@@ -76,29 +76,30 @@ function TensionBar() {
               backgroundColor: barColor,
             }}
           />
-          {isDragPhase && (
+          {tensionZones.map((zone) => (
             <div
-              className="tension-threshold-line"
-              style={{ bottom: `${pullThreshold}%` }}
+              key={zone.id}
+              className={`tension-zone-line tension-zone-line--${zone.id}`}
+              style={{ bottom: `${zone.value}%` }}
             />
-          )}
+          ))}
         </div>
 
-        {isDragPhase && (
+        {heatPercent > 0 && (
           <div className="overload-meter">
-            <div className="overload-label">Overload</div>
+            <div className="overload-label">Heat</div>
             <div
               className={`overload-track ${
-                overloadProgress >= 0.8 ? "overload-track--danger" : ""
+                heatPercent >= 0.8 ? "overload-track--danger" : ""
               }`}
             >
               <div
                 className="overload-fill"
-                style={{ width: `${Math.round(overloadProgress * 100)}%` }}
+                style={{ width: `${Math.round(heatPercent * 100)}%` }}
               />
             </div>
             <div className="overload-value">
-              {Math.round(overloadProgress * 100)}%
+              {Math.round(heatPercent * 100)}%
             </div>
           </div>
         )}
@@ -106,6 +107,7 @@ function TensionBar() {
         <div className="drag-instruction">
           {isCastPhase && "Casting..."}
           {isDragPhase && (isDragging ? "Pulling..." : "Click to pull")}
+          {isWaiting && "Waiting for bite..."}
         </div>
 
         <div className="tension-hint">

@@ -544,6 +544,18 @@ export function animateReelIn(
       if (!app) {
         if (line.parent) line.parent.removeChild(line);
         line.destroy();
+        if (options.lineUnderwater?.parent) {
+          options.lineUnderwater.parent.removeChild(options.lineUnderwater);
+        }
+        if (options.lineUnderwater && !options.lineUnderwater.destroyed) {
+          options.lineUnderwater.destroy();
+        }
+        if (options.lineDebug?.parent) {
+          options.lineDebug.parent.removeChild(options.lineDebug);
+        }
+        if (options.lineDebug && !options.lineDebug.destroyed) {
+          options.lineDebug.destroy();
+        }
         if (reelMagnetSprite.parent) {
           reelMagnetSprite.parent.removeChild(reelMagnetSprite);
         }
@@ -583,6 +595,18 @@ export function animateReelIn(
 
       if (line.parent) line.parent.removeChild(line);
       line.destroy();
+      if (options.lineUnderwater?.parent) {
+        options.lineUnderwater.parent.removeChild(options.lineUnderwater);
+      }
+      if (options.lineUnderwater && !options.lineUnderwater.destroyed) {
+        options.lineUnderwater.destroy();
+      }
+      if (options.lineDebug?.parent) {
+        options.lineDebug.parent.removeChild(options.lineDebug);
+      }
+      if (options.lineDebug && !options.lineDebug.destroyed) {
+        options.lineDebug.destroy();
+      }
       if (reelMagnetSprite.parent) {
         reelMagnetSprite.parent.removeChild(reelMagnetSprite);
       }
@@ -703,7 +727,7 @@ export function createBubbles(app, worldX, worldY, duration = 500) {
 /**
  * Start periodic bubble animation during drag
  */
-export function startDragBubbles(app, getItemPosition, isStillDragging) {
+export function startDragBubbles(app, getItemWorldPosition, isStillDragging) {
   // Create bubbles every 800ms while dragging
   const interval = setInterval(() => {
     if (!app || !isStillDragging()) {
@@ -712,7 +736,7 @@ export function startDragBubbles(app, getItemPosition, isStillDragging) {
     }
 
     // Calculate current item position (world space)
-    const itemPos = getItemPosition();
+    const itemPos = getItemWorldPosition();
     if (itemPos) {
       // Create a small burst of bubbles (fewer than initial cast)
       createBubbles(app, itemPos.x, itemPos.y, 300);

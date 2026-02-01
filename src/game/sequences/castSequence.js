@@ -3,8 +3,20 @@
  * Orchestrates the casting sequence: animations, mechanics, state updates
  */
 
-import { executeCast } from "../mechanics/castMechanics.js";
-import { calculateSlipDirection } from "../mechanics/slipCalculations.js";
+import {
+  executeCast,
+  getRandomDepth,
+  getRandomDistance,
+} from "../mechanics/castMechanics.js";
+import {
+  EQUIPMENT_CATEGORIES,
+  getFishingEquipmentById,
+} from "../data/fishingEquipmentDatabase.js";
+import {
+  createMetallicTargetFromItem,
+  initializeWaitPhase,
+} from "../physics/physicsSystem.js";
+import { emitAudioEvent } from "../audio/audioEvents.js";
 import {
   animateCastLine,
   createRipple,
@@ -17,9 +29,9 @@ import {
   WORLD_Z,
   WORLD_Y,
   createViewport,
-  getSurfaceScreenBounds,
   screenToWorld,
   worldToScreen,
+  getAvatarWorldPosition,
 } from "../mechanics/worldConstants.js";
 
 /**
@@ -61,22 +73,47 @@ export async function executeCastSequence(
     }));
   }
 
-  // Show spawn table for this quadrant in debug overlay
   const currentLocation =
     gameStore?.getState().currentLocation || "picturesque-river";
-  debugOverlay?.showSpawnTable(quadrant, currentLocation);
-  debugOverlay?.highlightQuadrant(quadrant, riverbedScreen.x, riverbedScreen.y);
+  const fishingEquipmentState = gameStore?.getState().fishingEquipment ?? {
+    type: "magnet",
+    tierId: "magnet_basic",
+  };
+  const equipment = getFishingEquipmentById(
+    fishingEquipmentState.type,
+    fishingEquipmentState.tierId,
+  );
+  const equipmentCategory = EQUIPMENT_CATEGORIES[fishingEquipmentState.type];
+  const resolvedEquipment =
+    equipment || getFishingEquipmentById("magnet", "magnet_basic");
 
-  // Check for engaged item hit
-  const hitItem = locationStore
-    .getState()
-    .checkForHit(currentLocation, riverbedScreen.x, riverbedScreen.y, quadrant);
+  if (!equipmentCategory?.requiresWait) {
+    // Show spawn table for this quadrant in debug overlay
+    debugOverlay?.showSpawnTable(quadrant, currentLocation);
+    debugOverlay?.highlightQuadrant(
+      quadrant,
+      riverbedScreen.x,
+      riverbedScreen.y,
+    );
+  }
+
+  const hitItem =
+    !equipmentCategory?.requiresWait && locationStore
+      ? locationStore
+          .getState()
+          .checkForHit(
+            currentLocation,
+            riverbedScreen.x,
+            riverbedScreen.y,
+            quadrant,
+          )
+      : null;
 
   if (hitItem) {
     console.log(
       `[CAST] Found engaged item: ${hitItem.item.name} at (${hitItem.x.toFixed(1)}, ${hitItem.y.toFixed(1)})`,
     );
-  } else {
+  } else if (!equipmentCategory?.requiresWait) {
     console.log(
       `[CAST] No engaged item hit at (${x.toFixed(1)}, ${y.toFixed(1)}) in quadrant ${quadrant}`,
     );
@@ -111,30 +148,34 @@ export async function executeCastSequence(
   // Create bubbles to show magnet sinking
   createBubbles(app, waterWorld.x, waterWorld.y, 500);
 
-  // Execute cast mechanics (with hit detection)
-  const castResult = executeCast(
-    quadrant,
-    currentLocation,
-    riverbedWorld,
-    hitItem,
-  );
+  const castResult = equipmentCategory?.requiresWait
+    ? {
+        success: false,
+        item: null,
+        distance: getRandomDistance(quadrant),
+        depth: getRandomDepth(quadrant, currentLocation),
+        magnetSurfacePosition: null,
+        magnetContactWidth: 6,
+      }
+    : executeCast(quadrant, currentLocation, riverbedWorld, hitItem);
 
-  // Log spawn event to debug overlay
-  if (castResult.success) {
-    debugOverlay?.logSpawnEvent({
-      quadrant,
-      success: true,
-      itemName: castResult.item.name,
-      distance: castResult.distance,
-      magnetSurfacePosition: castResult.magnetSurfacePosition,
-      placement: castResult.placementQuality.label,
-      isEngaged: castResult.isEngagedItem,
-    });
-  } else {
-    debugOverlay?.logSpawnEvent({
-      quadrant,
-      success: false,
-    });
+  if (!equipmentCategory?.requiresWait) {
+    if (castResult.success) {
+      debugOverlay?.logSpawnEvent({
+        quadrant,
+        success: true,
+        itemName: castResult.item.name,
+        distance: castResult.distance,
+        magnetSurfacePosition: castResult.magnetSurfacePosition,
+        placement: castResult.placementQuality.label,
+        isEngaged: castResult.isEngagedItem,
+      });
+    } else {
+      debugOverlay?.logSpawnEvent({
+        quadrant,
+        success: false,
+      });
+    }
   }
 
   // Update game state
@@ -142,7 +183,7 @@ export async function executeCastSequence(
     const { startCast, setCaughtItem, setGamePhase } = gameStore.getState();
     startCast(quadrant, castResult.distance, castResult.depth);
 
-    if (castResult.success) {
+    if (!equipmentCategory?.requiresWait && castResult.success) {
       const itemPositionScreen = worldToScreen(
         {
           x: castResult.itemPositionWorld.x,
@@ -201,25 +242,31 @@ export async function executeCastSequence(
         ? itemPositionScreen
         : { x: riverbedScreen.x, y: riverbedScreen.y };
 
-      // Calculate slip direction from magnet position (pure function)
-      const slipDirection = calculateSlipDirection(
-        castResult.magnetSurfacePosition,
-      );
-
       // Start drag phase with magnet position and final cast tension
       // Update cast position for drag path (re-engaged items may differ)
       sessionStore
         .getState()
         .setCastPosition(initialPosition.x, initialPosition.y);
 
-      const { startDrag } = sessionStore.getState();
-      startDrag(
-        castResult.distance,
-        castResult.magnetSurfacePosition,
-        castResult.magnetContactWidth,
-        quadrant,
-        slipDirection,
+      const avatarWorld = getAvatarWorldPosition();
+      const targetWorld = castResult.itemPositionWorld;
+      const lineLength = Math.hypot(
+        targetWorld.x - avatarWorld.x,
+        targetWorld.y - avatarWorld.y,
       );
+
+      const target = createMetallicTargetFromItem(castResult.item, targetWorld);
+
+      sessionStore.getState().initializePhysicsState({
+        mode: "dragging",
+        targetType: "metallic",
+        target,
+        equipment: resolvedEquipment,
+        tension: 0,
+      });
+
+      const { startDrag } = sessionStore.getState();
+      startDrag(lineLength, castResult.magnetSurfacePosition, 6, quadrant, 0);
 
       // Reset rope timer in PixiApp to prevent large deltaTime
       if (typeof window !== "undefined" && window.getPixiApp) {
@@ -248,6 +295,7 @@ export async function executeCastSequence(
       console.log(
         "Item caught:",
         castResult.item.name,
+        `(${castResult.item.weight ?? "?"}kg)`,
         "at",
         castResult.distance.toFixed(1),
         "m",
@@ -258,6 +306,19 @@ export async function executeCastSequence(
       );
 
       return { dragBubbleInterval, line, playerX, playerY };
+    }
+
+    if (equipmentCategory?.requiresWait) {
+      sessionStore.getState().setPhase("waiting");
+      sessionStore.getState().initializePhysicsState({
+        mode: "waiting",
+        equipment: resolvedEquipment,
+        waitState: initializeWaitPhase(resolvedEquipment, waterWorld),
+      });
+      sessionStore.getState().setRopeTension(0);
+      setGamePhase("waiting");
+      emitAudioEvent({ type: "wait-start" });
+      return { dragBubbleInterval: null, line, playerX, playerY };
     } else {
       // Nothing found - clean up graphics
       if (line && line.parent) {
@@ -276,6 +337,7 @@ export async function executeCastSequence(
       sessionStore.getState().setPhase("idle");
       sessionStore.getState().setPhaseProgress(0);
       sessionStore.getState().setCastPosition(null, null);
+      sessionStore.getState().resetPhysicsState();
 
       // Clear PixiApp references
       if (pixiApp) {
@@ -310,31 +372,64 @@ export async function handleDragFailure(
   sessionStore,
   locationStore,
   debugOverlay,
-  failureDistance,
+  failureWorldPosition,
   getQuadrantFromPosition,
   _rope = null,
   line = null,
   playerX = 0,
   playerY = 0,
+  lineUnderwater = null,
+  lineDebug = null,
 ) {
   void _rope;
-  if (!gameStore || !sessionStore || !locationStore) return;
+  const cleanupRope = () => {
+    if (line && line.parent) {
+      line.parent.removeChild(line);
+    }
+    if (line && !line.destroyed) {
+      line.destroy();
+    }
+    if (lineUnderwater && lineUnderwater.parent) {
+      lineUnderwater.parent.removeChild(lineUnderwater);
+    }
+    if (lineUnderwater && !lineUnderwater.destroyed) {
+      lineUnderwater.destroy();
+    }
+    if (lineDebug && lineDebug.parent) {
+      lineDebug.parent.removeChild(lineDebug);
+    }
+    if (lineDebug && !lineDebug.destroyed) {
+      lineDebug.destroy();
+    }
+  };
+
+  if (!gameStore || !sessionStore || !locationStore) {
+    cleanupRope();
+    return;
+  }
 
   const currentCast = gameStore.getState().currentCast;
-  const dragState = sessionStore.getState().dragState;
   const currentLocation = gameStore.getState().currentLocation;
 
-  if (!currentCast.itemInstanceId || !currentCast.item) return;
+  if (!currentCast.itemInstanceId || !currentCast.item) {
+    cleanupRope();
+    return;
+  }
 
-  // Calculate where item stopped based on remaining distance
-  const stopPosition = calculatePositionAtDistance(
-    app,
-    failureDistance,
-    sessionStore.getState().castPosition,
-    dragState.totalDistance,
+  if (!failureWorldPosition) {
+    cleanupRope();
+    return;
+  }
+
+  const stopViewport = createViewport(app.screen.width, app.screen.height);
+  const stopPosition = worldToScreen(
+    {
+      x: failureWorldPosition.x,
+      y: failureWorldPosition.y,
+      z: WORLD_Z.RIVERBED,
+    },
+    stopViewport,
   );
-
-  if (!stopPosition) return;
 
   // Animate rope reeling in from stop position back to player
   const reelViewport = createViewport(app.screen.width, app.screen.height);
@@ -357,6 +452,8 @@ export async function handleDragFailure(
         hideUnderwaterSegments:
           gameStore?.getState()?.waterSurfaceOpaque ?? false,
         reelClipScreenY,
+        lineUnderwater,
+        lineDebug,
       },
     );
   }
@@ -368,13 +465,6 @@ export async function handleDragFailure(
     "riverbed",
   );
 
-  const stopViewport = createViewport(app.screen.width, app.screen.height);
-  const stopWorld = screenToWorld(
-    stopPosition.x,
-    stopPosition.y,
-    WORLD_Z.RIVERBED,
-    stopViewport,
-  );
   const sizeWorld =
     currentCast.itemSizeWorld ??
     currentCast.itemSize / stopViewport.pixelsPerUnit;
@@ -386,43 +476,17 @@ export async function handleDragFailure(
       item: currentCast.item,
       x: stopPosition.x,
       y: stopPosition.y,
-      worldX: stopWorld.x,
-      worldY: stopWorld.y,
+      worldX: failureWorldPosition.x,
+      worldY: failureWorldPosition.y,
       size: currentCast.itemSize,
       sizeWorld,
-      quadrant: actualQuadrant !== null ? actualQuadrant : dragState.quadrant, // Use actual quadrant or fallback
+      quadrant: actualQuadrant !== null ? actualQuadrant : currentCast.quadrant,
     });
 
   console.log(
-    `[DRAG FAILURE] Item engaged at (${stopPosition.x.toFixed(1)}, ${stopPosition.y.toFixed(1)}) in quadrant ${actualQuadrant !== null ? actualQuadrant : dragState.quadrant}`,
+    `[DRAG FAILURE] Item engaged at (${stopPosition.x.toFixed(1)}, ${stopPosition.y.toFixed(1)}) in quadrant ${actualQuadrant !== null ? actualQuadrant : currentCast.quadrant}`,
   );
 
   // Update debug overlay
   debugOverlay?.updateEngagedItems(currentLocation);
-}
-
-/**
- * Calculate position for a specific distance value
- * Used when drag fails to determine where item stopped
- */
-function calculatePositionAtDistance(
-  app,
-  distance,
-  castPosition,
-  totalDistance,
-) {
-  if (!app || !castPosition) return null;
-
-  // Get wall base position from world constants
-  const viewport = createViewport(app.screen.width, app.screen.height);
-  const waterBounds = getSurfaceScreenBounds(WORLD_Z.WATER_SURFACE, viewport);
-
-  const wallBaseX = app.screen.width / 2;
-  const wallBaseY = waterBounds.top;
-  const progress = 1 - distance / totalDistance;
-
-  const x = castPosition.x + (wallBaseX - castPosition.x) * progress;
-  const y = castPosition.y + (wallBaseY - castPosition.y) * progress;
-
-  return { x, y };
 }

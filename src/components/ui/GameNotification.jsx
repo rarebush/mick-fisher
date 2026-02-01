@@ -20,9 +20,10 @@ function GameNotification() {
   useEffect(() => {
     // Detect when an item is caught
     if (sessionStats.itemsCaught > prevStatsRef.current.itemsCaught) {
-      const item = lastCompletedCast?.itemId
+      const itemFromDb = lastCompletedCast?.itemId
         ? getItem(lastCompletedCast.itemId)
         : null;
+      const item = itemFromDb || lastCompletedCast?.item || null;
       if (item) {
         setNotification({
           type: "success",
@@ -38,9 +39,10 @@ function GameNotification() {
 
     // Detect when an item is lost
     if (sessionStats.itemsLost > prevStatsRef.current.itemsLost) {
-      const item = lastCompletedCast?.itemId
+      const itemFromDb = lastCompletedCast?.itemId
         ? getItem(lastCompletedCast.itemId)
         : null;
+      const item = itemFromDb || lastCompletedCast?.item || null;
       setNotification({
         type: "failure",
         message: item ? `Lost ${item.name}!` : "Item lost!",
@@ -63,8 +65,10 @@ function GameNotification() {
     const { item, distance, placementQuality } = notification;
     return (
       <div className="game-notification success">
-        <div className="notification-icon">{item.icon}</div>
-        <div className="notification-title">Item Caught!</div>
+        <div className="notification-icon">{item.icon || "✨"}</div>
+        <div className="notification-title">
+          {item.category?.includes("fish") ? "Fish Caught!" : "Item Caught!"}
+        </div>
         <div className="notification-item-name">{item.name}</div>
         <div className="notification-stats">
           <div className="stat">
@@ -98,8 +102,10 @@ function GameNotification() {
       {notification.reason && (
         <div className="notification-reason">
           {notification.reason === "tension-overload"
-            ? "⚡ The magnet ripped off from too much force!"
-            : "💨 The magnet slipped off the item!"}
+            ? "⚡ The line snapped from too much force!"
+            : notification.reason === "line-snapped"
+              ? "🪢 The line snapped!"
+              : "💨 The magnet slipped off the item!"}
         </div>
       )}
       <button className="dismiss-button" onClick={handleDismiss}>

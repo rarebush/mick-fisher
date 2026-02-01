@@ -5,6 +5,7 @@
 
 import { create } from "zustand";
 import useMagnetStore from "./magnetStore.js";
+import { createInitialPhysicsState } from "../physics/physicsSystem.js";
 
 const DEFAULT_CAST_AIM_STATE = {
   phase: "idle", // idle | angle | power
@@ -73,12 +74,15 @@ const useSessionStore = create((set, get) => ({
 
   // Rope visualization state
   ropeTension: 0, // Single source of truth for rope tension
-  phase: "idle", // Current phase: 'idle', 'cast', 'drag', 'lift'
+  phase: "idle", // Current phase: 'idle', 'cast', 'drag', 'lift', 'waiting'
   phaseProgress: 0, // Phase completion (0 to 1)
   castPosition: null, // Cast landing position (set before drag starts, for rope rendering)
   castInputMode: "click", // click | direction_power | donut
   castAimState: { ...DEFAULT_CAST_AIM_STATE },
   donutAimState: { ...DEFAULT_DONUT_AIM_STATE },
+
+  // Central physics state
+  physicsState: createInitialPhysicsState(),
 
   // Actions - Session Control
   startSession: () => {
@@ -142,6 +146,11 @@ const useSessionStore = create((set, get) => ({
         quadrant,
         overloadTimer: 0,
       },
+      physicsState: {
+        ...get().physicsState,
+        active: true,
+        mode: "dragging",
+      },
     });
   },
 
@@ -162,6 +171,10 @@ const useSessionStore = create((set, get) => ({
       dragState: {
         ...state.dragState,
         dragMemory: newMemory,
+      },
+      physicsState: {
+        ...state.physicsState,
+        tension: Math.max(0, tension),
       },
     });
   },
@@ -199,6 +212,7 @@ const useSessionStore = create((set, get) => ({
     useMagnetStore.getState().despawnMagnet();
 
     set({
+      isDragging: false,
       phase: "idle", // Reset phase
       phaseProgress: 0,
       ropeTension: 0,
@@ -210,6 +224,7 @@ const useSessionStore = create((set, get) => ({
         accelerationTime: 0,
         overloadTimer: 0,
       },
+      physicsState: createInitialPhysicsState(),
     });
     return state.dragState.magnetSurfacePosition;
   },
@@ -220,6 +235,7 @@ const useSessionStore = create((set, get) => ({
     useMagnetStore.getState().despawnMagnet();
 
     set((state) => ({
+      isDragging: false,
       ropeTension: 0,
       dragState: {
         ...state.dragState,
@@ -229,6 +245,7 @@ const useSessionStore = create((set, get) => ({
         accelerationTime: 0,
         overloadTimer: 0,
       },
+      physicsState: createInitialPhysicsState(),
     }));
   },
 
@@ -244,6 +261,10 @@ const useSessionStore = create((set, get) => ({
         tapTimestamps: [],
         slipAccumulated: carryOverSlip,
         revealed: false,
+      },
+      physicsState: {
+        ...get().physicsState,
+        mode: "lifting",
       },
     });
   },
@@ -299,10 +320,37 @@ const useSessionStore = create((set, get) => ({
         slipAccumulated: 0,
         revealed: false,
       },
+      physicsState: createInitialPhysicsState(),
     });
 
     return finalSlip;
   },
+
+  // Physics state actions
+  initializePhysicsState: (payload) => {
+    set({
+      physicsState: {
+        ...createInitialPhysicsState(),
+        ...payload,
+        active: true,
+      },
+    });
+  },
+  setPhysicsState: (partial) =>
+    set((state) => ({
+      physicsState: {
+        ...state.physicsState,
+        ...partial,
+      },
+    })),
+  updatePhysicsState: (updater) =>
+    set((state) => ({
+      physicsState:
+        typeof updater === "function"
+          ? updater(state.physicsState)
+          : { ...state.physicsState, ...updater },
+    })),
+  resetPhysicsState: () => set({ physicsState: createInitialPhysicsState() }),
 
   setPhase: (phase) => set({ phase }),
 
@@ -515,6 +563,7 @@ const useSessionStore = create((set, get) => ({
         revealed: false,
         magnetSurfacePosition: null,
       },
+      physicsState: createInitialPhysicsState(),
     }),
 }));
 

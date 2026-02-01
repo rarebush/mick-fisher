@@ -24,6 +24,12 @@ export const LOCATIONS = {
     unlocked: true,
     depthMultiplier: 1.0,
     ambience: "gentle-water",
+    fishTables: {
+      edge: { carp: 40, bass: 25, catfish: 20, pike: 10, sturgeon: 5 },
+      near: { carp: 30, bass: 25, catfish: 20, pike: 15, sturgeon: 10 },
+      mid: { carp: 20, bass: 25, catfish: 20, pike: 20, sturgeon: 15 },
+      far: { carp: 10, bass: 20, catfish: 20, pike: 25, sturgeon: 25 },
+    },
 
     // Spawn tables by quadrant zone
     spawnTables: {
@@ -97,6 +103,12 @@ export const LOCATIONS = {
     unlocked: true,
     depthMultiplier: 1.1, // Slightly deeper
     ambience: "industrial-water",
+    fishTables: {
+      edge: { carp: 35, bass: 30, catfish: 20, pike: 10, sturgeon: 5 },
+      near: { carp: 25, bass: 30, catfish: 20, pike: 15, sturgeon: 10 },
+      mid: { carp: 15, bass: 25, catfish: 20, pike: 20, sturgeon: 20 },
+      far: { carp: 10, bass: 20, catfish: 20, pike: 25, sturgeon: 25 },
+    },
 
     spawnTables: {
       edge: {
@@ -211,3 +223,10 @@ export const getQuadrantZone = (quadrant) => QUADRANT_ZONES[quadrant];
 export const getQuadrantDistance = (quadrant) => QUADRANT_DISTANCES[quadrant];
 
 export const getQuadrantDepth = (quadrant) => QUADRANT_DEPTHS[quadrant];
+
+export const getFishTableForLocation = (locationId, quadrant) => {
+  const location = getLocation(locationId);
+  if (!location?.fishTables) return null;
+  const zone = getQuadrantZone(quadrant);
+  return location.fishTables[zone] || null;
+};

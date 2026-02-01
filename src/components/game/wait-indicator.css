@@ -1,0 +1,33 @@
+.wait-indicator {
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
+  padding: 10px 12px;
+  border-radius: 8px;
+  width: 220px;
+  font-size: 12px;
+}
+
+.wait-title {
+  font-weight: 600;
+  margin-bottom: 6px;
+}
+
+.wait-progress {
+  height: 6px;
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.wait-progress-fill {
+  height: 100%;
+  background: #00c2ff;
+  transition: width 0.2s ease-out;
+}
+
+.wait-meta {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  color: #ddd;
+}

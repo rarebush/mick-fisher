@@ -26,12 +26,40 @@ export class SpriteManager {
     this.layerContainers = layerContainers;
   }
 
+  isFishCategory(category) {
+    return (
+      category === "common-fish" ||
+      category === "valuable-fish" ||
+      category === "rare-fish"
+    );
+  }
+
+  applyFishPivot(sprite) {
+    if (!sprite) return;
+    // Rotate around the fish mouth so the hook stays fixed.
+    sprite.pivot.set(16, 6);
+  }
+
+  getAngleDelta(current, target) {
+    const twoPi = Math.PI * 2;
+    let delta = (target - current) % twoPi;
+    if (delta > Math.PI) delta -= twoPi;
+    if (delta < -Math.PI) delta += twoPi;
+    return delta;
+  }
+
+  lerpAngle(current, target, deltaTime, speed) {
+    const t = 1 - Math.exp(-speed * deltaTime);
+    const delta = this.getAngleDelta(current, target);
+    return current + delta * t;
+  }
+
   /**
    * Update sprite positions during drag phase (called by ticker)
    * @param {Object} item - The item being dragged
    * @param {Object} itemWorld - World position of the item
    */
-  updateSprites(item, itemWorld) {
+  updateSprites(item, itemWorld, physicsState) {
     if (!this.app || !itemWorld) return;
 
     const viewport = createViewport(
@@ -63,10 +91,14 @@ export class SpriteManager {
     if (!this.itemSprite && item) {
       this.itemSprite = createPlaceholderSprite(item.category);
       this.itemSprite.scale.set(2); // Make it bigger for visibility
-      this.itemSprite.pivot.set(
-        this.itemSprite.width / 2,
-        this.itemSprite.height / 2,
-      );
+      if (this.isFishCategory(item.category)) {
+        this.applyFishPivot(this.itemSprite);
+      } else {
+        this.itemSprite.pivot.set(
+          this.itemSprite.width / 2,
+          this.itemSprite.height / 2,
+        );
+      }
       (targetContainer || this.app.stage).addChild(this.itemSprite);
     }
 
@@ -114,17 +146,50 @@ export class SpriteManager {
     if (magnetWorld) {
       const avatarWorld = getAvatarWorldPosition();
       const planeZ = magnetWorld.z ?? WORLD_Z.RIVERBED;
-      const orientation = getWorldDirectionScreenAngle(
+      const magnetOrientation = getWorldDirectionScreenAngle(
         magnetWorld,
         avatarWorld,
         planeZ,
         viewport,
       );
+      let itemOrientation = magnetOrientation;
+      const isFish = this.isFishCategory(item?.category);
+      const fishForce =
+        physicsState?.targetType === "fish"
+          ? physicsState?.target?.currentForce
+          : null;
+      const fishForceMagnitude = fishForce
+        ? Math.hypot(fishForce.x ?? 0, fishForce.y ?? 0)
+        : 0;
+      if (isFish && fishForceMagnitude > 1e-4) {
+        itemOrientation = getWorldDirectionScreenAngle(
+          itemWorld,
+          {
+            x: itemWorld.x + fishForce.x,
+            y: itemWorld.y + fishForce.y,
+          },
+          planeZ,
+          viewport,
+        );
+      }
       if (this.itemSprite) {
-        this.itemSprite.rotation = orientation;
+        if (isFish) {
+          const deltaTime = Math.min(
+            0.05,
+            Math.max(0, (this.app.ticker?.deltaMS ?? 16.67) / 1000),
+          );
+          this.itemSprite.rotation = this.lerpAngle(
+            this.itemSprite.rotation,
+            itemOrientation,
+            deltaTime,
+            14,
+          );
+        } else {
+          this.itemSprite.rotation = itemOrientation;
+        }
       }
       if (this.magnetSprite) {
-        this.magnetSprite.rotation = orientation + Math.PI / 2;
+        this.magnetSprite.rotation = magnetOrientation + Math.PI / 2;
       }
     }
 

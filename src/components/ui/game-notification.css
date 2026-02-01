@@ -1,8 +1,4 @@
 .game-notification {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -50%);
   background: linear-gradient(
     145deg,
     rgba(0, 0, 0, 0.95),
@@ -10,7 +6,6 @@
   );
   padding: 32px 48px;
   border-radius: 16px;
-  z-index: 1000;
   animation: slideIn 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
   box-shadow:
     0 12px 40px rgba(0, 0, 0, 0.8),
@@ -170,12 +165,12 @@
 
 @keyframes slideIn {
   from {
-    transform: translate(-50%, -60%);
+    transform: translateY(-10%);
     opacity: 0;
     scale: 0.8;
   }
   to {
-    transform: translate(-50%, -50%);
+    transform: translateY(0);
     opacity: 1;
     scale: 1;
   }

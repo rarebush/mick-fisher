@@ -1,0 +1,33 @@
+.fishing-equipment-bar {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  margin: 8px 0;
+  flex-wrap: wrap;
+}
+
+.fishing-equipment-group {
+  background: rgba(0, 0, 0, 0.65);
+  padding: 8px 10px;
+  border-radius: 8px;
+}
+
+.fishing-equipment-title {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: #ddd;
+  margin-bottom: 6px;
+}
+
+.fishing-equipment-buttons {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.fishing-equipment-hint {
+  font-size: 11px;
+  color: #ffc107;
+  align-self: center;
+}
