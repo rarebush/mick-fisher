@@ -8,6 +8,7 @@ import { getLocation, getQuadrantZone } from "../data/locationDatabase.js";
 import {
   WORLD_Z,
   createViewport,
+  getProjectionMetrics,
   worldToScreen,
 } from "../mechanics/worldConstants.js";
 
@@ -79,11 +80,28 @@ export class DebugOverlay {
     instructions.y = 40;
     this.container.addChild(instructions);
 
+    this.projectionText = new PIXI.Text({
+      text: "",
+      style: {
+        fontSize: 11,
+        fill: 0x66ccff,
+        fontFamily: "monospace",
+      },
+    });
+    this.projectionText.x = 20;
+    this.projectionText.y = 58;
+    this.container.addChild(this.projectionText);
+
     // Create text container for dynamic content
     this.textContainer = new PIXI.Container();
     this.textContainer.x = 20;
-    this.textContainer.y = 70;
+    this.textContainer.y = 90;
     this.container.addChild(this.textContainer);
+
+    this.lastMetricsUpdate = 0;
+    if (this.app?.ticker) {
+      this.app.ticker.add(this.tickProjectionMetrics, this);
+    }
   }
 
   /**
@@ -102,6 +120,7 @@ export class DebugOverlay {
       });
     }
     if (this.visible) {
+      this.updateProjectionMetrics();
       this.updateDisplay();
     }
   }
@@ -114,6 +133,7 @@ export class DebugOverlay {
     // When becoming visible, update markers with current location
     if (this.visible && this.currentLocationId) {
       this.showEngagedItemMarkers(this.currentLocationId);
+      this.updateProjectionMetrics();
       this.updateDisplay();
     }
 
@@ -310,6 +330,28 @@ export class DebugOverlay {
     }
   }
 
+  tickProjectionMetrics() {
+    if (!this.visible) return;
+    const now = performance.now();
+    if (now - this.lastMetricsUpdate < 250) return;
+    this.lastMetricsUpdate = now;
+    this.updateProjectionMetrics();
+  }
+
+  updateProjectionMetrics() {
+    if (!this.projectionText || !this.app) return;
+    const viewport = createViewport(
+      this.app.screen.width,
+      this.app.screen.height,
+    );
+    const metrics = getProjectionMetrics(viewport);
+    this.projectionText.text =
+      `Projection ${metrics.angleDegrees.toFixed(2)}° | ppu ${metrics.pixelsPerUnit.toFixed(2)}\n` +
+      `1m → screen: X ${metrics.screenXPerWorldUnit.toFixed(2)}px, ` +
+      `Y ${metrics.screenYPerWorldUnit.toFixed(2)}px, ` +
+      `Z(up) ${metrics.screenYPerWorldZUnit.toFixed(2)}px`;
+  }
+
   /**
    * Show engaged item markers on the game view
    * @param {string} locationId - Current location
@@ -498,6 +540,9 @@ export class DebugOverlay {
     }
     if (this.engagedItemMarkers) {
       this.engagedItemMarkers.destroy({ children: true });
+    }
+    if (this.app?.ticker) {
+      this.app.ticker.remove(this.tickProjectionMetrics, this);
     }
     this.container.destroy({ children: true });
   }

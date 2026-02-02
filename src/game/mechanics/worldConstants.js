@@ -7,9 +7,9 @@
  * - World Y: Depth (distance from avatar toward the river) in world units
  * - World Z: Height (vertical elevation) in world units
  *
- * PROJECTION FORMULA (true isometric, 30°):
- *   isoX = (worldX - worldY) * cos(30°)
- *   isoY = (worldX + worldY) * sin(30°) - worldZ
+ * PROJECTION FORMULA (pixel isometric, ~26.565°):
+ *   isoX = (worldX - worldY) * cos(26.565°)
+ *   isoY = (worldX + worldY) * sin(26.565°) - worldZ
  *   screenX = isoX * pixelsPerUnit + screenXOffset
  *   screenY = isoY * pixelsPerUnit + screenYOffset
  *
@@ -27,10 +27,10 @@
 // =============================================================================
 
 export const WORLD_X = {
-  MIN: -16, // Left bank
-  MAX: 16, // Right bank
+  MIN: -4, // Left bank
+  MAX: 4, // Right bank
   CENTER: 0,
-  WIDTH: 32,
+  WIDTH: 8,
 };
 
 export const WORLD_Z = {
@@ -39,7 +39,7 @@ export const WORLD_Z = {
   WALKWAY: 3, // Pier/walkway surface where avatar stands
   AVATAR_FEET: 3, // Avatar feet position (same as walkway surface)
   AVATAR_HAND: 4.5, // Avatar's hand when holding rod (above walkway)
-  MAX: 20, // Vertical world extent
+  MAX: 16, // Vertical world extent
 };
 
 export const AVATAR_CAST_OFFSET = {
@@ -92,24 +92,37 @@ export const WORLD_Y = {
 
   // Water and riverbed extend from near to far
   WATER_NEAR: 0, // Where water begins (at wall base)
-  WATER_FAR: 35, // Far edge of water
+  WATER_FAR: 6, // Far edge of water
   RIVERBED_NEAR: 0, // Where riverbed begins
-  RIVERBED_FAR: 35, // Far edge of riverbed
+  RIVERBED_FAR: 6, // Far edge of riverbed
 
   MIN: -3,
-  MAX: 35,
+  MAX: 6,
 };
 
 export const CAMERA_FOCUS = {
   x: 0,
-  y: (WORLD_Y.WATER_NEAR + WORLD_Y.WATER_FAR) / 2,
+  y: (WORLD_Y.WALKWAY_BACK + WORLD_Y.WATER_FAR) / 2,
   z: WORLD_Z.WATER_SURFACE,
 };
 
-const ISO_ANGLE_RAD = Math.PI / 6;
+const ISO_ANGLE_RAD = Math.atan(0.5);
 const ISO_SIN = Math.sin(ISO_ANGLE_RAD);
 const ISO_COS = Math.cos(ISO_ANGLE_RAD);
+const TARGET_TILE_PIXEL_WIDTH = 64;
+const TARGET_TILE_PIXEL_HEIGHT = 32;
+const TARGET_PPU_FROM_WIDTH = TARGET_TILE_PIXEL_WIDTH / (2 * ISO_COS);
+const TARGET_PPU_FROM_HEIGHT = TARGET_TILE_PIXEL_HEIGHT / (2 * ISO_SIN);
+const TARGET_PPU = Math.round(
+  (TARGET_PPU_FROM_WIDTH + TARGET_PPU_FROM_HEIGHT) / 2,
+);
+const WORLD_UNITS_PER_METER =
+  (TARGET_TILE_PIXEL_WIDTH / (2 * ISO_COS * TARGET_PPU) +
+    TARGET_TILE_PIXEL_HEIGHT / (2 * ISO_SIN * TARGET_PPU)) /
+  2;
 const VIEWPORT_PADDING = 0;
+const VIEWPORT_PPU_STEP = 1;
+const USE_FIXED_PPU = true;
 
 // Bounds used for viewport fitting (environment-only, not full Z range)
 const VIEWPORT_FIT_BOUNDS = {
@@ -156,9 +169,30 @@ export function getWorldXBounds() {
  * @returns {{x:number,y:number}}
  */
 export function projectToIsometric(worldX, worldY, worldZ) {
+  const scaledX = worldX * WORLD_UNITS_PER_METER;
+  const scaledY = worldY * WORLD_UNITS_PER_METER;
+  const scaledZ = worldZ * WORLD_UNITS_PER_METER;
   return {
-    x: (worldX - worldY) * ISO_COS,
-    y: (worldX + worldY) * ISO_SIN - worldZ,
+    x: (scaledX - scaledY) * ISO_COS,
+    y: (scaledX + scaledY) * ISO_SIN - scaledZ,
+  };
+}
+
+/**
+ * Get projection metrics for debugging and UI display.
+ * @param {Object} viewport
+ * @returns {{angleDegrees:number,pixelsPerUnit:number,screenXPerWorldUnit:number,screenYPerWorldUnit:number,screenYPerWorldZUnit:number}}
+ */
+export function getProjectionMetrics(viewport) {
+  const pixelsPerUnit = Number.isFinite(viewport?.pixelsPerUnit)
+    ? viewport.pixelsPerUnit
+    : 0;
+  return {
+    angleDegrees: (ISO_ANGLE_RAD * 180) / Math.PI,
+    pixelsPerUnit,
+    screenXPerWorldUnit: ISO_COS * WORLD_UNITS_PER_METER * pixelsPerUnit,
+    screenYPerWorldUnit: ISO_SIN * WORLD_UNITS_PER_METER * pixelsPerUnit,
+    screenYPerWorldZUnit: WORLD_UNITS_PER_METER * pixelsPerUnit,
   };
 }
 
@@ -249,9 +283,14 @@ export function createViewport(screenWidth, screenHeight) {
   const maxAbsX = Math.max(Math.abs(minXRel), Math.abs(maxXRel));
   const maxAbsY = Math.max(Math.abs(minYRel), Math.abs(maxYRel));
 
-  const pixelsPerUnit =
+  const rawPixelsPerUnit =
     Math.min(screenWidth / (2 * maxAbsX), screenHeight / (2 * maxAbsY)) *
     (1 - VIEWPORT_PADDING);
+  const fittedPixelsPerUnit = Math.max(
+    VIEWPORT_PPU_STEP,
+    Math.floor(rawPixelsPerUnit / VIEWPORT_PPU_STEP) * VIEWPORT_PPU_STEP,
+  );
+  const pixelsPerUnit = USE_FIXED_PPU ? TARGET_PPU : fittedPixelsPerUnit;
 
   const screenXOffset = screenWidth / 2 - focusProjected.x * pixelsPerUnit;
   const screenYOffset = screenHeight / 2 - focusProjected.y * pixelsPerUnit;
@@ -322,14 +361,15 @@ export function screenToWorld(screenX, screenY, worldZ, viewport) {
   const projectedY =
     (screenY - viewport.screenYOffset) / viewport.pixelsPerUnit;
 
+  const scaledZ = worldZ * WORLD_UNITS_PER_METER;
   const isoX = projectedX / ISO_COS;
-  const isoY = (projectedY + worldZ) / ISO_SIN;
-  const worldX = (isoX + isoY) / 2;
-  const worldY = (isoY - isoX) / 2;
+  const isoY = (projectedY + scaledZ) / ISO_SIN;
+  const scaledWorldX = (isoX + isoY) / 2;
+  const scaledWorldY = (isoY - isoX) / 2;
 
   return {
-    x: worldX,
-    y: worldY,
+    x: scaledWorldX / WORLD_UNITS_PER_METER,
+    y: scaledWorldY / WORLD_UNITS_PER_METER,
     z: worldZ,
   };
 }
@@ -459,7 +499,10 @@ export function getMagnetRenderLayer(worldZ) {
  * @returns {number} Sort key (matches projected screenY, without offset)
  */
 export function calculateSortKey(worldY, worldZ, worldX = 0) {
-  return (worldX + worldY) * ISO_SIN - worldZ;
+  const scaledX = worldX * WORLD_UNITS_PER_METER;
+  const scaledY = worldY * WORLD_UNITS_PER_METER;
+  const scaledZ = worldZ * WORLD_UNITS_PER_METER;
+  return (scaledX + scaledY) * ISO_SIN - scaledZ;
 }
 
 // =============================================================================

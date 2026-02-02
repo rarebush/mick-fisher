@@ -186,7 +186,7 @@ export class PixiApp {
     this.app.stage.addChild(this.sceneContainer);
 
     // Setup 3D environment layers (pier, wall, water, riverbed)
-    this.environmentLayers = setupEnvironmentLayers(
+    this.environmentLayers = await setupEnvironmentLayers(
       this.sceneContainer,
       this.app.screen.width,
       this.app.screen.height,
@@ -618,8 +618,8 @@ export class PixiApp {
     const getCastRangePolygon = (originWorld, rangeWorld, viewport) => {
       const steps = 96;
       const points = [];
-      for (let i = 0; i < steps; i++) {
-        const angle = (Math.PI * 2 * i) / steps;
+      for (let i = 0; i <= steps; i++) {
+        const angle = (Math.PI * i) / steps;
         const worldPoint = {
           x: originWorld.x + Math.cos(angle) * rangeWorld,
           y: originWorld.y + Math.sin(angle) * rangeWorld,
@@ -627,6 +627,12 @@ export class PixiApp {
         };
         points.push(worldToScreen(worldPoint, viewport));
       }
+      points.push(
+        worldToScreen(
+          { x: originWorld.x, y: originWorld.y, z: WORLD_Z.WATER_SURFACE },
+          viewport,
+        ),
+      );
       return points;
     };
 
@@ -637,8 +643,7 @@ export class PixiApp {
 
       const equipmentId = this.gameStore?.getState().selectedCastingEquipmentId;
       const maxRangeMeters = getCastingEquipmentMaxRange(equipmentId);
-      const maxRangeWorld = metersToWorldRange(maxRangeMeters);
-      const rangeWorld = Math.max(0, maxRangeWorld);
+      const rangeWorld = Math.max(0, metersToWorldRange(maxRangeMeters));
       if (!Number.isFinite(rangeWorld) || rangeWorld <= 0) return;
 
       const origin = getAvatarCastOrigin();

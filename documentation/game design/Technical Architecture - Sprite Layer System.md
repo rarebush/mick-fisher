@@ -36,13 +36,13 @@ World-Space Positioning:
 
 ## Layer Definitions
 
-**World-Space Architecture:** All layers are positioned using true isometric projection from 3D world coordinates. See `worldConstants.js` for dimensions.
+**World-Space Architecture:** All layers are positioned using pixel isometric projection (~26.565°) from 3D world coordinates. See `worldConstants.js` for dimensions.
 
 ### Projection Formula
 
 ```
-isoX = (worldX - worldY) * cos(30°)
-isoY = (worldX + worldY) * sin(30°) - worldZ
+isoX = (worldX - worldY) * cos(26.565°)
+isoY = (worldX + worldY) * sin(26.565°) - worldZ
 screenX = isoX * pixelsPerUnit + screenXOffset
 screenY = isoY * pixelsPerUnit + screenYOffset
 

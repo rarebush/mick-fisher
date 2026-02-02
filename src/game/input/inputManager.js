@@ -4,7 +4,6 @@
  */
 
 import * as PIXI from "pixi.js";
-import { isQuadrantAccessible } from "../mechanics/castMechanics.js";
 import {
   WORLD_Z,
   WORLD_Y,
@@ -508,7 +507,7 @@ export class InputManager {
       worldTarget.y - origin.y,
     );
     const maxRangeWorld = metersToWorldRange(maxRangeMeters);
-    return worldDistance <= maxRangeWorld;
+    return worldTarget.y >= origin.y && worldDistance <= maxRangeWorld;
   }
 
   getCastQuadrantIfAccessible(x, y) {
@@ -518,10 +517,6 @@ export class InputManager {
     const equipmentId = this.gameStore?.getState().selectedCastingEquipmentId;
     const maxRangeMeters = getCastingEquipmentMaxRange(equipmentId);
     if (!this.isWithinCastRange(x, y, maxRangeMeters)) {
-      this.showAccessMessageAtPosition(x, y);
-      return null;
-    }
-    if (!isQuadrantAccessible(quadrant, maxRangeMeters)) {
       this.showAccessMessageAtPosition(x, y);
       return null;
     }

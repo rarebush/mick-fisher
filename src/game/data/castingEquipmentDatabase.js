@@ -6,7 +6,7 @@ export const CASTING_EQUIPMENT = [
     maxAccuracyRadius: 24,
     aspectRatioX: 1,
     aspectRatioY: 1,
-    maxRangeMeters: 8,
+    maxRangeMeters: 3,
   },
   {
     id: "slingshot",

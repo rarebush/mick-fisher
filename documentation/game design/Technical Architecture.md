@@ -461,7 +461,7 @@ this.holdDetectionTimeout = setTimeout(() => {
 
 > "Build the world in world space, then project it to screen space."
 
-The game operates in a true 3D world coordinate system that projects to 2D screen space using true isometric projection. All game mechanics, physics, and positioning use world coordinates exclusively.
+The game operates in a true 3D world coordinate system that projects to 2D screen space using pixel isometric projection (~26.565°). All game mechanics, physics, and positioning use world coordinates exclusively.
 
 **Coordinate System:**
 
@@ -471,9 +471,9 @@ World Space Axes:
 - Y: Depth into the scene (toward the river, away from avatar)
 - Z: Height/elevation (vertical)
 
-Isometric Projection Formula (30°):
-  isoX = (worldX - worldY) * cos(30°)
-  isoY = (worldX + worldY) * sin(30°) - worldZ
+Isometric Projection Formula (~26.565°):
+  isoX = (worldX - worldY) * cos(26.565°)
+  isoY = (worldX + worldY) * sin(26.565°) - worldZ
   screenX = isoX * pixelsPerUnit + screenXOffset
   screenY = isoY * pixelsPerUnit + screenYOffset
 

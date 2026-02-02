@@ -4,7 +4,7 @@
  *
  * Uses world constants for consistent projection from 3D world space to 2D screen.
  * World coordinates: X = horizontal, Y = depth (toward river), Z = height
- * Screen projection: true isometric (30°) from world coordinates
+ * Screen projection: pixel isometric (~26.565°) from world coordinates
  */
 
 import * as PIXI from "pixi.js";
@@ -17,8 +17,9 @@ import {
   WORLD_Z,
   WORLD_Y,
   createViewport,
+  getProjectionMetrics,
   projectToScreen,
-  getSurfaceScreenBounds,
+  screenToWorld,
 } from "../mechanics/worldConstants.js";
 
 function drawWireframeBox(graphics, bounds, viewport, color) {
@@ -53,7 +54,7 @@ function drawWireframeBox(graphics, bounds, viewport, color) {
     graphics.lineTo(corners[end].x, corners[end].y);
   }
 
-  graphics.stroke({ width: 2, color, alpha: 0.9 });
+  graphics.stroke({ width: 1, color, alpha: 0.9 });
 }
 
 /**
@@ -71,11 +72,12 @@ function drawWireframeBox(graphics, bounds, viewport, color) {
  * @param {number} height - Screen height
  * @returns {Object} Layer references
  */
-export function setupEnvironmentLayers(container, width, height) {
+export async function setupEnvironmentLayers(container, width, height) {
   if (!container) return null;
 
   // Create viewport for world-to-screen projection
   const viewport = createViewport(width, height);
+  const projectionMetrics = getProjectionMetrics(viewport);
 
   const waterVolume = new PIXI.Graphics();
   drawWireframeBox(
@@ -92,6 +94,109 @@ export function setupEnvironmentLayers(container, width, height) {
     0x00c2ff,
   );
   container.addChild(waterVolume);
+
+  const waterSurfaceWireframe = new PIXI.Graphics();
+  const waterSurfaceCorners = [
+    projectToScreen(
+      WORLD_X.MIN,
+      WORLD_Y.WATER_NEAR,
+      WORLD_Z.WATER_SURFACE,
+      viewport,
+    ),
+    projectToScreen(
+      WORLD_X.MAX,
+      WORLD_Y.WATER_NEAR,
+      WORLD_Z.WATER_SURFACE,
+      viewport,
+    ),
+    projectToScreen(
+      WORLD_X.MAX,
+      WORLD_Y.WATER_FAR,
+      WORLD_Z.WATER_SURFACE,
+      viewport,
+    ),
+    projectToScreen(
+      WORLD_X.MIN,
+      WORLD_Y.WATER_FAR,
+      WORLD_Z.WATER_SURFACE,
+      viewport,
+    ),
+  ];
+  waterSurfaceWireframe.moveTo(
+    waterSurfaceCorners[0].x,
+    waterSurfaceCorners[0].y,
+  );
+  for (let i = 1; i < waterSurfaceCorners.length; i += 1) {
+    waterSurfaceWireframe.lineTo(
+      waterSurfaceCorners[i].x,
+      waterSurfaceCorners[i].y,
+    );
+  }
+  waterSurfaceWireframe.closePath();
+  waterSurfaceWireframe.stroke({ width: 1, color: 0x6d6d6d, alpha: 0.8 });
+
+  const waterSurfaceTiles = new PIXI.Container();
+  let waterTexture = null;
+  try {
+    waterTexture = await PIXI.Assets.load("/sprites/isowatertest.png");
+  } catch (error) {
+    console.warn("[WATER] Failed to load /sprites/isowatertest.png", error);
+  }
+
+  if (waterTexture?.baseTexture) {
+    waterTexture.baseTexture.scaleMode = PIXI.SCALE_MODES.NEAREST;
+
+    const tileWidthPx = projectionMetrics.screenXPerWorldUnit * 2;
+    const tileHeightPx = projectionMetrics.screenYPerWorldUnit * 2;
+    const tileScaleX = tileWidthPx / waterTexture.width;
+    const tileScaleY = tileHeightPx / waterTexture.height;
+
+    const screenCorners = [
+      { x: 0, y: 0 },
+      { x: width, y: 0 },
+      { x: width, y: height },
+      { x: 0, y: height },
+    ];
+    const worldCorners = screenCorners.map((corner) =>
+      screenToWorld(corner.x, corner.y, WORLD_Z.WATER_SURFACE, viewport),
+    );
+    const minWorldX = Math.min(
+      WORLD_X.MIN,
+      ...worldCorners.map((corner) => corner.x),
+    );
+    const maxWorldX = Math.max(
+      WORLD_X.MAX,
+      ...worldCorners.map((corner) => corner.x),
+    );
+    const minWorldY = WORLD_Y.WATER_NEAR;
+    const maxWorldY = Math.max(
+      WORLD_Y.WATER_FAR,
+      ...worldCorners.map((corner) => corner.y),
+    );
+    const startX = Math.floor(minWorldX) - 1;
+    const endX = Math.ceil(maxWorldX) + 1;
+    const startY = Math.floor(minWorldY);
+    const endY = Math.ceil(maxWorldY) + 1;
+
+    for (let y = startY; y < endY; y += 1) {
+      for (let x = startX; x < endX; x += 1) {
+        const screen = projectToScreen(
+          x + 0.5,
+          y + 0.5,
+          WORLD_Z.WATER_SURFACE,
+          viewport,
+        );
+        const tile = new PIXI.Sprite(waterTexture);
+        tile.anchor.set(0.5, 0.5);
+        tile.scale.set(tileScaleX, tileScaleY);
+        tile.x = screen.x;
+        tile.y = screen.y;
+        waterSurfaceTiles.addChild(tile);
+      }
+    }
+  }
+  container.addChild(waterSurfaceTiles);
+  container.addChild(waterSurfaceWireframe);
 
   const walkwayVolume = new PIXI.Graphics();
   drawWireframeBox(
@@ -115,6 +220,7 @@ export function setupEnvironmentLayers(container, width, height) {
 
   return {
     waterVolume,
+    waterSurfaceTiles,
     walkwayVolume,
     viewport,
   };

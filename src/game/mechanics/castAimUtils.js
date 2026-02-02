@@ -20,11 +20,7 @@ export function metersToWorldRange(meters) {
   if (!Number.isFinite(meters) || meters <= 0) {
     return 0;
   }
-  if (!Number.isFinite(MAX_QUADRANT_DISTANCE) || MAX_QUADRANT_DISTANCE <= 0) {
-    return 0;
-  }
-  const worldDepthRange = WORLD_Y.RIVERBED_FAR - WORLD_Y.AVATAR;
-  return (meters / MAX_QUADRANT_DISTANCE) * worldDepthRange;
+  return meters;
 }
 
 export function clampCastAngleDeg(angleDeg) {
@@ -97,7 +93,7 @@ export function computeCastTargetWorld(
     z: WORLD_Z.WATER_SURFACE,
   };
 
-  return clampTargetToRiverbed(worldTarget, viewport, WORLD_Z.WATER_SURFACE);
+  return clampTargetToWaterSurface(worldTarget, viewport);
 }
 
 export function clampTargetToRiverbed(
@@ -115,6 +111,17 @@ export function clampTargetToRiverbed(
       Math.min(WORLD_Y.RIVERBED_FAR, worldTarget.y),
     ),
     z,
+  };
+}
+
+export function clampTargetToWaterSurface(worldTarget, viewport) {
+  return {
+    x: Math.max(
+      viewport.worldXMin,
+      Math.min(viewport.worldXMax, worldTarget.x),
+    ),
+    y: Math.max(WORLD_Y.WATER_NEAR, Math.min(WORLD_Y.WATER_FAR, worldTarget.y)),
+    z: WORLD_Z.WATER_SURFACE,
   };
 }
 
