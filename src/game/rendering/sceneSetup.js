@@ -135,6 +135,52 @@ export async function setupEnvironmentLayers(container, width, height) {
   waterSurfaceWireframe.closePath();
   waterSurfaceWireframe.stroke({ width: 1, color: 0x6d6d6d, alpha: 0.8 });
 
+  // Riverbed tiles (draw first, behind water)
+  const riverbedTiles = new PIXI.Container();
+  let riverbedTexture = null;
+  try {
+    riverbedTexture = await PIXI.Assets.load("/sprites/isoriverbedtest.png");
+  } catch (error) {
+    console.warn(
+      "[RIVERBED] Failed to load /sprites/isoriverbedtest.png",
+      error,
+    );
+  }
+
+  if (riverbedTexture?.baseTexture) {
+    riverbedTexture.baseTexture.scaleMode = PIXI.SCALE_MODES.NEAREST;
+
+    const tileWidthPx = projectionMetrics.screenXPerWorldUnit * 2;
+    const tileHeightPx = projectionMetrics.screenYPerWorldUnit * 2;
+    const tileScaleX = tileWidthPx / riverbedTexture.width;
+    const tileScaleY = tileHeightPx / riverbedTexture.height;
+
+    // Tile only over the defined riverbed area
+    const startX = Math.floor(WORLD_X.MIN);
+    const endX = Math.ceil(WORLD_X.MAX);
+    const startY = Math.floor(WORLD_Y.RIVERBED_NEAR);
+    const endY = Math.ceil(WORLD_Y.RIVERBED_FAR);
+
+    for (let y = startY; y < endY; y += 1) {
+      for (let x = startX; x < endX; x += 1) {
+        const screen = projectToScreen(
+          x + 0.5,
+          y + 0.5,
+          WORLD_Z.RIVERBED,
+          viewport,
+        );
+        const tile = new PIXI.Sprite(riverbedTexture);
+        tile.anchor.set(0.5, 0.5);
+        tile.scale.set(tileScaleX, tileScaleY);
+        tile.x = screen.x;
+        tile.y = screen.y;
+        riverbedTiles.addChild(tile);
+      }
+    }
+  }
+  container.addChild(riverbedTiles);
+
+  // Water surface tiles (draw second, on top of riverbed)
   const waterSurfaceTiles = new PIXI.Container();
   let waterTexture = null;
   try {
@@ -151,32 +197,11 @@ export async function setupEnvironmentLayers(container, width, height) {
     const tileScaleX = tileWidthPx / waterTexture.width;
     const tileScaleY = tileHeightPx / waterTexture.height;
 
-    const screenCorners = [
-      { x: 0, y: 0 },
-      { x: width, y: 0 },
-      { x: width, y: height },
-      { x: 0, y: height },
-    ];
-    const worldCorners = screenCorners.map((corner) =>
-      screenToWorld(corner.x, corner.y, WORLD_Z.WATER_SURFACE, viewport),
-    );
-    const minWorldX = Math.min(
-      WORLD_X.MIN,
-      ...worldCorners.map((corner) => corner.x),
-    );
-    const maxWorldX = Math.max(
-      WORLD_X.MAX,
-      ...worldCorners.map((corner) => corner.x),
-    );
-    const minWorldY = WORLD_Y.WATER_NEAR;
-    const maxWorldY = Math.max(
-      WORLD_Y.WATER_FAR,
-      ...worldCorners.map((corner) => corner.y),
-    );
-    const startX = Math.floor(minWorldX) - 1;
-    const endX = Math.ceil(maxWorldX) + 1;
-    const startY = Math.floor(minWorldY);
-    const endY = Math.ceil(maxWorldY) + 1;
+    // Tile only over the defined water surface area
+    const startX = Math.floor(WORLD_X.MIN);
+    const endX = Math.ceil(WORLD_X.MAX);
+    const startY = Math.floor(WORLD_Y.WATER_NEAR);
+    const endY = Math.ceil(WORLD_Y.WATER_FAR);
 
     for (let y = startY; y < endY; y += 1) {
       for (let x = startX; x < endX; x += 1) {
@@ -189,6 +214,7 @@ export async function setupEnvironmentLayers(container, width, height) {
         const tile = new PIXI.Sprite(waterTexture);
         tile.anchor.set(0.5, 0.5);
         tile.scale.set(tileScaleX, tileScaleY);
+        tile.alpha = 0.5;
         tile.x = screen.x;
         tile.y = screen.y;
         waterSurfaceTiles.addChild(tile);
@@ -196,7 +222,7 @@ export async function setupEnvironmentLayers(container, width, height) {
     }
   }
   container.addChild(waterSurfaceTiles);
-  container.addChild(waterSurfaceWireframe);
+  // container.addChild(waterSurfaceWireframe);
 
   const walkwayVolume = new PIXI.Graphics();
   drawWireframeBox(
@@ -224,81 +250,6 @@ export async function setupEnvironmentLayers(container, width, height) {
     walkwayVolume,
     viewport,
   };
-}
-
-/**
- * Setup initial scene elements
- */
-export function setupScene(app) {
-  if (!app) return { waterTiles: [] };
-
-  // Shore
-  const shore = new PIXI.Graphics()
-    .rect(0, 0, app.screen.width, 80)
-    .fill(0x8b7355);
-  app.stage.addChild(shore);
-
-  // Text
-  const text = new PIXI.Text({
-    text: "Click anywhere to cast magnet",
-    style: { fontSize: 20, fill: 0xffffff },
-  });
-  text.anchor.set(0.5);
-  text.x = app.screen.width / 2;
-  text.y = app.screen.height / 2;
-  text.alpha = 0.5;
-  app.stage.addChild(text);
-
-  return { waterTiles: [] };
-}
-
-/**
- * Setup animated water background
- * Falls back to solid color if sprite assets not available
- */
-export async function setupWaterBackground(app) {
-  if (!app) return { waterSpritesheet: null, waterTiles: [] };
-
-  try {
-    // Try to load water sprite sheet
-    const waterSpritesheet = await loadSpriteSheet(
-      "/sprites/water.png",
-      "/sprites/water.json",
-    );
-
-    // Get tile size from first frame
-    const firstTexture = waterSpritesheet.animations.default[0];
-    const tileWidth = firstTexture.width;
-    const tileHeight = firstTexture.height;
-
-    // Create water container to position below shore
-    const waterContainer = new PIXI.Container();
-    waterContainer.y = 80; // Start below shore area
-    app.stage.addChild(waterContainer);
-
-    // Create tiled background (only for the water area below shore)
-    const waterTiles = createTiledBackground(
-      waterContainer,
-      waterSpritesheet,
-      app.screen.width,
-      app.screen.height,
-      tileWidth,
-      tileHeight,
-      0.1, // Animation speed
-      4, // Scale 4x (32px tiles become 128px)
-    );
-
-    console.log("Water tiles loaded successfully");
-    return { waterSpritesheet, waterTiles };
-  } catch {
-    // Fallback to solid color if sprite not found
-    console.log("Water sprites not found, using fallback color");
-    const water = new PIXI.Graphics()
-      .rect(0, 0, app.screen.width, app.screen.height)
-      .fill(0x3a6c8e);
-    app.stage.addChild(water);
-    return { waterSpritesheet: null, waterTiles: [] };
-  }
 }
 
 /**

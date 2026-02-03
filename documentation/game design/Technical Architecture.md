@@ -461,7 +461,7 @@ this.holdDetectionTimeout = setTimeout(() => {
 
 > "Build the world in world space, then project it to screen space."
 
-The game operates in a true 3D world coordinate system that projects to 2D screen space using pixel isometric projection (~26.565°). All game mechanics, physics, and positioning use world coordinates exclusively.
+The game operates in a true 3D world coordinate system that projects to 2D screen space using **dimetric projection** (commonly called "pixel isometric"). All game mechanics, physics, and positioning use world coordinates exclusively.
 
 **Coordinate System:**
 
@@ -471,17 +471,67 @@ World Space Axes:
 - Y: Depth into the scene (toward the river, away from avatar)
 - Z: Height/elevation (vertical)
 
-Isometric Projection Formula (~26.565°):
+Dimetric Projection Formula (26.565° angle):
   isoX = (worldX - worldY) * cos(26.565°)
   isoY = (worldX + worldY) * sin(26.565°) - worldZ
   screenX = isoX * pixelsPerUnit + screenXOffset
   screenY = isoY * pixelsPerUnit + screenYOffset
 
-Why this projection?
-- Preserves consistent 3D distances in world units
-- Creates isometric depth (higher Z = higher on screen)
-- Fits full world bounds within viewport with consistent scaling
+Why 26.565°? (arctan(0.5))
+- Creates 2:1 pixel ratio for diagonal edges (2 pixels right : 1 pixel down)
+- Allows clean pixel art without anti-aliasing (perfect stair-stepping)
+- Standard for pixel art isometric games (NOT true isometric at 30°)
 ```
+
+### Pixel-Perfect Tile System
+
+**Critical Design Decision:** The projection is optimized for **horizontal surface tiling** (ground, water, riverbed), not vertical stacking. This is essential for pixel art.
+
+**Tile Dimensions:**
+
+- **Ground tiles:** 64×32 pixels (standard pixel art isometric size)
+- **1 world unit (X or Y):** Projects to ~32 pixels horizontally on screen
+- **1 world unit (Z):** Projects to ~36 pixels vertically on screen
+
+**Why 36 pixels for Z, not 32?**
+
+The 2:1 pixel ratio (26.565° angle) creates a mathematical constraint:
+
+- Diamond height = `2 × sin(26.565°) × pixelsPerUnit` ≈ 32 pixels
+- Vertical Z = `pixelsPerUnit` ≈ 36 pixels
+
+You **cannot** have both 64×32 diamond tiles AND 32-pixel Z displacement with a 2:1 ratio. The system prioritizes seamless horizontal tiling because:
+
+1. **Tiling requirement:** Ground/water/riverbed tiles must align perfectly
+2. **Freeform vertical:** Fish sprites, magnet, items have arbitrary heights (no tiling)
+3. **Standard practice:** This is how pixel art isometric games work
+
+**Practical Impact:**
+
+- A 1×1×1 world "cube" renders as 64×68 pixels (not 64×64)
+- Or equivalently: drawing in a 64×64 grid creates ~0.89 world units height
+- **This is correct!** Vertical dimension is freeform, not grid-aligned
+
+**World Unit to Pixel Conversion:**
+
+```javascript
+// From worldConstants.js
+const TARGET_PPU = 36; // Pixels per world unit
+const WORLD_UNITS_PER_METER = 0.9938; // Scaling factor for projection
+
+// Effective scale: ~35.78 pixels per projected world unit
+// Results in:
+//   - 64×32 pixel ground tiles ✓
+//   - 36 pixels per world unit Z ✓
+//   - Pixel-perfect rendering ✓
+```
+
+**Art Guidelines:**
+
+- Ground tiles: Draw in 64×32 pixel diamonds
+- Vertical sprites: 1 meter ≈ 36 pixels (fish, items, etc.)
+- Use 4-pixel grid for vertical measurements (36 = 9×4)
+- Don't worry about "cubic" alignment on Z - sprites are freeform!
 
 **World Dimensions (`worldConstants.js`):**
 

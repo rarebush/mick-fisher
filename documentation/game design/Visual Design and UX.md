@@ -62,9 +62,18 @@ Consistent experience across device sizes (iPad, desktop, phones). Visual style 
 
 ### Pixel Art Technical Specifications
 
+**Isometric Environment Tiles:**
+
+- **Ground tiles:** 64×32 pixels (standard pixel art isometric diamond)
+- **Projection:** Dimetric (26.565° angle) for 2:1 pixel ratio
+- **World scale:** 1 world unit = ~36 pixels vertically
+- **Tiling:** Seamless horizontal tiling (X/Y plane) is critical
+- **See:** [Technical Architecture - Projection System](Technical%20Architecture.md#pixel-perfect-tile-system)
+
 **Item Sprite Specifications:**
 
 - **Resolution:** 64x64px or 128x128px base canvas
+- **Vertical scale:** 1 meter ≈ 36 pixels (use 4-pixel grid: 36 = 9×4)
 - **Pixel grid:** 2x2 or 4x4 (chunky, clear at distance)
 - **Color palette:** 16-32 colors (enough for variety, limited for consistency)
 - **Outline:** 2px black outline (ensures visibility against water background)
@@ -73,10 +82,14 @@ Consistent experience across device sizes (iPad, desktop, phones). Visual style 
 
 **Why These Specs Work:**
 
-- 64x64 is large enough for detail but small enough for fast production
+- 64×32 ground tiles align perfectly for seamless tiling
+- 2:1 pixel ratio creates clean diagonal edges without anti-aliasing
+- ~36 pixels/meter for sprites (non-tiling, freeform heights)
 - 2x2 pixel blocks scale well (32x32 → 128x128 stays crisp)
 - Black outlines ensure items pop against water background
 - Condition overlays = reuse base sprite with different coatings (1 sprite + 3 overlays = 4 visual variations)
+
+**Important:** Don't worry about making sprites "cubic" (64×64 = 1×1×1 world unit). The vertical dimension is freeform - a 0.5m fish is 18 pixels, a 2m fish is 72 pixels. Only ground tiles need strict alignment.
 
 ### Production Pipeline
 

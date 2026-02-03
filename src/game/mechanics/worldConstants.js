@@ -106,33 +106,42 @@ export const CAMERA_FOCUS = {
   z: WORLD_Z.WATER_SURFACE,
 };
 
-const ISO_ANGLE_RAD = Math.atan(0.5);
-const ISO_SIN = Math.sin(ISO_ANGLE_RAD);
-const ISO_COS = Math.cos(ISO_ANGLE_RAD);
-const TARGET_TILE_PIXEL_WIDTH = 64;
-const TARGET_TILE_PIXEL_HEIGHT = 32;
+// =============================================================================
+// PROJECTION CONFIGURATION - Pixel Art Isometric (Dimetric)
+// =============================================================================
+// This system uses "pixel isometric" projection (actually dimetric, not true
+// isometric). The 26.565° angle (arctan(0.5)) creates a 2:1 pixel ratio for
+// clean diagonal edges in pixel art (2 pixels right : 1 pixel down).
+//
+// DESIGN PRIORITY: Horizontal tiling (ground/water tiles) over vertical.
+//   - Ground tiles: 64×32 pixels (standard pixel art isometric)
+//   - Z displacement: ~36 pixels per world unit (freeform, non-tiling)
+//
+// WHY NOT 32 PIXELS FOR Z?
+//   The 2:1 pixel ratio constrains: diamond height ≈ 32px, Z ≈ 36px.
+//   Cannot have both 64×32 tiles AND 32px Z. We choose seamless tiling.
+//
+// PRACTICAL IMPACT:
+//   - 1×1 world ground tile → 64×32 pixel diamond ✓
+//   - 1 world unit height (Z) → ~36 pixels ✓
+//   - Fish/item sprites: freeform heights (0.5m = 18px, 2m = 72px)
+//   - Use 4-pixel grid for sprites (36 = 9×4)
+// =============================================================================
+
+const ISO_ANGLE_RAD = Math.atan(0.5); // 26.565° for 2:1 pixel ratio
+const ISO_SIN = Math.sin(ISO_ANGLE_RAD); // ~0.4472
+const ISO_COS = Math.cos(ISO_ANGLE_RAD); // ~0.8944
+const TARGET_TILE_PIXEL_WIDTH = 64; // Standard pixel art isometric width
+const TARGET_TILE_PIXEL_HEIGHT = 32; // Standard pixel art isometric height
 const TARGET_PPU_FROM_WIDTH = TARGET_TILE_PIXEL_WIDTH / (2 * ISO_COS);
 const TARGET_PPU_FROM_HEIGHT = TARGET_TILE_PIXEL_HEIGHT / (2 * ISO_SIN);
 const TARGET_PPU = Math.round(
-  (TARGET_PPU_FROM_WIDTH + TARGET_PPU_FROM_HEIGHT) / 2,
-);
+  (TARGET_PPU_FROM_WIDTH + TARGET_PPU_FROM_HEIGHT) / 2
+); // ≈36 pixels per world unit
 const WORLD_UNITS_PER_METER =
   (TARGET_TILE_PIXEL_WIDTH / (2 * ISO_COS * TARGET_PPU) +
     TARGET_TILE_PIXEL_HEIGHT / (2 * ISO_SIN * TARGET_PPU)) /
-  2;
-const VIEWPORT_PADDING = 0;
-const VIEWPORT_PPU_STEP = 1;
-const USE_FIXED_PPU = true;
-
-// Bounds used for viewport fitting (environment-only, not full Z range)
-const VIEWPORT_FIT_BOUNDS = {
-  xMin: WORLD_X.MIN,
-  xMax: WORLD_X.MAX,
-  yMin: WORLD_Y.WALKWAY_BACK,
-  yMax: WORLD_Y.WATER_FAR,
-  zMin: WORLD_Z.RIVERBED,
-  zMax: WORLD_Z.WALKWAY,
-};
+  2; // ≈0.9938 (scaling factor for projection)
 
 // =============================================================================
 // WORLD WIDTH (X-axis) - Abstract units
@@ -263,35 +272,20 @@ export function getWorldBoundsProjectionSamples(viewport) {
 }
 
 /**
- * Calculate viewport scale based on screen dimensions
+ * Calculate viewport configuration based on screen dimensions
+ * Uses fixed camera focus point and fixed scale (TARGET_PPU)
  * @param {number} screenWidth - Viewport width in pixels
  * @param {number} screenHeight - Viewport height in pixels
  * @returns {Object} Viewport configuration
  */
 export function createViewport(screenWidth, screenHeight) {
-  const projectedBounds = getProjectedWorldBounds(VIEWPORT_FIT_BOUNDS);
   const focusProjected = projectToIsometric(
     CAMERA_FOCUS.x,
     CAMERA_FOCUS.y,
-    CAMERA_FOCUS.z,
+    CAMERA_FOCUS.z
   );
 
-  const minXRel = projectedBounds.minX - focusProjected.x;
-  const maxXRel = projectedBounds.maxX - focusProjected.x;
-  const minYRel = projectedBounds.minY - focusProjected.y;
-  const maxYRel = projectedBounds.maxY - focusProjected.y;
-  const maxAbsX = Math.max(Math.abs(minXRel), Math.abs(maxXRel));
-  const maxAbsY = Math.max(Math.abs(minYRel), Math.abs(maxYRel));
-
-  const rawPixelsPerUnit =
-    Math.min(screenWidth / (2 * maxAbsX), screenHeight / (2 * maxAbsY)) *
-    (1 - VIEWPORT_PADDING);
-  const fittedPixelsPerUnit = Math.max(
-    VIEWPORT_PPU_STEP,
-    Math.floor(rawPixelsPerUnit / VIEWPORT_PPU_STEP) * VIEWPORT_PPU_STEP,
-  );
-  const pixelsPerUnit = USE_FIXED_PPU ? TARGET_PPU : fittedPixelsPerUnit;
-
+  const pixelsPerUnit = TARGET_PPU;
   const screenXOffset = screenWidth / 2 - focusProjected.x * pixelsPerUnit;
   const screenYOffset = screenHeight / 2 - focusProjected.y * pixelsPerUnit;
 
@@ -387,7 +381,7 @@ export function getWorldDirectionScreenAngle(
   fromWorld,
   toWorld,
   planeZ,
-  viewport,
+  viewport
 ) {
   const deltaX = toWorld.x - fromWorld.x;
   const deltaY = toWorld.y - fromWorld.y;
@@ -399,7 +393,7 @@ export function getWorldDirectionScreenAngle(
 
   const screenOrigin = worldToScreen(
     { x: toWorld.x, y: toWorld.y, z: planeZ },
-    viewport,
+    viewport
   );
   const screenAhead = worldToScreen(
     {
@@ -407,11 +401,11 @@ export function getWorldDirectionScreenAngle(
       y: toWorld.y + directionY,
       z: planeZ,
     },
-    viewport,
+    viewport
   );
   return Math.atan2(
     screenAhead.y - screenOrigin.y,
-    screenAhead.x - screenOrigin.x,
+    screenAhead.x - screenOrigin.x
   );
 }
 

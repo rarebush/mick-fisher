@@ -3,24 +3,25 @@
  * Handles pointer and keyboard input for casting and dragging
  */
 
-import * as PIXI from "pixi.js";
 import {
   WORLD_Z,
-  WORLD_Y,
   createViewport,
-  getSurfaceScreenBounds,
   screenToWorld,
   worldToScreen,
   getAvatarWorldPosition,
 } from "../mechanics/worldConstants.js";
-import {
-  computeCastTargetScreen,
-  metersToWorldRange,
-} from "../mechanics/castAimUtils.js";
+import { computeCastTargetScreen } from "../mechanics/castAimUtils.js";
 import {
   getCastingEquipmentById,
   getCastingEquipmentMaxRange,
 } from "../data/castingEquipmentDatabase.js";
+import {
+  getQuadrantFromPosition,
+  getRiverbedScreenFromWaterScreen,
+  isWithinCastRange,
+  isWithinWaterSurface,
+} from "./inputGeometry.js";
+import { showAccessMessageAtPosition } from "./inputFeedback.js";
 
 export class InputManager {
   constructor(
@@ -29,7 +30,7 @@ export class InputManager {
     sessionStore,
     locationStore,
     debugOverlay,
-    callbacks,
+    callbacks
   ) {
     this.app = app;
     this.gameStore = gameStore;
@@ -198,8 +199,8 @@ export class InputManager {
         currentMode === "click"
           ? "direction_power"
           : currentMode === "direction_power"
-            ? "donut"
-            : "click";
+          ? "donut"
+          : "click";
       this.sessionStore?.getState().setCastInputMode(nextMode);
       this.sessionStore?.getState().resetCastAim();
       this.sessionStore?.getState().resetDonutAim();
@@ -308,7 +309,7 @@ export class InputManager {
 
       const viewport = createViewport(
         this.app.screen.width,
-        this.app.screen.height,
+        this.app.screen.height
       );
       const equipmentId = this.gameStore?.getState().selectedCastingEquipmentId;
       const maxRangeMeters = getCastingEquipmentMaxRange(equipmentId);
@@ -316,11 +317,11 @@ export class InputManager {
         aimState.angle,
         aimState.power,
         viewport,
-        maxRangeMeters,
+        maxRangeMeters
       );
       const quadrant = this.getCastQuadrantIfAccessible(
         targetScreen.x,
-        targetScreen.y,
+        targetScreen.y
       );
       if (quadrant === null) {
         sessionState.resetCastAim();
@@ -362,7 +363,7 @@ export class InputManager {
         equipment.minAccuracyRadius,
         equipment.maxAccuracyRadius,
         equipment.aspectRatioX,
-        equipment.aspectRatioY,
+        equipment.aspectRatioY
       );
       return;
     }
@@ -404,20 +405,20 @@ export class InputManager {
       const minRadius = donutAimState.minRadius;
       const maxRadius = Math.max(
         donutAimState.currentRadius,
-        donutAimState.minRadius,
+        donutAimState.minRadius
       );
       const aspectRatioX = donutAimState.aspectRatioX ?? 1;
       const aspectRatioY = donutAimState.aspectRatioY ?? 1;
       const viewport = createViewport(
         this.app.screen.width,
-        this.app.screen.height,
+        this.app.screen.height
       );
       const avatarWorld = getAvatarWorldPosition();
       const targetWorld = screenToWorld(
         target.x,
         target.y,
         WORLD_Z.WATER_SURFACE,
-        viewport,
+        viewport
       );
       const deltaX = targetWorld.x - avatarWorld.x;
       const deltaY = targetWorld.y - avatarWorld.y;
@@ -435,7 +436,7 @@ export class InputManager {
         const angle = Math.random() * Math.PI * 2;
         const radius = Math.sqrt(
           Math.random() * (maxRadiusWorld ** 2 - minRadiusWorld ** 2) +
-            minRadiusWorld ** 2,
+            minRadiusWorld ** 2
         );
         const localX = radius * Math.cos(angle) * aspectRatioX;
         const localY = radius * Math.sin(angle) * aspectRatioY;
@@ -479,35 +480,11 @@ export class InputManager {
   }
 
   isWithinWaterSurface(x, y) {
-    const viewport = createViewport(
-      this.app.screen.width,
-      this.app.screen.height,
-    );
-    const waterBounds = getSurfaceScreenBounds(WORLD_Z.WATER_SURFACE, viewport);
-    const worldPos = screenToWorld(x, y, WORLD_Z.WATER_SURFACE, viewport);
-    return (
-      worldPos.x >= viewport.worldXMin &&
-      worldPos.x <= viewport.worldXMax &&
-      worldPos.y >= WORLD_Y.WATER_NEAR &&
-      worldPos.y <= WORLD_Y.WATER_FAR &&
-      y >= waterBounds.top &&
-      y <= waterBounds.bottom
-    );
+    return isWithinWaterSurface(this.app, x, y);
   }
 
   isWithinCastRange(x, y, maxRangeMeters) {
-    const viewport = createViewport(
-      this.app.screen.width,
-      this.app.screen.height,
-    );
-    const worldTarget = screenToWorld(x, y, WORLD_Z.WATER_SURFACE, viewport);
-    const origin = getAvatarWorldPosition();
-    const worldDistance = Math.hypot(
-      worldTarget.x - origin.x,
-      worldTarget.y - origin.y,
-    );
-    const maxRangeWorld = metersToWorldRange(maxRangeMeters);
-    return worldTarget.y >= origin.y && worldDistance <= maxRangeWorld;
+    return isWithinCastRange(this.app, x, y, maxRangeMeters);
   }
 
   getCastQuadrantIfAccessible(x, y) {
@@ -525,87 +502,18 @@ export class InputManager {
   }
 
   getQuadrantFromPosition(x, y, inputPlane = "waterSurface") {
-    // Quadrants only exist on the riverbed (derived from world coordinates)
-    const viewport = createViewport(
-      this.app.screen.width,
-      this.app.screen.height,
-    );
-    const worldPos =
-      inputPlane === "riverbed"
-        ? screenToWorld(x, y, WORLD_Z.RIVERBED, viewport)
-        : screenToWorld(x, y, WORLD_Z.WATER_SURFACE, viewport);
-    const worldXMin = viewport.worldXMin;
-    const worldXMax = viewport.worldXMax;
-    const worldYMin = WORLD_Y.RIVERBED_NEAR;
-    const worldYMax = WORLD_Y.RIVERBED_FAR;
-
-    if (
-      worldPos.x < worldXMin ||
-      worldPos.x > worldXMax ||
-      worldPos.y < worldYMin ||
-      worldPos.y > worldYMax
-    ) {
-      return null;
-    }
-
-    const quadrantWidth = (worldXMax - worldXMin) / 3;
-    const quadrantHeight = (worldYMax - worldYMin) / 3;
-
-    const col = Math.min(
-      2,
-      Math.floor((worldPos.x - worldXMin) / quadrantWidth),
-    );
-    const row = Math.min(
-      2,
-      Math.floor((worldPos.y - worldYMin) / quadrantHeight),
-    );
-
-    // Map to quadrant numbers (1-9)
-    return row * 3 + col + 1;
+    return getQuadrantFromPosition(this.app, x, y, inputPlane);
   }
 
   getRiverbedScreenFromWaterScreen(x, y, viewport = null) {
-    const resolvedViewport =
-      viewport || createViewport(this.app.screen.width, this.app.screen.height);
-    const waterWorld = screenToWorld(
-      x,
-      y,
-      WORLD_Z.WATER_SURFACE,
-      resolvedViewport,
-    );
-    return worldToScreen(
-      { x: waterWorld.x, y: waterWorld.y, z: WORLD_Z.RIVERBED },
-      resolvedViewport,
-    );
+    return getRiverbedScreenFromWaterScreen(this.app, x, y, viewport);
   }
 
   /**
    * Show "Need longer line!" message at position
    */
   showAccessMessageAtPosition(x, y) {
-    if (!this.app) return;
-
-    const text = new PIXI.Text({
-      text: "Need longer line!",
-      style: { fontSize: 24, fill: 0xffaa00 },
-    });
-    text.anchor.set(0.5);
-    text.x = x;
-    text.y = y;
-    this.app.stage.addChild(text);
-
-    let alpha = 1.0;
-    const fadeOut = () => {
-      alpha -= 0.02;
-      text.alpha = alpha;
-      if (alpha <= 0) {
-        this.app.stage.removeChild(text);
-        text.destroy();
-      } else {
-        requestAnimationFrame(fadeOut);
-      }
-    };
-    setTimeout(fadeOut, 1500);
+    showAccessMessageAtPosition(this.app, x, y);
   }
 
   /**

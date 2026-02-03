@@ -17,13 +17,13 @@ import {
   initializeWaitPhase,
 } from "../physics/physicsSystem.js";
 import { emitAudioEvent } from "../audio/audioEvents.js";
+import { animateCastLine } from "../animations/castLineAnimation.js";
+import { animateReelIn } from "../animations/reelInAnimation.js";
 import {
-  animateCastLine,
   createRipple,
   createBubbles,
   startDragBubbles,
-  animateReelIn,
-} from "../animations/castAnimations.js";
+} from "../animations/particleEffects.js";
 import { showNothingMessage } from "../animations/messageAnimations.js";
 import {
   WORLD_Z,
@@ -47,7 +47,7 @@ export async function executeCastSequence(
   y,
   quadrant,
   getItemWorldPosition,
-  pixiApp = null, // PixiApp instance for immediate rope storage
+  pixiApp = null // PixiApp instance for immediate rope storage
 ) {
   const viewport = createViewport(app.screen.width, app.screen.height);
   const waterWorld = screenToWorld(x, y, WORLD_Z.WATER_SURFACE, viewport);
@@ -81,7 +81,7 @@ export async function executeCastSequence(
   };
   const equipment = getFishingEquipmentById(
     fishingEquipmentState.type,
-    fishingEquipmentState.tierId,
+    fishingEquipmentState.tierId
   );
   const equipmentCategory = EQUIPMENT_CATEGORIES[fishingEquipmentState.type];
   const resolvedEquipment =
@@ -93,7 +93,7 @@ export async function executeCastSequence(
     debugOverlay?.highlightQuadrant(
       quadrant,
       riverbedScreen.x,
-      riverbedScreen.y,
+      riverbedScreen.y
     );
   }
 
@@ -105,17 +105,21 @@ export async function executeCastSequence(
             currentLocation,
             riverbedScreen.x,
             riverbedScreen.y,
-            quadrant,
+            quadrant
           )
       : null;
 
   if (hitItem) {
     console.log(
-      `[CAST] Found engaged item: ${hitItem.item.name} at (${hitItem.x.toFixed(1)}, ${hitItem.y.toFixed(1)})`,
+      `[CAST] Found engaged item: ${hitItem.item.name} at (${hitItem.x.toFixed(
+        1
+      )}, ${hitItem.y.toFixed(1)})`
     );
   } else if (!equipmentCategory?.requiresWait) {
     console.log(
-      `[CAST] No engaged item hit at (${x.toFixed(1)}, ${y.toFixed(1)}) in quadrant ${quadrant}`,
+      `[CAST] No engaged item hit at (${x.toFixed(1)}, ${y.toFixed(
+        1
+      )}) in quadrant ${quadrant}`
     );
   }
 
@@ -127,7 +131,7 @@ export async function executeCastSequence(
       y,
       gameStore,
       sessionStore,
-      pixiApp?.spriteLayers ?? null,
+      pixiApp?.spriteLayers ?? null
     );
 
   // Store line and player position on PixiApp instance for rendering
@@ -190,7 +194,7 @@ export async function executeCastSequence(
           y: castResult.itemPositionWorld.y,
           z: WORLD_Z.RIVERBED,
         },
-        viewport,
+        viewport
       );
       const itemSizeWorld = castResult.itemSize / viewport.pixelsPerUnit;
       // Item found!
@@ -232,7 +236,11 @@ export async function executeCastSequence(
       }
 
       console.log(
-        `[CAST] ${castResult.isEngagedItem ? "Re-engaged" : "New"} item: ${castResult.item.name} at (${itemPositionScreen.x.toFixed(1)}, ${itemPositionScreen.y.toFixed(1)})`,
+        `[CAST] ${castResult.isEngagedItem ? "Re-engaged" : "New"} item: ${
+          castResult.item.name
+        } at (${itemPositionScreen.x.toFixed(
+          1
+        )}, ${itemPositionScreen.y.toFixed(1)})`
       );
 
       // Calculate initial position based on distance
@@ -252,7 +260,7 @@ export async function executeCastSequence(
       const targetWorld = castResult.itemPositionWorld;
       const lineLength = Math.hypot(
         targetWorld.x - avatarWorld.x,
-        targetWorld.y - avatarWorld.y,
+        targetWorld.y - avatarWorld.y
       );
 
       const target = createMetallicTargetFromItem(castResult.item, targetWorld);
@@ -289,7 +297,7 @@ export async function executeCastSequence(
       const dragBubbleInterval = startDragBubbles(
         app,
         getItemWorldPosition,
-        isStillDragging,
+        isStillDragging
       );
 
       console.log(
@@ -302,7 +310,7 @@ export async function executeCastSequence(
         "| Magnet position:",
         castResult.magnetSurfacePosition.toFixed(1),
         "|",
-        castResult.placementQuality.label,
+        castResult.placementQuality.label
       );
 
       return { dragBubbleInterval, line, playerX, playerY };
@@ -379,7 +387,7 @@ export async function handleDragFailure(
   playerX = 0,
   playerY = 0,
   lineUnderwater = null,
-  lineDebug = null,
+  lineDebug = null
 ) {
   void _rope;
   const cleanupRope = () => {
@@ -428,14 +436,14 @@ export async function handleDragFailure(
       y: failureWorldPosition.y,
       z: WORLD_Z.RIVERBED,
     },
-    stopViewport,
+    stopViewport
   );
 
   // Animate rope reeling in from stop position back to player
   const reelViewport = createViewport(app.screen.width, app.screen.height);
   const reelClipScreenY = worldToScreen(
     { x: 0, y: WORLD_Y.WATER_NEAR, z: WORLD_Z.WATER_SURFACE },
-    reelViewport,
+    reelViewport
   ).y;
 
   if (line) {
@@ -454,7 +462,7 @@ export async function handleDragFailure(
         reelClipScreenY,
         lineUnderwater,
         lineDebug,
-      },
+      }
     );
   }
 
@@ -462,7 +470,7 @@ export async function handleDragFailure(
   const actualQuadrant = getQuadrantFromPosition(
     stopPosition.x,
     stopPosition.y,
-    "riverbed",
+    "riverbed"
   );
 
   const sizeWorld =
@@ -484,7 +492,11 @@ export async function handleDragFailure(
     });
 
   console.log(
-    `[DRAG FAILURE] Item engaged at (${stopPosition.x.toFixed(1)}, ${stopPosition.y.toFixed(1)}) in quadrant ${actualQuadrant !== null ? actualQuadrant : currentCast.quadrant}`,
+    `[DRAG FAILURE] Item engaged at (${stopPosition.x.toFixed(
+      1
+    )}, ${stopPosition.y.toFixed(1)}) in quadrant ${
+      actualQuadrant !== null ? actualQuadrant : currentCast.quadrant
+    }`
   );
 
   // Update debug overlay

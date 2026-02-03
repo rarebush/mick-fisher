@@ -30,6 +30,14 @@
 
 ## Code Quality
 
+### Accuracy and Precision
+
+- **CRITICAL**: When reporting code values, constants, formulas, or calculations, ALWAYS read the exact value from the code
+- Never assume, estimate, or infer values - verify by reading the actual code
+- When explaining what a constant equals, state the EXACT value from the code (e.g., `WATER_SURFACE = 1`, not "approximately 1" or a wrong value)
+- If summarizing multiple values, double-check each one before stating it
+- When in doubt, quote the actual code rather than paraphrasing
+
 ### Implementation Standards
 
 - Follow existing code patterns and architecture

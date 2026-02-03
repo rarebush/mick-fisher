@@ -8,37 +8,14 @@ import {
   getQuadrantZone,
   getQuadrantDistance,
   getQuadrantDepth,
-  MAX_QUADRANT_DISTANCE,
 } from "../data/locationDatabase.js";
 import { getItem } from "../data/itemDatabase.js";
 import {
   rollMagnetLandingPosition,
   getDistanceToNearestEdge,
 } from "./slipCalculations.js";
-import { WORLD_Y, getAvatarWorldPosition } from "./worldConstants.js";
-
-/**
- * Calculate distance from avatar based on item's X and Y position
- * Used for re-engaged items to derive distance from screen coordinates
- * Distance is the 2D distance from item to avatar (wall base center)
- * @param {number} itemWorldX - Item's X position in world space
- * @param {number} itemWorldY - Item's Y position in world space
- * @returns {number} - Estimated distance in meters
- */
-function calculateDistanceFromPosition(itemWorldX, itemWorldY) {
-  const avatarWorld = getAvatarWorldPosition();
-  const worldDistance = Math.hypot(
-    itemWorldX - avatarWorld.x,
-    itemWorldY - avatarWorld.y,
-  );
-  const worldDepthRange = WORLD_Y.RIVERBED_FAR - WORLD_Y.AVATAR;
-  if (!Number.isFinite(worldDepthRange) || worldDepthRange <= 0) {
-    return 0;
-  }
-  const meters =
-    (worldDistance / worldDepthRange) * (MAX_QUADRANT_DISTANCE || 0);
-  return Math.max(0, Math.min(MAX_QUADRANT_DISTANCE, meters));
-}
+import { calculateDistanceFromPosition } from "../utils/positionCalculations.js";
+import { getItemSize } from "../utils/itemSizing.js";
 
 /**
  * Roll for item spawn in selected quadrant
@@ -59,7 +36,7 @@ export function rollForItem(quadrant, locationId) {
   const itemWeights = Object.entries(spawnTable.items);
   const totalItemWeight = itemWeights.reduce(
     (sum, [, weight]) => sum + weight,
-    0,
+    0
   );
   const totalWeight = totalItemWeight + spawnTable.nothingWeight;
 
@@ -152,7 +129,7 @@ export function executeCast(
   quadrant,
   locationId,
   castWorld = { x: 0, y: 0 },
-  hitItem = null,
+  hitItem = null
 ) {
   let item;
   let isEngagedItem = false;
@@ -169,14 +146,16 @@ export function executeCast(
     itemPositionWorld = { x: hitItem.worldX, y: hitItem.worldY };
     itemSize = hitItem.size;
     console.log(
-      `[CAST] Re-engaging with lost item: ${item.name} at saved position`,
+      `[CAST] Re-engaging with lost item: ${item.name} at saved position`
     );
   } else {
     // New RNG spawn
     item = rollForItem(quadrant, locationId);
     if (item) {
       // Generate unique instance ID for this newly engaged item
-      itemInstanceId = `${item.id}_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+      itemInstanceId = `${item.id}_${Date.now()}_${Math.random()
+        .toString(36)
+        .substr(2, 9)}`;
       // Assign size based on item category
       itemSize = getItemSize(item);
       console.log(`[CAST] New item spawned: ${item.name}, size: ${itemSize}px`);
@@ -239,17 +218,6 @@ export function executeCast(
  * @param {object} item - Item data
  * @returns {number} - Size in pixels (diameter)
  */
-export function getItemSize(item) {
-  // Size based on item weight/category
-  const weight = item.weight;
-
-  if (weight >= 60) return 80; // Very heavy items - large
-  if (weight >= 30) return 60; // Heavy items - medium-large
-  if (weight >= 10) return 45; // Medium items
-  if (weight >= 3) return 30; // Small items
-  return 20; // Tiny items - difficult to hit
-}
-
 /**
  * Check if quadrant is accessible with current equipment
  * @param {number} quadrant - Quadrant number (0-9)

@@ -13,8 +13,6 @@ import useLocationStore from "./state/locationStore.js";
 
 // Import new modules
 import {
-  setupScene,
-  setupWaterBackground,
   drawQuadrantGrid,
   setupEnvironmentLayers,
   drawWorldBoundsWireframe,
@@ -25,29 +23,10 @@ import {
   executeCastSequence,
   handleDragFailure,
 } from "./sequences/castSequence.js";
-import { renderProjectedRope } from "./animations/projectedRopeRenderer.js";
-import {
-  getItemWorldPosition,
-  updateDragMechanics,
-  updateRopePhysics,
-} from "./sequences/dragSequence.js";
-import {
-  createViewport,
-  screenToWorld,
-  worldToScreen,
-  WORLD_Y,
-  WORLD_Z,
-  WORLD_X,
-  getAvatarWorldPosition,
-  getAvatarHandWorldPosition,
-} from "./mechanics/worldConstants.js";
-import {
-  computeCastTargetWorld,
-  getAvatarCastOrigin,
-  getMaxCastRange,
-  metersToWorldRange,
-} from "./mechanics/castAimUtils.js";
-import { getCastingEquipmentMaxRange } from "./data/castingEquipmentDatabase.js";
+import { updateCastAimOverlay } from "./rendering/castAimRenderer.js";
+import { updateSpriteTicker } from "./rendering/spriteTicker.js";
+import { updateRopeTicker } from "./rendering/ropeTicker.js";
+import { updateDragTicker } from "./sequences/dragTicker.js";
 
 export class PixiApp {
   constructor(
@@ -57,7 +36,7 @@ export class PixiApp {
     gameStore,
     sessionStore,
     locationStore,
-    inventoryStore,
+    inventoryStore
   ) {
     this.canvas = canvas;
     this.width = width;
@@ -189,7 +168,7 @@ export class PixiApp {
     this.environmentLayers = await setupEnvironmentLayers(
       this.sceneContainer,
       this.app.screen.width,
-      this.app.screen.height,
+      this.app.screen.height
     );
 
     this.spriteLayers = {
@@ -198,11 +177,11 @@ export class PixiApp {
       debug: new PIXI.Container(),
     };
     const waterIndex = this.sceneContainer.getChildIndex(
-      this.environmentLayers.waterVolume,
+      this.environmentLayers.waterVolume
     );
     this.sceneContainer.addChildAt(this.spriteLayers.underwater, waterIndex);
     const walkwayIndex = this.sceneContainer.getChildIndex(
-      this.environmentLayers.walkwayVolume,
+      this.environmentLayers.walkwayVolume
     );
     this.sceneContainer.addChildAt(this.spriteLayers.aboveWater, walkwayIndex);
     this.sceneContainer.addChild(this.spriteLayers.debug);
@@ -225,15 +204,12 @@ export class PixiApp {
           if (state.renderResolutionScale !== prevState.renderResolutionScale) {
             this.setRenderResolutionScale(state.renderResolutionScale);
           }
-        },
+        }
       );
     }
 
     // No need to apply Y offset - layers are positioned to fill screen
     console.log(`[SCENE] Environment layers created, filling full screen`);
-
-    // Setup scene (shore, text) - now deprecated in favor of environment layers
-    // setupScene(this.app);
 
     // Setup water background and store references
     // Note: Disabled in favor of environment layers with static water
@@ -275,7 +251,7 @@ export class PixiApp {
       this.debugOverlay,
       {
         onCast: this.handleCast.bind(this),
-      },
+      }
     );
 
     // Setup event listeners
@@ -317,7 +293,7 @@ export class PixiApp {
       y,
       quadrant,
       () => getItemWorldPosition(this.app, this.sessionStore),
-      this, // Pass PixiApp instance for immediate rope storage
+      this // Pass PixiApp instance for immediate rope storage
     );
 
     if (result) {
@@ -335,7 +311,7 @@ export class PixiApp {
       this.app,
       this.width,
       this.height,
-      this.locationStore,
+      this.locationStore
     );
 
     // Subscribe to location store changes to update engaged items display
@@ -343,14 +319,14 @@ export class PixiApp {
       (state) => state.engagedItems,
       () => {
         console.log(
-          "[DEBUG] Location store subscription fired - updating markers",
+          "[DEBUG] Location store subscription fired - updating markers"
         );
         if (this.debugOverlay && this.gameStore) {
           const currentLocation =
             this.gameStore.getState().currentLocation || "picturesque-river";
           this.debugOverlay.updateEngagedItems(currentLocation);
         }
-      },
+      }
     );
 
     console.log("Debug overlay initialized. Press 'D' to toggle.");
@@ -397,7 +373,7 @@ export class PixiApp {
           null, // No 2D rope
           this.dragLine,
           this.dragPlayerX,
-          this.dragPlayerY,
+          this.dragPlayerY
         );
 
         // Complete drag session AFTER reel-in animation
@@ -436,148 +412,53 @@ export class PixiApp {
 
   // Ticker method for sprite updates
   tickerUpdateSprites() {
-    if (!this.spriteManager) return;
-
-    const physicsState = this.sessionStore?.getState().physicsState;
-    const gamePhase = this.gameStore?.getState().gamePhase;
-
-    if (gamePhase !== "dragging" || !physicsState?.active) {
-      this.spriteManager.clearSprites();
-      return;
-    }
-
-    const currentCast = this.gameStore?.getState().currentCast;
-    const item = currentCast?.item;
-
-    if (!item) {
-      this.spriteManager.clearSprites();
-      return;
-    }
-
-    const itemWorld = getItemWorldPosition(this.app, this.sessionStore);
-    this.spriteManager.updateSprites(item, itemWorld, physicsState);
+    updateSpriteTicker({
+      spriteManager: this.spriteManager,
+      sessionStore: this.sessionStore,
+      gameStore: this.gameStore,
+      app: this.app,
+    });
   }
 
   // Ticker method for drag mechanics updates
   async tickerUpdateDragMechanics() {
-    const result = await updateDragMechanics(
-      this.app,
-      this.gameStore,
-      this.sessionStore,
-      this.inventoryStore,
-      this.locationStore,
-      this.debugOverlay,
-      this.lastDragUpdateTime,
-      this.dragStartTime,
-      async (failureWorldPosition) => {
-        this.inputManager?.resetInputState();
-        await handleDragFailure(
-          this.app,
-          this.gameStore,
-          this.sessionStore,
-          this.locationStore,
-          this.debugOverlay,
-          failureWorldPosition,
-          this.inputManager
-            ? this.inputManager.getQuadrantFromPosition.bind(this.inputManager)
-            : null,
-          null, // No 2D rope
-          this.dragLine,
-          this.dragPlayerX,
-          this.dragPlayerY,
-          this.dragLineUnderwater,
-          this.dragLineDebug,
-        );
-        // Clear line reference after reel-in
-        this.dragLine = null;
-        this.dragLineUnderwater = null;
-        this.dragLineDebug = null;
-      },
-      () => {
-        // Clean up line and rope state on successful retrieval
-        if (this.dragLine && this.dragLine.parent) {
-          this.dragLine.parent.removeChild(this.dragLine);
-          this.dragLine.destroy();
-          this.dragLine = null;
-        }
-        if (this.dragLineUnderwater && this.dragLineUnderwater.parent) {
-          this.dragLineUnderwater.parent.removeChild(this.dragLineUnderwater);
-          this.dragLineUnderwater.destroy();
-          this.dragLineUnderwater = null;
-        }
-        if (this.dragLineDebug && this.dragLineDebug.parent) {
-          this.dragLineDebug.parent.removeChild(this.dragLineDebug);
-          this.dragLineDebug.destroy();
-          this.dragLineDebug = null;
-        }
-
-        if (this.sessionStore) {
-          this.sessionStore.getState().setPhase("idle");
-          this.sessionStore.getState().setPhaseProgress(0);
-          this.sessionStore.getState().setCastPosition(null, null);
-        }
-        this.inputManager?.resetInputState();
-      },
-    );
+    const result = await updateDragTicker({
+      app: this.app,
+      gameStore: this.gameStore,
+      sessionStore: this.sessionStore,
+      inventoryStore: this.inventoryStore,
+      locationStore: this.locationStore,
+      debugOverlay: this.debugOverlay,
+      lastDragUpdateTime: this.lastDragUpdateTime,
+      dragStartTime: this.dragStartTime,
+      inputManager: this.inputManager,
+      dragLine: this.dragLine,
+      dragPlayerX: this.dragPlayerX,
+      dragPlayerY: this.dragPlayerY,
+      dragLineUnderwater: this.dragLineUnderwater,
+      dragLineDebug: this.dragLineDebug,
+    });
 
     this.lastDragUpdateTime = result.lastDragUpdateTime;
     this.dragStartTime = result.dragStartTime;
+    this.dragLine = result.dragLine;
+    this.dragLineUnderwater = result.dragLineUnderwater;
+    this.dragLineDebug = result.dragLineDebug;
   }
 
   // Ticker method for rope rendering during drag
   tickerUpdateRope() {
-    if (!this.app || !this.dragLine) {
-      return;
-    }
-
-    const phase = this.sessionStore?.getState().phase;
-    if (phase === "reeling") {
-      return;
-    }
-
-    // Calculate delta time for physics
-    const now = performance.now();
-    const deltaTime = this.lastRopeUpdateTime
-      ? (now - this.lastRopeUpdateTime) / 1000
-      : 1 / 60; // Default to 60 FPS
-
-    // Log if deltaTime is suspiciously large
-    if (deltaTime > 0.1) {
-      console.warn(
-        `[TICKER] Large deltaTime in tickerUpdateRope: ${deltaTime.toFixed(3)}s (${(now - this.lastRopeUpdateTime).toFixed(0)}ms)`,
-      );
-    }
-
-    this.lastRopeUpdateTime = now;
-
-    // Update rope render state and draw projected rope
-    const tension = this.sessionStore?.getState().ropeTension ?? 50;
-    const ropeState = updateRopePhysics(
-      this.app,
-      this.sessionStore,
-      deltaTime,
-      this.dragPlayerX,
-      this.dragPlayerY,
-      tension,
-    );
-
-    if (ropeState && this.dragLine) {
-      const viewport = createViewport(
-        this.app.screen.width,
-        this.app.screen.height,
-      );
-      renderProjectedRope(
-        this.dragLine,
-        viewport,
-        ropeState.castOrigin,
-        ropeState.magnetWorld,
-        {
-          tension,
-          lineUnderwater: this.dragLineUnderwater,
-          lineDebug: this.dragLineDebug,
-        },
-      );
-    }
+    const result = updateRopeTicker({
+      app: this.app,
+      sessionStore: this.sessionStore,
+      dragLine: this.dragLine,
+      dragLineUnderwater: this.dragLineUnderwater,
+      dragLineDebug: this.dragLineDebug,
+      dragPlayerX: this.dragPlayerX,
+      dragPlayerY: this.dragPlayerY,
+      lastRopeUpdateTime: this.lastRopeUpdateTime,
+    });
+    this.lastRopeUpdateTime = result.lastRopeUpdateTime;
   }
 
   // Ticker method for cast aim oscillators and preview
@@ -586,287 +467,13 @@ export class PixiApp {
       return;
     }
 
-    const sessionState = this.sessionStore?.getState();
-    if (!sessionState) return;
-
-    const gamePhase = this.gameStore?.getState().gamePhase;
-    const aimState = sessionState.castAimState;
-    const donutAimState = sessionState.donutAimState;
-    const castMode = sessionState.castInputMode;
-
-    const drawPolygon = (graphics, points, fill, stroke) => {
-      if (!points.length) return;
-      graphics.moveTo(points[0].x, points[0].y);
-      for (let i = 1; i < points.length; i++) {
-        graphics.lineTo(points[i].x, points[i].y);
-      }
-      graphics.closePath();
-      if (fill) graphics.fill(fill);
-      if (stroke) graphics.stroke(stroke);
-    };
-
-    const getWaterSurfacePolygon = (viewport) => {
-      const z = WORLD_Z.WATER_SURFACE;
-      return [
-        { x: WORLD_X.MIN, y: WORLD_Y.WATER_NEAR, z },
-        { x: WORLD_X.MAX, y: WORLD_Y.WATER_NEAR, z },
-        { x: WORLD_X.MAX, y: WORLD_Y.WATER_FAR, z },
-        { x: WORLD_X.MIN, y: WORLD_Y.WATER_FAR, z },
-      ].map((pos) => worldToScreen(pos, viewport));
-    };
-
-    const getCastRangePolygon = (originWorld, rangeWorld, viewport) => {
-      const steps = 96;
-      const points = [];
-      for (let i = 0; i <= steps; i++) {
-        const angle = (Math.PI * i) / steps;
-        const worldPoint = {
-          x: originWorld.x + Math.cos(angle) * rangeWorld,
-          y: originWorld.y + Math.sin(angle) * rangeWorld,
-          z: WORLD_Z.WATER_SURFACE,
-        };
-        points.push(worldToScreen(worldPoint, viewport));
-      }
-      points.push(
-        worldToScreen(
-          { x: originWorld.x, y: originWorld.y, z: WORLD_Z.WATER_SURFACE },
-          viewport,
-        ),
-      );
-      return points;
-    };
-
-    const drawCastRangeRing = (viewport) => {
-      this.castAimMask.clear();
-      const waterPolygon = getWaterSurfacePolygon(viewport);
-      drawPolygon(this.castAimMask, waterPolygon, { color: 0xffffff });
-
-      const equipmentId = this.gameStore?.getState().selectedCastingEquipmentId;
-      const maxRangeMeters = getCastingEquipmentMaxRange(equipmentId);
-      const rangeWorld = Math.max(0, metersToWorldRange(maxRangeMeters));
-      if (!Number.isFinite(rangeWorld) || rangeWorld <= 0) return;
-
-      const origin = getAvatarCastOrigin();
-      const ringPoints = getCastRangePolygon(origin, rangeWorld, viewport);
-      drawPolygon(
-        this.castAimOverlay,
-        ringPoints,
-        { color: 0x00c2ff, alpha: 0.15 },
-        { width: 2, color: 0x00c2ff, alpha: 0.6 },
-      );
-    };
-
-    if (gamePhase !== "idle") {
-      if (aimState && aimState.phase !== "idle") {
-        sessionState.resetCastAim();
-      }
-      if (donutAimState && donutAimState.phase !== "idle") {
-        sessionState.resetDonutAim();
-      }
-      this.castAimOverlay.clear();
-      return;
-    }
-
-    if (castMode === "direction_power") {
-      if (!aimState || aimState.phase === "idle") {
-        this.castAimOverlay.clear();
-        const viewport = createViewport(
-          this.app.screen.width,
-          this.app.screen.height,
-        );
-        drawCastRangeRing(viewport);
-        return;
-      }
-
-      const now = performance.now();
-      const deltaTime = aimState.lastUpdate
-        ? (now - aimState.lastUpdate) / 1000
-        : 0;
-      if (deltaTime > 0) {
-        sessionState.updateCastAim(deltaTime);
-      }
-
-      const updatedAim = this.sessionStore.getState().castAimState;
-      const viewport = createViewport(
-        this.app.screen.width,
-        this.app.screen.height,
-      );
-      const equipmentId = this.gameStore?.getState().selectedCastingEquipmentId;
-      const maxRangeMeters = getCastingEquipmentMaxRange(equipmentId);
-      const previewPower = updatedAim.phase === "angle" ? 1 : updatedAim.power;
-      const targetWorld = computeCastTargetWorld(
-        updatedAim.angle,
-        previewPower,
-        viewport,
-        maxRangeMeters,
-      );
-      const targetScreen = worldToScreen(targetWorld, viewport);
-      const avatarScreen = worldToScreen(
-        getAvatarHandWorldPosition(),
-        viewport,
-      );
-
-      this.castAimOverlay.clear();
-      drawCastRangeRing(viewport);
-
-      // Preview line and marker
-      this.castAimOverlay.setStrokeStyle({
-        width: 2,
-        color: 0x00c2ff,
-        alpha: 0.8,
-      });
-      this.castAimOverlay.moveTo(avatarScreen.x, avatarScreen.y);
-      this.castAimOverlay.lineTo(targetScreen.x, targetScreen.y);
-      this.castAimOverlay.stroke();
-      this.castAimOverlay
-        .circle(targetScreen.x, targetScreen.y, 5)
-        .stroke({ width: 2, color: 0x00c2ff });
-
-      const barWidth = 220;
-      const barHeight = 6;
-      const centerX = this.app.screen.width / 2;
-      const angleBarY = this.app.screen.height - 70;
-      const powerBarY = this.app.screen.height - 45;
-
-      // Angle bar
-      this.castAimOverlay
-        .rect(centerX - barWidth / 2, angleBarY, barWidth, barHeight)
-        .stroke({ width: 2, color: 0xffffff, alpha: 0.7 });
-      const angleNorm = (updatedAim.angle + 90) / 180;
-      const angleX = centerX - barWidth / 2 + angleNorm * barWidth;
-      this.castAimOverlay
-        .circle(angleX, angleBarY + barHeight / 2, 4)
-        .fill({ color: 0xffd700 });
-
-      // Power bar (only when selecting power)
-      if (updatedAim.phase === "power") {
-        this.castAimOverlay
-          .rect(centerX - barWidth / 2, powerBarY, barWidth, barHeight)
-          .stroke({ width: 2, color: 0xffffff, alpha: 0.7 });
-        const powerX = centerX - barWidth / 2 + updatedAim.power * barWidth;
-        this.castAimOverlay
-          .circle(powerX, powerBarY + barHeight / 2, 4)
-          .fill({ color: 0x00ff7f });
-      }
-      return;
-    }
-
-    if (castMode === "donut") {
-      if (!donutAimState || donutAimState.phase === "idle") {
-        this.castAimOverlay.clear();
-        const viewport = createViewport(
-          this.app.screen.width,
-          this.app.screen.height,
-        );
-        drawCastRangeRing(viewport);
-        return;
-      }
-
-      const now = performance.now();
-      const deltaTime = donutAimState.lastUpdate
-        ? (now - donutAimState.lastUpdate) / 1000
-        : 0;
-      if (deltaTime > 0) {
-        sessionState.updateDonutAim(deltaTime);
-      }
-
-      const updatedDonut = this.sessionStore.getState().donutAimState;
-      if (!updatedDonut.target) {
-        this.castAimOverlay.clear();
-        return;
-      }
-
-      this.castAimOverlay.clear();
-
-      const viewport = createViewport(
-        this.app.screen.width,
-        this.app.screen.height,
-      );
-      drawCastRangeRing(viewport);
-      const avatarWorld = getAvatarWorldPosition();
-      const targetWorld = screenToWorld(
-        updatedDonut.target.x,
-        updatedDonut.target.y,
-        WORLD_Z.WATER_SURFACE,
-        viewport,
-      );
-      const deltaX = targetWorld.x - avatarWorld.x;
-      const deltaY = targetWorld.y - avatarWorld.y;
-      const distance = Math.hypot(deltaX, deltaY);
-      const forward =
-        distance > 0
-          ? { x: deltaX / distance, y: deltaY / distance }
-          : { x: 0, y: 1 };
-      const right = { x: -forward.y, y: forward.x };
-      const targetScreen = worldToScreen(targetWorld, viewport);
-      const aspectRatioX = updatedDonut.aspectRatioX ?? 1;
-      const aspectRatioY = updatedDonut.aspectRatioY ?? 1;
-      const toWorldRadius = (radiusPixels) =>
-        radiusPixels / viewport.pixelsPerUnit;
-
-      const drawOrientedEllipse = (radiusPixels) => {
-        const steps = 72;
-        const radiusWorldX = toWorldRadius(radiusPixels) * aspectRatioX;
-        const radiusWorldY = toWorldRadius(radiusPixels) * aspectRatioY;
-        for (let i = 0; i <= steps; i += 1) {
-          const angle = (i / steps) * Math.PI * 2;
-          const localX = Math.cos(angle) * radiusWorldX;
-          const localY = Math.sin(angle) * radiusWorldY;
-          const worldPoint = {
-            x: targetWorld.x + forward.x * localX + right.x * localY,
-            y: targetWorld.y + forward.y * localX + right.y * localY,
-            z: WORLD_Z.WATER_SURFACE,
-          };
-          const screenPoint = worldToScreen(worldPoint, viewport);
-          if (i === 0) {
-            this.castAimOverlay.moveTo(screenPoint.x, screenPoint.y);
-          } else {
-            this.castAimOverlay.lineTo(screenPoint.x, screenPoint.y);
-          }
-        }
-        this.castAimOverlay.stroke();
-      };
-
-      // Min and max accuracy rings
-      this.castAimOverlay.setStrokeStyle({
-        width: 2,
-        color: 0x6bdcff,
-        alpha: 0.8,
-      });
-      drawOrientedEllipse(updatedDonut.minRadius);
-      drawOrientedEllipse(updatedDonut.maxRadius);
-
-      // Target marker
-      this.castAimOverlay
-        .circle(targetScreen.x, targetScreen.y, 3)
-        .fill({ color: 0xffffff });
-
-      if (updatedDonut.phase === "oscillate") {
-        this.castAimOverlay.setStrokeStyle({
-          width: 2,
-          color: 0xffd700,
-          alpha: 0.9,
-        });
-        drawOrientedEllipse(updatedDonut.currentRadius);
-      }
-      return;
-    }
-
-    if (aimState && aimState.phase !== "idle") {
-      sessionState.resetCastAim();
-    }
-    if (donutAimState && donutAimState.phase !== "idle") {
-      sessionState.resetDonutAim();
-    }
-    this.castAimOverlay.clear();
-
-    if (castMode === "click") {
-      const viewport = createViewport(
-        this.app.screen.width,
-        this.app.screen.height,
-      );
-      drawCastRangeRing(viewport);
-    }
+    updateCastAimOverlay({
+      app: this.app,
+      castAimOverlay: this.castAimOverlay,
+      castAimMask: this.castAimMask,
+      gameStore: this.gameStore,
+      sessionStore: this.sessionStore,
+    });
   }
 
   resize(width, height) {
