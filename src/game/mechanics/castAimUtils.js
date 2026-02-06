@@ -5,6 +5,12 @@ import {
   worldToScreen,
   getAvatarWorldPosition,
 } from "./worldConstants.js";
+import { clamp } from "../physics/vectorUtils.js";
+import {
+  clampPositionToBounds,
+  getRiverbedBounds,
+  getWaterBounds,
+} from "./worldBounds.js";
 
 export const CAST_AIM_ANGLE_MIN_DEG = -90;
 export const CAST_AIM_ANGLE_MAX_DEG = 90;
@@ -24,14 +30,11 @@ export function metersToWorldRange(meters) {
 }
 
 export function clampCastAngleDeg(angleDeg) {
-  return Math.max(
-    CAST_AIM_ANGLE_MIN_DEG,
-    Math.min(CAST_AIM_ANGLE_MAX_DEG, angleDeg),
-  );
+  return clamp(angleDeg, CAST_AIM_ANGLE_MIN_DEG, CAST_AIM_ANGLE_MAX_DEG);
 }
 
 export function clampCastPower(power) {
-  return Math.max(0, Math.min(1, power));
+  return clamp(power, 0, 1);
 }
 
 export function getCastDirectionFromAngleDeg(angleDeg) {
@@ -81,7 +84,7 @@ export function computeCastTargetWorld(
   let maxRange = getMaxCastRange(direction, viewport);
   if (Number.isFinite(maxRangeMeters)) {
     const maxRangeWorld = metersToWorldRange(maxRangeMeters);
-    maxRange = Math.min(maxRange, Math.max(0, maxRangeWorld));
+    maxRange = Math.min(maxRange, clamp(maxRangeWorld, 0, Infinity));
   }
   const clampedPower = clampCastPower(power);
   const distance = maxRange * clampedPower;
@@ -101,28 +104,15 @@ export function clampTargetToRiverbed(
   viewport,
   z = WORLD_Z.RIVERBED,
 ) {
-  return {
-    x: Math.max(
-      viewport.worldXMin,
-      Math.min(viewport.worldXMax, worldTarget.x),
-    ),
-    y: Math.max(
-      WORLD_Y.RIVERBED_NEAR,
-      Math.min(WORLD_Y.RIVERBED_FAR, worldTarget.y),
-    ),
-    z,
-  };
+  const bounds = getRiverbedBounds(viewport);
+  const clamped = clampPositionToBounds(worldTarget, bounds);
+  return { ...clamped, z };
 }
 
 export function clampTargetToWaterSurface(worldTarget, viewport) {
-  return {
-    x: Math.max(
-      viewport.worldXMin,
-      Math.min(viewport.worldXMax, worldTarget.x),
-    ),
-    y: Math.max(WORLD_Y.WATER_NEAR, Math.min(WORLD_Y.WATER_FAR, worldTarget.y)),
-    z: WORLD_Z.WATER_SURFACE,
-  };
+  const bounds = getWaterBounds(viewport);
+  const clamped = clampPositionToBounds(worldTarget, bounds);
+  return { ...clamped, z: WORLD_Z.WATER_SURFACE };
 }
 
 export function computeCastTargetScreen(

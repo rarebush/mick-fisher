@@ -16,6 +16,9 @@ import {
   getAvatarWorldPosition,
 } from "../mechanics/worldConstants.js";
 import useMagnetStore from "../state/magnetStore.js";
+import { magnitude } from "../physics/vectorUtils.js";
+import { cleanupDisplayObject } from "./displayCleanup.js";
+import { getPeakValue } from "../utils/peakUtils.js";
 
 export class SpriteManager {
   constructor(app, layerContainers = null) {
@@ -159,7 +162,7 @@ export class SpriteManager {
           ? physicsState?.target?.currentForce
           : null;
       const fishForceMagnitude = fishForce
-        ? Math.hypot(fishForce.x ?? 0, fishForce.y ?? 0)
+        ? magnitude({ x: fishForce.x ?? 0, y: fishForce.y ?? 0 })
         : 0;
       if (isFish && fishForceMagnitude > 1e-4) {
         itemOrientation = getWorldDirectionScreenAngle(
@@ -196,18 +199,9 @@ export class SpriteManager {
     // Update debug text with world coordinates
     if (this.magnetDebugText && magnetWorld) {
       const peaks = useMagnetStore.getState().getPeakValues();
-      const peakX =
-        peaks && Math.abs(peaks.maxX) >= Math.abs(peaks.minX)
-          ? peaks.maxX
-          : peaks?.minX;
-      const peakY =
-        peaks && Math.abs(peaks.maxY) >= Math.abs(peaks.minY)
-          ? peaks.maxY
-          : peaks?.minY;
-      const peakZ =
-        peaks && Math.abs(peaks.maxZ) >= Math.abs(peaks.minZ)
-          ? peaks.maxZ
-          : peaks?.minZ;
+      const peakX = getPeakValue(peaks, "X");
+      const peakY = getPeakValue(peaks, "Y");
+      const peakZ = getPeakValue(peaks, "Z");
       this.magnetDebugText.text = `Magnet World:\nX: ${magnetWorld.x.toFixed(2)} (peak: ${peakX?.toFixed(2) ?? "n/a"})\nY: ${magnetWorld.y.toFixed(2)} (peak: ${peakY?.toFixed(2) ?? "n/a"})\nZ: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
       // Position debug text static in bottom-left corner
       this.magnetDebugText.x = 10;
@@ -223,26 +217,17 @@ export class SpriteManager {
    */
   clearSprites() {
     if (this.itemSprite) {
-      if (this.itemSprite.parent) {
-        this.app.stage.removeChild(this.itemSprite);
-      }
-      this.itemSprite.destroy();
+      cleanupDisplayObject(this.itemSprite);
       this.itemSprite = null;
     }
 
     if (this.magnetSprite) {
-      if (this.magnetSprite.parent) {
-        this.app.stage.removeChild(this.magnetSprite);
-      }
-      this.magnetSprite.destroy();
+      cleanupDisplayObject(this.magnetSprite);
       this.magnetSprite = null;
     }
 
     if (this.magnetDebugText) {
-      if (this.magnetDebugText.parent) {
-        this.app.stage.removeChild(this.magnetDebugText);
-      }
-      this.magnetDebugText.destroy();
+      cleanupDisplayObject(this.magnetDebugText);
       this.magnetDebugText = null;
     }
   }

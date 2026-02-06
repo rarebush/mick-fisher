@@ -2,6 +2,10 @@ export function magnitude(v) {
   return Math.sqrt(v.x * v.x + v.y * v.y);
 }
 
+export function distance2D(a, b) {
+  return Math.hypot(b.x - a.x, b.y - a.y);
+}
+
 export function normalize(v) {
   const mag = magnitude(v);
   if (mag < 0.0001) return { x: 0, y: 0 };

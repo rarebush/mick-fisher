@@ -123,8 +123,8 @@ TILE_WIDTH_HALF = 64;
 TILE_HEIGHT = 64;
 TILE_HEIGHT_HALF = 32;
 
-screen.x = map.x _ TILE_WIDTH_HALF - map.y _ TILE_WIDTH_HALF;
-screen.y = map.x _ TILE_HEIGHT_HALF + map.y _ TILE_HEIGHT_HALF;
+screen.x = map.x _ TILE_WIDTH_HALF - map.y _ TILE*WIDTH_HALF;
+screen.y = map.x * TILE*HEIGHT_HALF + map.y * TILE_HEIGHT_HALF;
 And with some simplification we get the basic formula for isometric projection:
 
 screen.x = (map.x - map.y) _ TILE_WIDTH_HALF;
@@ -199,7 +199,3 @@ I suggest setting up two utility functions for quick conversion between screen a
 
 Point map_to_screen(Point map_coordinates);
 Point screen_to_map(Point screen_pixels);
-About the Author
-Clint Bellanger is a software developer who has been experimenting with video game code for 30 years and 3D art for 20 years. His main project is Flare, a Free/Libre action roleplaying engine.
-
-This document is released under CC-BY-SA and the GFDL.

@@ -1,9 +1,9 @@
 import {
-  WORLD_X,
   WORLD_Y,
   WORLD_Z,
   getAvatarWorldPosition,
 } from "../mechanics/worldConstants.js";
+import { clampTargetToBounds, getWaterBounds } from "../mechanics/worldBounds.js";
 import { PHYSICS_CONSTANTS } from "./physicsConstants.js";
 import {
   getCurrentForce,
@@ -21,12 +21,7 @@ import {
 import { clamp, magnitude, subtract } from "./vectorUtils.js";
 
 function clampTargetToWorld(target) {
-  target.position.x = clamp(target.position.x, WORLD_X.MIN, WORLD_X.MAX);
-  target.position.y = clamp(
-    target.position.y,
-    WORLD_Y.WATER_NEAR,
-    WORLD_Y.WATER_FAR
-  );
+  clampTargetToBounds(target, getWaterBounds());
 }
 
 export function updateDragPhysics(deltaTime, isHolding, physicsState) {

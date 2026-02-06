@@ -16,6 +16,8 @@ import {
   createMetallicTargetFromItem,
   initializeWaitPhase,
 } from "../physics/physicsSystem.js";
+import { distance2D } from "../physics/vectorUtils.js";
+import { cleanupDisplayObjects } from "../rendering/displayCleanup.js";
 import { emitAudioEvent } from "../audio/audioEvents.js";
 import { animateCastLine } from "../animations/castLineAnimation.js";
 import { animateReelIn } from "../animations/reelInAnimation.js";
@@ -258,10 +260,7 @@ export async function executeCastSequence(
 
       const avatarWorld = getAvatarWorldPosition();
       const targetWorld = castResult.itemPositionWorld;
-      const lineLength = Math.hypot(
-        targetWorld.x - avatarWorld.x,
-        targetWorld.y - avatarWorld.y
-      );
+      const lineLength = distance2D(targetWorld, avatarWorld);
 
       const target = createMetallicTargetFromItem(castResult.item, targetWorld);
 
@@ -329,18 +328,7 @@ export async function executeCastSequence(
       return { dragBubbleInterval: null, line, playerX, playerY };
     } else {
       // Nothing found - clean up graphics
-      if (line && line.parent) {
-        line.parent.removeChild(line);
-        line.destroy();
-      }
-      if (lineUnderwater && lineUnderwater.parent) {
-        lineUnderwater.parent.removeChild(lineUnderwater);
-        lineUnderwater.destroy();
-      }
-      if (lineDebug && lineDebug.parent) {
-        lineDebug.parent.removeChild(lineDebug);
-        lineDebug.destroy();
-      }
+      cleanupDisplayObjects(line, lineUnderwater, lineDebug);
 
       sessionStore.getState().setPhase("idle");
       sessionStore.getState().setPhaseProgress(0);
@@ -391,24 +379,7 @@ export async function handleDragFailure(
 ) {
   void _rope;
   const cleanupRope = () => {
-    if (line && line.parent) {
-      line.parent.removeChild(line);
-    }
-    if (line && !line.destroyed) {
-      line.destroy();
-    }
-    if (lineUnderwater && lineUnderwater.parent) {
-      lineUnderwater.parent.removeChild(lineUnderwater);
-    }
-    if (lineUnderwater && !lineUnderwater.destroyed) {
-      lineUnderwater.destroy();
-    }
-    if (lineDebug && lineDebug.parent) {
-      lineDebug.parent.removeChild(lineDebug);
-    }
-    if (lineDebug && !lineDebug.destroyed) {
-      lineDebug.destroy();
-    }
+    cleanupDisplayObjects(line, lineUnderwater, lineDebug);
   };
 
   if (!gameStore || !sessionStore || !locationStore) {

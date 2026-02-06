@@ -10,6 +10,8 @@ import {
 import { createMagnetSprite } from "../graphics/placeholderSprites.js";
 import useMagnetStore from "../state/magnetStore.js";
 import { renderProjectedRope } from "./projectedRopeRenderer.js";
+import { cleanupDisplayObjects } from "../rendering/displayCleanup.js";
+import { getPeakValue } from "../utils/peakUtils.js";
 
 /**
  * Animate casting line from shore to target position
@@ -207,13 +209,7 @@ export function animateCastLine(
     let currentTension = 95;
     const animate = (currentTime) => {
       if (!app) {
-        if (line.parent) line.parent.removeChild(line);
-        line.destroy();
-        if (magnetSprite.parent) magnetSprite.parent.removeChild(magnetSprite);
-        magnetSprite.destroy();
-        if (magnetDebugText.parent)
-          magnetDebugText.parent.removeChild(magnetDebugText);
-        magnetDebugText.destroy();
+        cleanupDisplayObjects(line, magnetSprite, magnetDebugText);
         resolve({
           line: null,
           lineUnderwater: null,
@@ -286,18 +282,9 @@ export function animateCastLine(
 
         // Update debug text with world coordinates and peaks from store
         const peaks = magnetStore.getPeakValues();
-        const peakX =
-          peaks && Math.abs(peaks.maxX) >= Math.abs(peaks.minX)
-            ? peaks.maxX
-            : peaks?.minX;
-        const peakY =
-          peaks && Math.abs(peaks.maxY) >= Math.abs(peaks.minY)
-            ? peaks.maxY
-            : peaks?.minY;
-        const peakZ =
-          peaks && Math.abs(peaks.maxZ) >= Math.abs(peaks.minZ)
-            ? peaks.maxZ
-            : peaks?.minZ;
+        const peakX = getPeakValue(peaks, "X");
+        const peakY = getPeakValue(peaks, "Y");
+        const peakZ = getPeakValue(peaks, "Z");
         magnetDebugText.text = `Magnet World:
 X: ${magnetWorld.x.toFixed(2)} (peak: ${peakX?.toFixed(2) ?? "n/a"})
 Y: ${magnetWorld.y.toFixed(2)} (peak: ${peakY?.toFixed(2) ?? "n/a"})
@@ -381,18 +368,9 @@ Z: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
 
         // Update debug text with world coordinates and peaks from store
         const peaks = magnetStore.getPeakValues();
-        const peakX =
-          peaks && Math.abs(peaks.maxX) >= Math.abs(peaks.minX)
-            ? peaks.maxX
-            : peaks?.minX;
-        const peakY =
-          peaks && Math.abs(peaks.maxY) >= Math.abs(peaks.minY)
-            ? peaks.maxY
-            : peaks?.minY;
-        const peakZ =
-          peaks && Math.abs(peaks.maxZ) >= Math.abs(peaks.minZ)
-            ? peaks.maxZ
-            : peaks?.minZ;
+        const peakX = getPeakValue(peaks, "X");
+        const peakY = getPeakValue(peaks, "Y");
+        const peakZ = getPeakValue(peaks, "Z");
         magnetDebugText.text = `Magnet World:
 X: ${magnetWorld.x.toFixed(2)} (peak: ${peakX?.toFixed(2) ?? "n/a"})
 Y: ${magnetWorld.y.toFixed(2)} (peak: ${peakY?.toFixed(2) ?? "n/a"})
@@ -447,18 +425,9 @@ Z: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
 
         // Update debug text with world coordinates and peaks from store
         const peaks = magnetStore.getPeakValues();
-        const peakX =
-          peaks && Math.abs(peaks.maxX) >= Math.abs(peaks.minX)
-            ? peaks.maxX
-            : peaks?.minX;
-        const peakY =
-          peaks && Math.abs(peaks.maxY) >= Math.abs(peaks.minY)
-            ? peaks.maxY
-            : peaks?.minY;
-        const peakZ =
-          peaks && Math.abs(peaks.maxZ) >= Math.abs(peaks.minZ)
-            ? peaks.maxZ
-            : peaks?.minZ;
+        const peakX = getPeakValue(peaks, "X");
+        const peakY = getPeakValue(peaks, "Y");
+        const peakZ = getPeakValue(peaks, "Z");
         magnetDebugText.text = `Magnet World:
 X: ${magnetWorld.x.toFixed(2)} (peak: ${peakX?.toFixed(2) ?? "n/a"})
 Y: ${magnetWorld.y.toFixed(2)} (peak: ${peakY?.toFixed(2) ?? "n/a"})
@@ -468,16 +437,7 @@ Z: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
 
         if (settleProgress >= 1) {
           // Done - clean up cast magnet sprite (drag phase has its own)
-          if (magnetSprite.parent) {
-            app.stage.removeChild(magnetSprite);
-          }
-          magnetSprite.destroy();
-
-          // Clean up debug text
-          if (magnetDebugText.parent) {
-            app.stage.removeChild(magnetDebugText);
-          }
-          magnetDebugText.destroy();
+          cleanupDisplayObjects(magnetSprite, magnetDebugText);
 
           // Clean up debug graphics
           // debug overlay removed

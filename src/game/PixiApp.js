@@ -18,11 +18,13 @@ import {
   drawWorldBoundsWireframe,
 } from "./rendering/sceneSetup.js";
 import { SpriteManager } from "./rendering/spriteManager.js";
+import { clamp } from "./physics/vectorUtils.js";
 import { InputManager } from "./input/inputManager.js";
 import {
   executeCastSequence,
   handleDragFailure,
 } from "./sequences/castSequence.js";
+import { getItemWorldPosition } from "./sequences/dragSequence.js";
 import { updateCastAimOverlay } from "./rendering/castAimRenderer.js";
 import { updateSpriteTicker } from "./rendering/spriteTicker.js";
 import { updateRopeTicker } from "./rendering/ropeTicker.js";
@@ -268,9 +270,7 @@ export class PixiApp {
 
   setRenderResolutionScale(scale) {
     if (!this.app || this.isDestroyed) return;
-    const nextScale = Number.isFinite(scale)
-      ? Math.min(4, Math.max(1, scale))
-      : 1;
+    const nextScale = Number.isFinite(scale) ? clamp(scale, 1, 4) : 1;
     if (this.app.renderer.resolution === nextScale) return;
 
     try {

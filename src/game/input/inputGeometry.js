@@ -8,6 +8,7 @@ import {
   getAvatarWorldPosition,
 } from "../mechanics/worldConstants.js";
 import { metersToWorldRange } from "../mechanics/castAimUtils.js";
+import { distance2D } from "../physics/vectorUtils.js";
 
 export function isWithinWaterSurface(app, x, y) {
   const viewport = createViewport(app.screen.width, app.screen.height);
@@ -27,10 +28,7 @@ export function isWithinCastRange(app, x, y, maxRangeMeters) {
   const viewport = createViewport(app.screen.width, app.screen.height);
   const worldTarget = screenToWorld(x, y, WORLD_Z.WATER_SURFACE, viewport);
   const origin = getAvatarWorldPosition();
-  const worldDistance = Math.hypot(
-    worldTarget.x - origin.x,
-    worldTarget.y - origin.y
-  );
+  const worldDistance = distance2D(worldTarget, origin);
   const maxRangeWorld = metersToWorldRange(maxRangeMeters);
   return worldTarget.y >= origin.y && worldDistance <= maxRangeWorld;
 }

@@ -5,6 +5,7 @@
 
 import { create } from "zustand";
 import { getDefaultFishingEquipment } from "../data/fishingEquipmentDatabase.js";
+import { clamp } from "../physics/vectorUtils.js";
 
 const useGameStore = create((set, get) => ({
   // Game phase state machine
@@ -77,7 +78,7 @@ const useGameStore = create((set, get) => ({
   setRenderResolutionScale: (scale) => {
     const nextScale = Number.isFinite(scale) ? scale : 1;
     set({
-      renderResolutionScale: Math.min(4, Math.max(1, nextScale)),
+      renderResolutionScale: clamp(nextScale, 1, 4),
     });
   },
 

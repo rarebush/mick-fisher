@@ -21,6 +21,7 @@ import {
   createFishTarget,
   HEAT_CONSTANTS,
 } from "../physics/physicsSystem.js";
+import { magnitude } from "../physics/vectorUtils.js";
 import { rollFishSize } from "../data/fishDatabase.js";
 import { getFishTableForLocation } from "../data/locationDatabase.js";
 import { emitAudioEvent } from "../audio/audioEvents.js";
@@ -409,7 +410,7 @@ function selectRandomFish(fishTable) {
 
 function magnitudeOrZero(vector) {
   if (!vector) return 0;
-  return Math.hypot(vector.x || 0, vector.y || 0);
+  return magnitude({ x: vector.x || 0, y: vector.y || 0 });
 }
 
 function getTensionZone(tension) {

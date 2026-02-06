@@ -1,8 +1,13 @@
+/**
+ * worldDimensions.js
+ * World-space dimensions and avatar anchor positions.
+ */
+
 export const WORLD_X = {
-  MIN: -8, // Left bank
-  MAX: 8, // Right bank
+  MIN: -2, // Left bank
+  MAX: 2, // Right bank
   CENTER: 0,
-  WIDTH: 16,
+  WIDTH: 4,
 };
 
 export const WORLD_Z = {

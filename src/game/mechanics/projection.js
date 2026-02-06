@@ -1,4 +1,5 @@
 import { WORLD_Y, WORLD_Z } from "./worldDimensions.js";
+import { normalize } from "../physics/vectorUtils.js";
 
 const ISO_ANGLE_RAD = Math.atan(0.5); // 26.565° for 2:1 pixel ratio
 const ISO_SIN = Math.sin(ISO_ANGLE_RAD); // ~0.4472
@@ -153,11 +154,8 @@ export function getWorldDirectionScreenAngle(
 ) {
   const deltaX = toWorld.x - fromWorld.x;
   const deltaY = toWorld.y - fromWorld.y;
-  const distance = Math.hypot(deltaX, deltaY);
-  if (distance === 0) return 0;
-
-  const directionX = deltaX / distance;
-  const directionY = deltaY / distance;
+  const direction = normalize({ x: deltaX, y: deltaY });
+  if (direction.x === 0 && direction.y === 0) return 0;
 
   const screenOrigin = worldToScreen(
     { x: toWorld.x, y: toWorld.y, z: planeZ },
@@ -165,8 +163,8 @@ export function getWorldDirectionScreenAngle(
   );
   const screenAhead = worldToScreen(
     {
-      x: toWorld.x + directionX,
-      y: toWorld.y + directionY,
+      x: toWorld.x + direction.x,
+      y: toWorld.y + direction.y,
       z: planeZ,
     },
     viewport

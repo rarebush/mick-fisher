@@ -1,6 +1,7 @@
 import useSessionStore from "../../game/state/sessionStore";
 import useGameStore from "../../game/state/gameStore";
 import { TENSION_ZONES } from "../../game/physics/physicsSystem";
+import { clamp } from "../../game/physics/vectorUtils";
 import "./tension-bar.css";
 
 function TensionBar() {
@@ -37,7 +38,7 @@ function TensionBar() {
   ];
 
   // Clamp tension for display only (actual value can exceed 100 to trigger failure)
-  const displayTension = Math.max(0, Math.min(100, tension));
+  const displayTension = clamp(tension, 0, 100);
 
   // Color coding based on tension level
   let barColor = "#4CAF50"; // Green (safe)

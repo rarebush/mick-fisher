@@ -61,38 +61,6 @@ export function rollForItem(quadrant, locationId) {
 }
 
 /**
- * Calculate placement quality (affects initial slip rate)
- * Based on RNG - simulates how well magnet landed on item
- * @returns {object} - { placement: 'center' | 'edge' | 'corner', multiplier: number }
- */
-export function rollPlacementQuality() {
-  const roll = Math.random();
-
-  if (roll < 0.5) {
-    // 50% chance - Center placement (best)
-    return {
-      placement: "center",
-      multiplier: 0.7, // 30% slip reduction
-      label: "Center Grip",
-    };
-  } else if (roll < 0.85) {
-    // 35% chance - Edge placement (medium)
-    return {
-      placement: "edge",
-      multiplier: 1.0, // Normal slip
-      label: "Edge Grip",
-    };
-  } else {
-    // 15% chance - Corner placement (worst)
-    return {
-      placement: "corner",
-      multiplier: 1.5, // 50% slip increase
-      label: "Corner Grip",
-    };
-  }
-}
-
-/**
  * Get random distance within quadrant range
  * @param {number} quadrant - Quadrant number (0-9)
  * @returns {number} - Distance in meters
@@ -213,18 +181,3 @@ export function executeCast(
   };
 }
 
-/**
- * Get item visual size based on category
- * @param {object} item - Item data
- * @returns {number} - Size in pixels (diameter)
- */
-/**
- * Check if quadrant is accessible with current equipment
- * @param {number} quadrant - Quadrant number (0-9)
- * @param {number} maxRangeMeters - Equipment max range in meters
- * @returns {boolean} - True if accessible
- */
-export function isQuadrantAccessible(quadrant, maxRangeMeters) {
-  const range = getQuadrantDistance(quadrant);
-  return range.max <= maxRangeMeters;
-}

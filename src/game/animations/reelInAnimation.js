@@ -10,6 +10,7 @@ import {
 import { createMagnetSprite } from "../graphics/placeholderSprites.js";
 import useMagnetStore from "../state/magnetStore.js";
 import { renderProjectedRope } from "./projectedRopeRenderer.js";
+import { cleanupDisplayObjects } from "../rendering/displayCleanup.js";
 
 /**
  * Animate rope reeling in after drag failure.
@@ -56,24 +57,12 @@ export function animateReelIn(
 
     const animate = (currentTime) => {
       if (!app) {
-        if (line.parent) line.parent.removeChild(line);
-        line.destroy();
-        if (options.lineUnderwater?.parent) {
-          options.lineUnderwater.parent.removeChild(options.lineUnderwater);
-        }
-        if (options.lineUnderwater && !options.lineUnderwater.destroyed) {
-          options.lineUnderwater.destroy();
-        }
-        if (options.lineDebug?.parent) {
-          options.lineDebug.parent.removeChild(options.lineDebug);
-        }
-        if (options.lineDebug && !options.lineDebug.destroyed) {
-          options.lineDebug.destroy();
-        }
-        if (reelMagnetSprite.parent) {
-          reelMagnetSprite.parent.removeChild(reelMagnetSprite);
-        }
-        reelMagnetSprite.destroy();
+        cleanupDisplayObjects(
+          line,
+          options.lineUnderwater,
+          options.lineDebug,
+          reelMagnetSprite
+        );
         resolve();
         return;
       }
@@ -107,24 +96,12 @@ export function animateReelIn(
         sessionStore.getState().setCastPosition(null, null);
       }
 
-      if (line.parent) line.parent.removeChild(line);
-      line.destroy();
-      if (options.lineUnderwater?.parent) {
-        options.lineUnderwater.parent.removeChild(options.lineUnderwater);
-      }
-      if (options.lineUnderwater && !options.lineUnderwater.destroyed) {
-        options.lineUnderwater.destroy();
-      }
-      if (options.lineDebug?.parent) {
-        options.lineDebug.parent.removeChild(options.lineDebug);
-      }
-      if (options.lineDebug && !options.lineDebug.destroyed) {
-        options.lineDebug.destroy();
-      }
-      if (reelMagnetSprite.parent) {
-        reelMagnetSprite.parent.removeChild(reelMagnetSprite);
-      }
-      reelMagnetSprite.destroy();
+      cleanupDisplayObjects(
+        line,
+        options.lineUnderwater,
+        options.lineDebug,
+        reelMagnetSprite
+      );
 
       console.log("[REEL-IN] Complete");
       resolve();

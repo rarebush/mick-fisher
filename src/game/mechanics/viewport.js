@@ -1,48 +1,5 @@
-import {
-  CAMERA_FOCUS,
-  WORLD_X,
-  WORLD_Y,
-  WORLD_Z,
-  getWorldXBounds,
-} from "./worldDimensions.js";
-import {
-  TARGET_PPU,
-  projectToIsometric,
-  projectToScreen,
-} from "./projection.js";
-
-/**
- * Get screen-space projections for world-space corner samples
- * Useful for debugging that bounds fit within the viewport
- * @param {Object} viewport
- * @returns {{world:{x:number,y:number,z:number},screen:{x:number,y:number}}[]}
- */
-export function getWorldBoundsProjectionSamples(viewport) {
-  const bounds = {
-    xMin: WORLD_X.MIN,
-    xMax: WORLD_X.MAX,
-    yMin: WORLD_Y.MIN,
-    yMax: WORLD_Y.MAX,
-    zMin: WORLD_Z.RIVERBED,
-    zMax: WORLD_Z.MAX,
-  };
-
-  const corners = [
-    [bounds.xMin, bounds.yMin, bounds.zMin],
-    [bounds.xMin, bounds.yMin, bounds.zMax],
-    [bounds.xMin, bounds.yMax, bounds.zMin],
-    [bounds.xMin, bounds.yMax, bounds.zMax],
-    [bounds.xMax, bounds.yMin, bounds.zMin],
-    [bounds.xMax, bounds.yMin, bounds.zMax],
-    [bounds.xMax, bounds.yMax, bounds.zMin],
-    [bounds.xMax, bounds.yMax, bounds.zMax],
-  ];
-
-  return corners.map(([worldX, worldY, worldZ]) => ({
-    world: { x: worldX, y: worldY, z: worldZ },
-    screen: projectToScreen(worldX, worldY, worldZ, viewport),
-  }));
-}
+import { CAMERA_FOCUS, WORLD_Y, WORLD_Z, getWorldXBounds } from "./worldDimensions.js";
+import { TARGET_PPU, projectToIsometric } from "./projection.js";
 
 /**
  * Calculate viewport configuration based on screen dimensions

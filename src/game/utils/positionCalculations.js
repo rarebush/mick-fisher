@@ -3,6 +3,7 @@ import {
   WORLD_Y,
   getAvatarWorldPosition,
 } from "../mechanics/worldConstants.js";
+import { clamp, distance2D } from "../physics/vectorUtils.js";
 
 /**
  * Calculate distance from avatar based on item's X and Y position
@@ -14,9 +15,9 @@ import {
  */
 export function calculateDistanceFromPosition(itemWorldX, itemWorldY) {
   const avatarWorld = getAvatarWorldPosition();
-  const worldDistance = Math.hypot(
-    itemWorldX - avatarWorld.x,
-    itemWorldY - avatarWorld.y
+  const worldDistance = distance2D(
+    { x: itemWorldX, y: itemWorldY },
+    avatarWorld
   );
   const worldDepthRange = WORLD_Y.RIVERBED_FAR - WORLD_Y.AVATAR;
   if (!Number.isFinite(worldDepthRange) || worldDepthRange <= 0) {
@@ -24,5 +25,5 @@ export function calculateDistanceFromPosition(itemWorldX, itemWorldY) {
   }
   const meters =
     (worldDistance / worldDepthRange) * (MAX_QUADRANT_DISTANCE || 0);
-  return Math.max(0, Math.min(MAX_QUADRANT_DISTANCE, meters));
+  return clamp(meters, 0, MAX_QUADRANT_DISTANCE);
 }

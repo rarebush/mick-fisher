@@ -1,5 +1,5 @@
 import { PHYSICS_CONSTANTS } from "./physicsConstants.js";
-import { dotProduct, magnitude, normalize, subtract } from "./vectorUtils.js";
+import { magnitude, normalize, subtract } from "./vectorUtils.js";
 
 export function getEngineTorque(tension, equipment) {
   const normalizedTension = tension / 100;
@@ -14,18 +14,6 @@ export function getEngineTorque(tension, equipment) {
     torqueMultiplier = 0.6 + zoneProgress * 0.4;
   }
   return (equipment?.maxPullForce ?? 0) * torqueMultiplier;
-}
-
-export function calculateLoadResistance(target, avatarPosition) {
-  const pullDirection = normalize(subtract(avatarPosition, target.position));
-  const speed = magnitude(target.velocity);
-  let alignment = 0;
-  if (speed > 0.01) {
-    alignment = dotProduct(normalize(target.velocity), pullDirection);
-  }
-  const speedFactor = Math.max(0.3, 1 - speed * 0.3);
-  const alignmentFactor = 1 - alignment * 0.5;
-  return target.mass * speedFactor * alignmentFactor * 0.5;
 }
 
 export function getPullForce(tension, equipment, target, avatarPosition) {

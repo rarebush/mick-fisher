@@ -239,6 +239,75 @@ export async function setupEnvironmentLayers(container, width, height) {
   });
   riverbedTiles.filters = [causticsFilter];
 
+  // River wall tiles (draw between riverbed and water surface)
+  const riverWallTiles = new PIXI.Container();
+  let riverWallSpritesheet = null;
+  try {
+    riverWallSpritesheet = await loadSpriteSheet(
+      "/sprites/riverWall.png",
+      "/sprites/riverWall.json"
+    );
+  } catch (error) {
+    console.warn("[RIVERWALL] Failed to load /sprites/riverWall.json", error);
+  }
+
+  // frame0 = empty, frame1 = bottom, frame2 = middle, frame3 = top
+  const riverWallBottomTexture = riverWallSpritesheet?.textures?.frame1 ?? null;
+  const riverWallMiddleTexture = riverWallSpritesheet?.textures?.frame2 ?? null;
+  const riverWallTopTexture = riverWallSpritesheet?.textures?.frame3 ?? null;
+
+  if (riverWallBottomTexture?.source && riverWallTopTexture?.source) {
+    riverWallBottomTexture.source.scaleMode = PIXI.SCALE_MODES.NEAREST;
+    riverWallTopTexture.source.scaleMode = PIXI.SCALE_MODES.NEAREST;
+    if (riverWallMiddleTexture?.source) {
+      riverWallMiddleTexture.source.scaleMode = PIXI.SCALE_MODES.NEAREST;
+    }
+
+    // Wall spans from riverbed (Z=0) up to walkway (Z=3).
+    // Each tile covers one world unit of height.
+    const wallHeightUnits = Math.max(
+      2,
+      Math.round(WORLD_Z.WALKWAY - WORLD_Z.RIVERBED)
+    );
+    const startX = Math.floor(WORLD_X.MIN);
+    const endX = Math.ceil(WORLD_X.MAX);
+    const wallY = WORLD_Y.WALL_EDGE;
+    const baseZ = WORLD_Z.RIVERBED;
+    const topZ = baseZ + wallHeightUnits - 1;
+
+    const addWallTile = (texture, worldX, worldY, worldZ) => {
+      const screen = projectToScreen(worldX, worldY, worldZ, viewport);
+      const tile = new PIXI.Sprite(texture);
+      // Wall tile parallelogram base edge runs from sprite (0,36) to (32,52).
+      // projectToScreen gives the midpoint of that base edge = sprite (16,44).
+      // Anchor must point there so the tile aligns with Y=0 in world space.
+      const tileH = texture.height; // 52
+      const halfIsoOverhang = projectionMetrics.screenYPerWorldUnit / 2; // 8
+      tile.anchor.set(
+        0.5,
+        (projectionMetrics.screenYPerWorldZUnit + halfIsoOverhang) / tileH
+      );
+      // Wall tiles are pre-shaped; keep native pixel size.
+      tile.scale.set(1, 1);
+      tile.x = screen.x;
+      tile.y = screen.y;
+      riverWallTiles.addChild(tile);
+    };
+
+    for (let x = startX; x < endX; x += 1) {
+      const worldX = x + 0.5;
+      addWallTile(riverWallBottomTexture, worldX, wallY, baseZ);
+
+      if (wallHeightUnits > 2 && riverWallMiddleTexture?.source) {
+        for (let z = baseZ + 1; z < topZ; z += 1) {
+          addWallTile(riverWallMiddleTexture, worldX, wallY, z);
+        }
+      }
+
+      addWallTile(riverWallTopTexture, worldX, wallY, topZ);
+    }
+  }
+
   // Water surface tiles (draw second, on top of riverbed)
   const waterSurfaceTiles = new PIXI.Container();
   const waterSurfaceAreaTiles = new PIXI.Container();
@@ -321,6 +390,7 @@ export async function setupEnvironmentLayers(container, width, height) {
   }
   // Wrap riverbed + water surface in a shared waterGroup container.
   // The DisplacementFilter on this group makes both layers ripple together.
+  // River wall tiles are kept outside so displacement doesn't warp them.
   const waterGroup = new PIXI.Container();
   waterGroup.addChild(riverbedTiles, waterSurfaceTiles);
 
@@ -338,6 +408,9 @@ export async function setupEnvironmentLayers(container, width, height) {
   waterGroup.filters = [displacementFilter];
 
   container.addChild(waterGroup);
+  // River wall renders after (in front of) the water surface — it's the
+  // near vertical face above the water line, unaffected by displacement.
+  container.addChild(riverWallTiles);
   // container.addChild(waterSurfaceWireframe);
 
   const walkwayVolume = new PIXI.Graphics();
@@ -355,6 +428,27 @@ export async function setupEnvironmentLayers(container, width, height) {
     0xff00ff
   );
   container.addChild(walkwayVolume);
+
+  // Debug: draw world-space axes through the origin (0,0,0)
+  const axisLength = 4; // world units in each direction
+  const originAxes = new PIXI.Graphics();
+  const origin = projectToScreen(0, 0, 0, viewport);
+  const xEnd = projectToScreen(axisLength, 0, 0, viewport);
+  const yEnd = projectToScreen(0, axisLength, 0, viewport);
+  const zEnd = projectToScreen(0, 0, axisLength, viewport);
+  // X axis
+  originAxes.moveTo(origin.x, origin.y);
+  originAxes.lineTo(xEnd.x, xEnd.y);
+  originAxes.stroke({ width: 1, color: 0x000000, alpha: 1 });
+  // Y axis
+  originAxes.moveTo(origin.x, origin.y);
+  originAxes.lineTo(yEnd.x, yEnd.y);
+  originAxes.stroke({ width: 1, color: 0x000000, alpha: 1 });
+  // Z axis
+  originAxes.moveTo(origin.x, origin.y);
+  originAxes.lineTo(zEnd.x, zEnd.y);
+  originAxes.stroke({ width: 1, color: 0x000000, alpha: 1 });
+  container.addChild(originAxes);
 
   console.log(
     `[ENVIRONMENT] Wireframe volumes: water (Z=${WORLD_Z.RIVERBED}-${WORLD_Z.WATER_SURFACE}), walkway (Z=${WORLD_Z.RIVERBED}-${WORLD_Z.WALKWAY})`

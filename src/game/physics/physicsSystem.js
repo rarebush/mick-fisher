@@ -22,7 +22,6 @@ export {
 export { initializeWaitPhase, updateWaitPhase } from "./waitPhase.js";
 export {
   getEngineTorque,
-  calculateLoadResistance,
   getPullForce,
   getWaterDrag,
   getCurrentForce,

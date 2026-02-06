@@ -4,6 +4,7 @@ import {
   lerp,
   worldToScreen,
 } from "../mechanics/worldConstants.js";
+import { clamp, distance2D } from "../physics/vectorUtils.js";
 
 export const CORNER_PROJECTION_CONFIG = {
   baseSamples: 20,
@@ -25,8 +26,6 @@ export const CORNER_PROJECTION_CONFIG = {
     alpha: 0.5,
   },
 };
-
-const clamp = (value, min, max) => Math.max(min, Math.min(max, value));
 
 const getParabolicSagPoint = (start, end, t, sag, minZ = WORLD_Z.RIVERBED) => {
   const dx = end.x - start.x;
@@ -51,7 +50,7 @@ const projectToWalkway = (point) => ({
 });
 
 const calculateSag = (start, end, tension, config) => {
-  const horizontalDistance = Math.hypot(end.x - start.x, end.y - start.y);
+  const horizontalDistance = distance2D(start, end);
   const tensionFactor = 1 - clamp(tension / 100, 0, 1);
   const slack = Number.isFinite(config.slack) ? config.slack : 0.6;
   const sag = slack * horizontalDistance * tensionFactor;

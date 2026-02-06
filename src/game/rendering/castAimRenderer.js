@@ -14,6 +14,7 @@ import {
   metersToWorldRange,
 } from "../mechanics/castAimUtils.js";
 import { getCastingEquipmentMaxRange } from "../data/castingEquipmentDatabase.js";
+import { magnitude, normalize } from "../physics/vectorUtils.js";
 
 export function updateCastAimOverlay({
   app,
@@ -216,13 +217,12 @@ export function updateCastAimOverlay({
       WORLD_Z.WATER_SURFACE,
       viewport
     );
-    const deltaX = targetWorld.x - avatarWorld.x;
-    const deltaY = targetWorld.y - avatarWorld.y;
-    const distance = Math.hypot(deltaX, deltaY);
-    const forward =
-      distance > 0
-        ? { x: deltaX / distance, y: deltaY / distance }
-        : { x: 0, y: 1 };
+    const delta = {
+      x: targetWorld.x - avatarWorld.x,
+      y: targetWorld.y - avatarWorld.y,
+    };
+    const distance = magnitude(delta);
+    const forward = distance > 0 ? normalize(delta) : { x: 0, y: 1 };
     const right = { x: -forward.y, y: forward.x };
     const targetScreen = worldToScreen(targetWorld, viewport);
     const aspectRatioX = updatedDonut.aspectRatioX ?? 1;

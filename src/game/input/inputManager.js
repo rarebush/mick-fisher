@@ -11,6 +11,7 @@ import {
   getAvatarWorldPosition,
 } from "../mechanics/worldConstants.js";
 import { computeCastTargetScreen } from "../mechanics/castAimUtils.js";
+import { magnitude, normalize } from "../physics/vectorUtils.js";
 import {
   getCastingEquipmentById,
   getCastingEquipmentMaxRange,
@@ -420,13 +421,12 @@ export class InputManager {
         WORLD_Z.WATER_SURFACE,
         viewport
       );
-      const deltaX = targetWorld.x - avatarWorld.x;
-      const deltaY = targetWorld.y - avatarWorld.y;
-      const distance = Math.hypot(deltaX, deltaY);
-      const forward =
-        distance > 0
-          ? { x: deltaX / distance, y: deltaY / distance }
-          : { x: 0, y: 1 };
+      const delta = {
+        x: targetWorld.x - avatarWorld.x,
+        y: targetWorld.y - avatarWorld.y,
+      };
+      const distance = magnitude(delta);
+      const forward = distance > 0 ? normalize(delta) : { x: 0, y: 1 };
       const right = { x: -forward.y, y: forward.x };
       const minRadiusWorld = minRadius / viewport.pixelsPerUnit;
       const maxRadiusWorld = maxRadius / viewport.pixelsPerUnit;

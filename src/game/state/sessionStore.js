@@ -6,6 +6,7 @@
 import { create } from "zustand";
 import useMagnetStore from "./magnetStore.js";
 import { createInitialPhysicsState } from "../physics/physicsSystem.js";
+import { clamp } from "../physics/vectorUtils.js";
 
 const DEFAULT_CAST_AIM_STATE = {
   phase: "idle", // idle | angle | power
@@ -291,7 +292,7 @@ const useSessionStore = create((set, get) => ({
       liftState: {
         ...state.liftState,
         depth: Math.max(0, depth),
-        slipAccumulated: Math.max(0, Math.min(100, slipAccumulated)),
+        slipAccumulated: clamp(slipAccumulated, 0, 100),
       },
     }));
   },
@@ -355,7 +356,7 @@ const useSessionStore = create((set, get) => ({
   setPhase: (phase) => set({ phase }),
 
   setPhaseProgress: (progress) =>
-    set({ phaseProgress: Math.max(0, Math.min(1, progress)) }),
+    set({ phaseProgress: clamp(progress, 0, 1) }),
 
   setCastPosition: (x, y) =>
     set({
@@ -517,7 +518,7 @@ const useSessionStore = create((set, get) => ({
   updatePhaseProgress: (delta) => {
     const state = get();
     const newProgress = state.phaseProgress + delta;
-    set({ phaseProgress: Math.max(0, Math.min(1, newProgress)) });
+    set({ phaseProgress: clamp(newProgress, 0, 1) });
   },
 
   // Utility

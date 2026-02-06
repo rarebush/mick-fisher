@@ -1,5 +1,6 @@
 import useSessionStore from "../../game/state/sessionStore";
 import useGameStore from "../../game/state/gameStore";
+import { clamp } from "../../game/physics/vectorUtils";
 import "./slip-meter.css";
 
 function SlipMeter() {
@@ -14,7 +15,7 @@ function SlipMeter() {
     return null;
   }
 
-  const slipPercent = Math.min(1, Math.max(0, physicsState.slip.percent || 0));
+  const slipPercent = clamp(physicsState.slip.percent || 0, 0, 1);
 
   // Color coding based on slip percent
   let barColor = "#4CAF50"; // Green (safe, 40+ units)
