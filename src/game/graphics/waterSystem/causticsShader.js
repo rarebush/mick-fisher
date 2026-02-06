@@ -46,6 +46,8 @@ uniform float uCausticsSpeed;
 uniform float uCausticsIntensity;
 uniform float uSpecularIntensity;
 uniform vec3 uCausticsColor;
+uniform float uFlowPhase;
+uniform float uChoppiness;
 
 // --- Hash for Voronoi cell centres ---
 
@@ -117,14 +119,20 @@ void main() {
   // Warp coordinates with time-animated noise so Voronoi cell edges become
   // organic curves that flow over time. The Voronoi grid itself is static,
   // so cells can never merge/clump — only the warp field moves.
+  // Warp scroll and drift are biased along the downstream (isometric X)
+  // direction so caustics visually track the river current.
   vec2 basePos = vScreenPos * uCausticsScale * 0.01;
   // Quantize time to 12 FPS for pixel art animation style
   float t = floor(uTime * uCausticsSpeed * 24.0) / 24.0;
+  vec2 flowDir = vec2(0.894, 0.447); // isometric X (downstream)
   vec2 warp = vec2(
-    valueNoise(basePos * 3.0 + vec2(t * 0.3, t * 0.2) + 50.0),
-    valueNoise(basePos * 3.0 + vec2(t * -0.2, t * 0.35) + 100.0)
+    valueNoise(basePos * 3.0 + flowDir * t * 0.3 + 50.0),
+    valueNoise(basePos * 3.0 + flowDir * t * 0.2 + 100.0)
   );
-  vec2 warpedPos = basePos + (warp - 0.5) * 0.2;
+  // Choppier water → larger warp amplitude → more scattered caustic patterns.
+  // uFlowPhase replaces t*currentSpeed for the drift — accumulated in JS so
+  // speed transitions don't cause discontinuities.
+  vec2 warpedPos = basePos + (warp - 0.5) * 0.2 * uChoppiness - flowDir * uFlowPhase * 0.4;
 
   // Two Voronoi F2-F1 layers at different scales for natural interference.
   float v1 = voronoiCaustic(warpedPos);
@@ -213,6 +221,14 @@ export function createCausticsShader(options = {}) {
     uCausticsColor: {
       value: options.causticsColor || [1.0, 0.95, 0.8],
       type: "vec3<f32>",
+    },
+    uFlowPhase: {
+      value: 0,
+      type: "f32",
+    },
+    uChoppiness: {
+      value: 1.0,
+      type: "f32",
     },
   });
 

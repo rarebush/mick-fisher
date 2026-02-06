@@ -48,11 +48,12 @@ uniform float uDepthDarken;
 uniform float uNoiseScale;
 uniform float uNoiseStrength;
 uniform float uDepthBands;
-uniform float uTime;
 uniform float uSparkleScale;
 uniform float uSparkleSpeed;
 uniform float uSparkleThreshold;
 uniform float uSparkleIntensity;
+uniform float uFlowPhase;
+uniform float uChoppiness;
 
 // --- 2D gradient noise (Perlin-style) ---
 
@@ -125,19 +126,22 @@ void main() {
   float alpha = mix(tex.a, depthAlpha, mask);
 
   // --- Sparkles: dual scrolling noise subtracted for chaotic glints ---
-  // Two Perlin noise layers scroll in opposite directions along the
-  // isometric X axis. Where they peak in opposite polarities, the
-  // difference spikes — a hard step isolates those rare points as
-  // bright sparkle pixels.
-  float t = floor(uTime * 24.0) / 24.0; // 24 FPS quantized
+  // Two Perlin noise layers scroll downstream (isometric X axis) at
+  // different speeds. The speed difference keeps the interference
+  // pattern flickering while the bulk motion drifts with the current.
+  // A hard step on the difference isolates rare peaks as bright sparkles.
+  // uFlowPhase is accumulated downstream distance (pre-quantized to 24 FPS
+  // in JS). Using it instead of time*speed avoids discontinuities when
+  // currentSpeed transitions smoothly.
   vec2 scrollDir = vec2(0.894, 0.447);   // isometric X direction
   vec2 sp = vScreenPos * uSparkleScale;
 
-  float n1 = gradientNoise(sp + scrollDir * t * uSparkleSpeed);
-  float n2 = gradientNoise(sp * 1.3 - scrollDir * t * uSparkleSpeed + 50.0);
+  float n1 = gradientNoise(sp - scrollDir * uFlowPhase * uSparkleSpeed);
+  float n2 = gradientNoise(sp * 1.3 - scrollDir * uFlowPhase * uSparkleSpeed * 0.55 + 50.0);
 
   float diff = n1 - n2;
-  float sparkle = step(uSparkleThreshold, abs(diff));
+  // Choppier water → lower threshold → more frequent sparkles
+  float sparkle = step(uSparkleThreshold / uChoppiness, abs(diff));
 
   // Clip with a dense high-frequency noise to break blobs into smaller fragments
   float clipNoise = gradientNoise(sp * 2.0);
@@ -214,10 +218,6 @@ export function createWaterSurfaceShader(options = {}) {
       value: Number.isFinite(options.depthBands) ? options.depthBands : 0,
       type: "f32",
     },
-    uTime: {
-      value: 0,
-      type: "f32",
-    },
     uSparkleScale: {
       value: Number.isFinite(options.sparkleScale)
         ? options.sparkleScale
@@ -238,6 +238,14 @@ export function createWaterSurfaceShader(options = {}) {
       value: Number.isFinite(options.sparkleIntensity)
         ? options.sparkleIntensity
         : 0.4,
+      type: "f32",
+    },
+    uFlowPhase: {
+      value: 0,
+      type: "f32",
+    },
+    uChoppiness: {
+      value: 1.0,
       type: "f32",
     },
   });

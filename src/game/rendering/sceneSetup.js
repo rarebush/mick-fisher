@@ -137,7 +137,7 @@ export async function setupEnvironmentLayers(container, width, height) {
       zMax: WORLD_Z.WATER_SURFACE,
     },
     viewport,
-    0x00c2ff
+    0x00c2ff,
   );
   container.addChild(waterVolume);
 
@@ -147,35 +147,35 @@ export async function setupEnvironmentLayers(container, width, height) {
       WORLD_X.MIN,
       WORLD_Y.WATER_NEAR,
       WORLD_Z.WATER_SURFACE,
-      viewport
+      viewport,
     ),
     projectToScreen(
       WORLD_X.MAX,
       WORLD_Y.WATER_NEAR,
       WORLD_Z.WATER_SURFACE,
-      viewport
+      viewport,
     ),
     projectToScreen(
       WORLD_X.MAX,
       WORLD_Y.WATER_FAR,
       WORLD_Z.WATER_SURFACE,
-      viewport
+      viewport,
     ),
     projectToScreen(
       WORLD_X.MIN,
       WORLD_Y.WATER_FAR,
       WORLD_Z.WATER_SURFACE,
-      viewport
+      viewport,
     ),
   ];
   waterSurfaceWireframe.moveTo(
     waterSurfaceCorners[0].x,
-    waterSurfaceCorners[0].y
+    waterSurfaceCorners[0].y,
   );
   for (let i = 1; i < waterSurfaceCorners.length; i += 1) {
     waterSurfaceWireframe.lineTo(
       waterSurfaceCorners[i].x,
-      waterSurfaceCorners[i].y
+      waterSurfaceCorners[i].y,
     );
   }
   waterSurfaceWireframe.closePath();
@@ -187,7 +187,7 @@ export async function setupEnvironmentLayers(container, width, height) {
   try {
     riverbedSpritesheet = await loadSpriteSheet(
       "/sprites/riverbed.png",
-      "/sprites/riverbed.json"
+      "/sprites/riverbed.json",
     );
   } catch (error) {
     console.warn("[RIVERBED] Failed to load /sprites/riverbed.json", error);
@@ -216,7 +216,7 @@ export async function setupEnvironmentLayers(container, width, height) {
           x + 0.5,
           y + 0.5,
           WORLD_Z.RIVERBED,
-          viewport
+          viewport,
         );
         const tile = new PIXI.Sprite(riverbedTexture);
         tile.anchor.set(0.5, 0.5);
@@ -240,12 +240,15 @@ export async function setupEnvironmentLayers(container, width, height) {
   riverbedTiles.filters = [causticsFilter];
 
   // River wall tiles (draw between riverbed and water surface)
+  // Bottom tiles (submerged, below water surface Z) go into a separate container
+  // so they can live inside waterGroup for displacement + water overlay.
   const riverWallTiles = new PIXI.Container();
+  const submergedWallTiles = new PIXI.Container();
   let riverWallSpritesheet = null;
   try {
     riverWallSpritesheet = await loadSpriteSheet(
       "/sprites/riverWall.png",
-      "/sprites/riverWall.json"
+      "/sprites/riverWall.json",
     );
   } catch (error) {
     console.warn("[RIVERWALL] Failed to load /sprites/riverWall.json", error);
@@ -267,7 +270,7 @@ export async function setupEnvironmentLayers(container, width, height) {
     // Each tile covers one world unit of height.
     const wallHeightUnits = Math.max(
       2,
-      Math.round(WORLD_Z.WALKWAY - WORLD_Z.RIVERBED)
+      Math.round(WORLD_Z.WALKWAY - WORLD_Z.RIVERBED),
     );
     const startX = Math.floor(WORLD_X.MIN);
     const endX = Math.ceil(WORLD_X.MAX);
@@ -275,7 +278,7 @@ export async function setupEnvironmentLayers(container, width, height) {
     const baseZ = WORLD_Z.RIVERBED;
     const topZ = baseZ + wallHeightUnits - 1;
 
-    const addWallTile = (texture, worldX, worldY, worldZ) => {
+    const addWallTile = (texture, worldX, worldY, worldZ, targetContainer) => {
       const screen = projectToScreen(worldX, worldY, worldZ, viewport);
       const tile = new PIXI.Sprite(texture);
       // Wall tile parallelogram base edge runs from sprite (0,36) to (32,52).
@@ -285,26 +288,34 @@ export async function setupEnvironmentLayers(container, width, height) {
       const halfIsoOverhang = projectionMetrics.screenYPerWorldUnit / 2; // 8
       tile.anchor.set(
         0.5,
-        (projectionMetrics.screenYPerWorldZUnit + halfIsoOverhang) / tileH
+        (projectionMetrics.screenYPerWorldZUnit + halfIsoOverhang) / tileH,
       );
       // Wall tiles are pre-shaped; keep native pixel size.
       tile.scale.set(1, 1);
       tile.x = screen.x;
       tile.y = screen.y;
-      riverWallTiles.addChild(tile);
+      targetContainer.addChild(tile);
     };
 
     for (let x = startX; x < endX; x += 1) {
       const worldX = x + 0.5;
-      addWallTile(riverWallBottomTexture, worldX, wallY, baseZ);
+      // Bottom tiles are submerged (below water surface Z) — route into
+      // submergedWallTiles so they join waterGroup for displacement + overlay.
+      addWallTile(
+        riverWallBottomTexture,
+        worldX,
+        wallY,
+        baseZ,
+        submergedWallTiles,
+      );
 
       if (wallHeightUnits > 2 && riverWallMiddleTexture?.source) {
         for (let z = baseZ + 1; z < topZ; z += 1) {
-          addWallTile(riverWallMiddleTexture, worldX, wallY, z);
+          addWallTile(riverWallMiddleTexture, worldX, wallY, z, riverWallTiles);
         }
       }
 
-      addWallTile(riverWallTopTexture, worldX, wallY, topZ);
+      addWallTile(riverWallTopTexture, worldX, wallY, topZ, riverWallTiles);
     }
   }
 
@@ -318,7 +329,7 @@ export async function setupEnvironmentLayers(container, width, height) {
   try {
     waterSpritesheet = await loadSpriteSheet(
       "/sprites/water.png",
-      "/sprites/water.json"
+      "/sprites/water.json",
     );
   } catch (error) {
     console.warn("[WATER] Failed to load /sprites/water.json", error);
@@ -342,7 +353,7 @@ export async function setupEnvironmentLayers(container, width, height) {
 
     const waterSurfaceDepthCoeffs = computeDepthCoeffs(
       WORLD_Z.WATER_SURFACE,
-      viewport
+      viewport,
     );
 
     waterSurfaceShader = createWaterSurfaceShader({
@@ -377,7 +388,7 @@ export async function setupEnvironmentLayers(container, width, height) {
           x + 0.5,
           y + 0.5,
           WORLD_Z.WATER_SURFACE,
-          viewport
+          viewport,
         );
         const tile = new PIXI.Sprite(tileTexture);
         tile.anchor.set(0.5, 0.5);
@@ -388,11 +399,12 @@ export async function setupEnvironmentLayers(container, width, height) {
       }
     }
   }
-  // Wrap riverbed + water surface in a shared waterGroup container.
-  // The DisplacementFilter on this group makes both layers ripple together.
-  // River wall tiles are kept outside so displacement doesn't warp them.
+  // Wrap riverbed, submerged wall, and water surface in a shared waterGroup
+  // container. The DisplacementFilter on this group makes all three layers
+  // ripple together. Above-water wall tiles (middle + top) are kept outside
+  // so displacement doesn't warp them.
   const waterGroup = new PIXI.Container();
-  waterGroup.addChild(riverbedTiles, waterSurfaceTiles);
+  waterGroup.addChild(riverbedTiles, submergedWallTiles, waterSurfaceTiles);
 
   // Procedural noise displacement for water flow
   const noiseTexture = generateNoiseTexture(128);
@@ -408,6 +420,32 @@ export async function setupEnvironmentLayers(container, width, height) {
   waterGroup.filters = [displacementFilter];
 
   container.addChild(waterGroup);
+
+  // Debug: draw a 2D screen-space AABB around the displacement-affected area.
+  // Projects the waterGroup world-space volume corners and finds the axis-aligned
+  // bounding rect so we can see exactly which screen pixels the filter covers.
+  const displacementCorners = [
+    [WORLD_X.MIN, WORLD_Y.WATER_NEAR, WORLD_Z.RIVERBED],
+    [WORLD_X.MIN, WORLD_Y.WATER_NEAR, WORLD_Z.WATER_SURFACE],
+    [WORLD_X.MIN, WORLD_Y.WATER_FAR, WORLD_Z.RIVERBED],
+    [WORLD_X.MIN, WORLD_Y.WATER_FAR, WORLD_Z.WATER_SURFACE],
+    [WORLD_X.MAX, WORLD_Y.WATER_NEAR, WORLD_Z.RIVERBED],
+    [WORLD_X.MAX, WORLD_Y.WATER_NEAR, WORLD_Z.WATER_SURFACE],
+    [WORLD_X.MAX, WORLD_Y.WATER_FAR, WORLD_Z.RIVERBED],
+    [WORLD_X.MAX, WORLD_Y.WATER_FAR, WORLD_Z.WATER_SURFACE],
+  ].map(([x, y, z]) => projectToScreen(x, y, z, viewport));
+
+  let dMinX = Infinity,
+    dMinY = Infinity,
+    dMaxX = -Infinity,
+    dMaxY = -Infinity;
+  for (const pt of displacementCorners) {
+    if (pt.x < dMinX) dMinX = pt.x;
+    if (pt.y < dMinY) dMinY = pt.y;
+    if (pt.x > dMaxX) dMaxX = pt.x;
+    if (pt.y > dMaxY) dMaxY = pt.y;
+  }
+
   // River wall renders after (in front of) the water surface — it's the
   // near vertical face above the water line, unaffected by displacement.
   container.addChild(riverWallTiles);
@@ -425,7 +463,7 @@ export async function setupEnvironmentLayers(container, width, height) {
       zMax: WORLD_Z.WALKWAY,
     },
     viewport,
-    0xff00ff
+    0xff00ff,
   );
   container.addChild(walkwayVolume);
 
@@ -450,15 +488,22 @@ export async function setupEnvironmentLayers(container, width, height) {
   originAxes.stroke({ width: 1, color: 0x000000, alpha: 1 });
   container.addChild(originAxes);
 
+  // Displacement debug rect — added last so it renders on top of everything.
+  const displacementRect = new PIXI.Graphics();
+  displacementRect.rect(dMinX, dMinY, dMaxX - dMinX, dMaxY - dMinY);
+  displacementRect.stroke({ width: 1, color: 0xffff00, alpha: 0.9 });
+  displacementRect.zIndex = 9999;
+  container.addChild(displacementRect);
+
   console.log(
-    `[ENVIRONMENT] Wireframe volumes: water (Z=${WORLD_Z.RIVERBED}-${WORLD_Z.WATER_SURFACE}), walkway (Z=${WORLD_Z.RIVERBED}-${WORLD_Z.WALKWAY})`
+    `[ENVIRONMENT] Wireframe volumes: water (Z=${WORLD_Z.RIVERBED}-${WORLD_Z.WATER_SURFACE}), walkway (Z=${WORLD_Z.RIVERBED}-${WORLD_Z.WALKWAY})`,
   );
 
   // Compute the isometric X-axis direction in screen space for flow animation.
   // World -X → +X maps to top-left → bottom-right on screen.
   const isoXLen = Math.sqrt(
     projectionMetrics.screenXPerWorldUnit ** 2 +
-      projectionMetrics.screenYPerWorldUnit ** 2
+      projectionMetrics.screenYPerWorldUnit ** 2,
   );
   const flowDirX = projectionMetrics.screenXPerWorldUnit / isoXLen;
   const flowDirY = projectionMetrics.screenYPerWorldUnit / isoXLen;
@@ -471,8 +516,13 @@ export async function setupEnvironmentLayers(container, width, height) {
     causticsFilter,
     waterSurfaceShader,
     displacementSprite,
+    displacementFilter,
     flowDirX,
     flowDirY,
+    /** Multiplier for all water flow animations (glints, caustics, displacement). 1 = default. */
+    currentSpeed: 1,
+    /** Multiplier for water choppiness (displacement amplitude). 1 = default. */
+    choppiness: 1,
   };
 }
 
@@ -520,7 +570,7 @@ export function drawQuadrantGrid(app) {
   app.stage.addChild(grid);
 
   console.log(
-    `[QUADRANTS] Grid: worldX ${xMin}-${xMax}, worldY ${yMin}-${yMax}, Z=${z}`
+    `[QUADRANTS] Grid: worldX ${xMin}-${xMax}, worldY ${yMin}-${yMax}, Z=${z}`,
   );
 }
 

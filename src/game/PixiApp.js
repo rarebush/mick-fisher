@@ -38,7 +38,7 @@ export class PixiApp {
     gameStore,
     sessionStore,
     locationStore,
-    inventoryStore
+    inventoryStore,
   ) {
     this.canvas = canvas;
     this.width = width;
@@ -123,12 +123,12 @@ export class PixiApp {
       console.log(
         "[RENDERER] Type:",
         this.app.renderer?.constructor?.name,
-        this.app.renderer?.type
+        this.app.renderer?.type,
       );
       console.log("[RENDERER] Filter system:", this.app.renderer?.filter);
       console.log(
         "[RENDERER] Systems keys:",
-        Object.keys(this.app.renderer?.systems ?? {})
+        Object.keys(this.app.renderer?.systems ?? {}),
       );
 
       if (this.isDestroyed) {
@@ -184,7 +184,7 @@ export class PixiApp {
     this.environmentLayers = await setupEnvironmentLayers(
       this.sceneContainer,
       this.app.screen.width,
-      this.app.screen.height
+      this.app.screen.height,
     );
 
     this.spriteLayers = {
@@ -193,11 +193,11 @@ export class PixiApp {
       debug: new PIXI.Container(),
     };
     const waterIndex = this.sceneContainer.getChildIndex(
-      this.environmentLayers.waterVolume
+      this.environmentLayers.waterVolume,
     );
     this.sceneContainer.addChildAt(this.spriteLayers.underwater, waterIndex);
     const walkwayIndex = this.sceneContainer.getChildIndex(
-      this.environmentLayers.walkwayVolume
+      this.environmentLayers.walkwayVolume,
     );
     this.sceneContainer.addChildAt(this.spriteLayers.aboveWater, walkwayIndex);
     this.sceneContainer.addChild(this.spriteLayers.debug);
@@ -209,12 +209,29 @@ export class PixiApp {
       this.gameStore?.getState()?.renderResolutionScale ?? 1;
     this.setRenderResolutionScale(initialRenderResolutionScale);
     if (this.gameStore && !this.gameStoreUnsubscribe) {
+      // Sync initial values from store
+      const storeState = this.gameStore.getState();
+      if (this.environmentLayers) {
+        this.environmentLayers.currentSpeed = storeState.currentSpeed ?? 1;
+        this.environmentLayers.choppiness = storeState.choppiness ?? 1;
+      }
+
       this.gameStoreUnsubscribe = this.gameStore.subscribe(
         (state, prevState) => {
           if (state.renderResolutionScale !== prevState.renderResolutionScale) {
             this.setRenderResolutionScale(state.renderResolutionScale);
           }
-        }
+          if (state.currentSpeed !== prevState.currentSpeed) {
+            if (this.environmentLayers) {
+              this.environmentLayers.currentSpeed = state.currentSpeed;
+            }
+          }
+          if (state.choppiness !== prevState.choppiness) {
+            if (this.environmentLayers) {
+              this.environmentLayers.choppiness = state.choppiness;
+            }
+          }
+        },
       );
     }
 
@@ -261,7 +278,7 @@ export class PixiApp {
       this.debugOverlay,
       {
         onCast: this.handleCast.bind(this),
-      }
+      },
     );
 
     // Setup event listeners
@@ -296,7 +313,7 @@ export class PixiApp {
       y,
       quadrant,
       () => getItemWorldPosition(this.app, this.sessionStore),
-      this // Pass PixiApp instance for immediate rope storage
+      this, // Pass PixiApp instance for immediate rope storage
     );
 
     if (result) {
@@ -314,7 +331,7 @@ export class PixiApp {
       this.app,
       this.width,
       this.height,
-      this.locationStore
+      this.locationStore,
     );
 
     // Subscribe to location store changes to update engaged items display
@@ -322,14 +339,14 @@ export class PixiApp {
       (state) => state.engagedItems,
       () => {
         console.log(
-          "[DEBUG] Location store subscription fired - updating markers"
+          "[DEBUG] Location store subscription fired - updating markers",
         );
         if (this.debugOverlay && this.gameStore) {
           const currentLocation =
             this.gameStore.getState().currentLocation || "picturesque-river";
           this.debugOverlay.updateEngagedItems(currentLocation);
         }
-      }
+      },
     );
 
     console.log("Debug overlay initialized. Press 'D' to toggle.");
@@ -376,7 +393,7 @@ export class PixiApp {
           null, // No 2D rope
           this.dragLine,
           this.dragPlayerX,
-          this.dragPlayerY
+          this.dragPlayerY,
         );
 
         // Complete drag session AFTER reel-in animation
@@ -485,23 +502,76 @@ export class PixiApp {
 
     const dt = this.app.ticker.deltaMS / 1000;
 
-    // Animate caustics uTime
-    const causticsFilter = this.environmentLayers.causticsFilter;
-    if (causticsFilter) {
-      causticsFilter.resources.causticsUniforms.uniforms.uTime += dt;
+    // Target values from store (may change instantly via UI or game events).
+    // currentSpeed scales directional drift (1 = default, 2 = twice as fast).
+    // choppiness scales displacement amplitude, sparkle density, caustic warp.
+    const targetSpeed = this.environmentLayers.currentSpeed ?? 1;
+    const targetChoppiness = this.environmentLayers.choppiness ?? 1;
+
+    // Smooth-lerp toward targets using frame-rate-independent exponential
+    // easing. Rate controls how fast the transition is — higher = snappier.
+    // At rate=3, ~95% of the transition completes in ~1 second.
+    const transitionRate = 3;
+    const blend = 1 - Math.exp(-transitionRate * dt);
+
+    // Initialise smoothed values on first frame
+    if (this._smoothCurrentSpeed === undefined) {
+      this._smoothCurrentSpeed = targetSpeed;
+    }
+    if (this._smoothChoppiness === undefined) {
+      this._smoothChoppiness = targetChoppiness;
     }
 
-    // Animate water surface sparkles uTime
+    this._smoothCurrentSpeed += (targetSpeed - this._smoothCurrentSpeed) * blend;
+    this._smoothChoppiness += (targetChoppiness - this._smoothChoppiness) * blend;
+
+    const currentSpeed = this._smoothCurrentSpeed;
+    const choppiness = this._smoothChoppiness;
+
+    // Accumulate downstream flow distance at 24 FPS cadence.
+    // Using accumulated distance instead of time*speed avoids discontinuities
+    // when currentSpeed transitions — the phase just grows faster/slower.
+    const FLOW_FPS_STEP = 1 / 24;
+    this._flowAccumTime = (this._flowAccumTime || 0) + dt;
+    if (this._flowAccumTime >= FLOW_FPS_STEP) {
+      const steps = Math.floor(this._flowAccumTime / FLOW_FPS_STEP);
+      this._flowAccumTime -= steps * FLOW_FPS_STEP;
+      this._flowPhase = (this._flowPhase || 0) + steps * FLOW_FPS_STEP * currentSpeed;
+    }
+    const flowPhase = this._flowPhase || 0;
+
+    // Animate caustics uTime (normal rate — drift uses flowPhase)
+    const causticsFilter = this.environmentLayers.causticsFilter;
+    if (causticsFilter) {
+      const cu = causticsFilter.resources.causticsUniforms.uniforms;
+      cu.uTime += dt;
+      cu.uFlowPhase = flowPhase;
+      cu.uChoppiness = choppiness;
+    }
+
+    // Animate water surface sparkles (drift uses flowPhase, no uTime needed)
     const waterSurfaceShader = this.environmentLayers.waterSurfaceShader;
     if (waterSurfaceShader) {
-      waterSurfaceShader.resources.waterUniforms.uniforms.uTime += dt;
+      const wu = waterSurfaceShader.resources.waterUniforms.uniforms;
+      wu.uFlowPhase = flowPhase;
+      wu.uChoppiness = choppiness;
+    }
+
+    // Apply choppiness to displacement filter scale.
+    // Base scale is 4; choppiness multiplies it (1 = default, 2 = twice as wavy).
+    const displacementFilter = this.environmentLayers.displacementFilter;
+    if (displacementFilter) {
+      const baseScale = 4;
+      displacementFilter.scale.x = baseScale * choppiness;
+      displacementFilter.scale.y = baseScale * choppiness;
     }
 
     // Scroll displacement sprite along isometric X axis for water flow.
     // Quantized to 24 FPS to match the pixel art animation cadence.
+    // Uses the smoothed currentSpeed so flow acceleration is gradual.
     const sprite = this.environmentLayers.displacementSprite;
     if (sprite) {
-      const flowSpeed = 20; // pixels per second
+      const baseFlowSpeed = 12; // pixels per second at currentSpeed=1
       const FPS_STEP = 1 / 24;
       this._displacementTime = (this._displacementTime || 0) + dt;
       if (this._displacementTime >= FPS_STEP) {
@@ -510,8 +580,8 @@ export class PixiApp {
         const elapsed = steps * FPS_STEP;
         const dirX = this.environmentLayers.flowDirX || 0.894;
         const dirY = this.environmentLayers.flowDirY || 0.447;
-        sprite.x += dirX * flowSpeed * elapsed;
-        sprite.y += dirY * flowSpeed * elapsed;
+        sprite.x += dirX * baseFlowSpeed * currentSpeed * elapsed;
+        sprite.y += dirY * baseFlowSpeed * currentSpeed * elapsed;
       }
     }
   }

@@ -47,6 +47,8 @@ const useGameStore = create((set, get) => ({
   waterSurfaceOpaque: false,
   renderScaleMode: "auto", // 'auto' | 'integer'
   renderResolutionScale: 1, // Internal render resolution multiplier
+  currentSpeed: 1, // Water flow speed multiplier (1 = default)
+  choppiness: 1, // Water choppiness multiplier (1 = default)
 
   // Actions
   setGamePhase: (phase) => set({ gamePhase: phase }),
@@ -66,6 +68,16 @@ const useGameStore = create((set, get) => ({
 
   setWaterSurfaceOpaque: (isOpaque) =>
     set({ waterSurfaceOpaque: Boolean(isOpaque) }),
+
+  setCurrentSpeed: (speed) => {
+    const val = parseFloat(speed);
+    set({ currentSpeed: Number.isFinite(val) ? val : 1 });
+  },
+
+  setChoppiness: (choppiness) => {
+    const val = parseFloat(choppiness);
+    set({ choppiness: Number.isFinite(val) ? val : 1 });
+  },
 
   toggleWaterSurfaceOpaque: () =>
     set((state) => ({ waterSurfaceOpaque: !state.waterSurfaceOpaque })),
@@ -154,6 +166,8 @@ const useGameStore = create((set, get) => ({
       waterSurfaceOpaque: false,
       renderScaleMode: "auto",
       renderResolutionScale: 1,
+      currentSpeed: 1,
+      choppiness: 1,
       sessionStats: {
         castsTotal: 0,
         castsSuccessful: 0,

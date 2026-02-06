@@ -11,6 +11,8 @@ import CastingEquipmentToggle from "../ui/CastingEquipmentToggle";
 import FishingEquipmentToggle from "../ui/FishingEquipmentToggle";
 import WaterOpacityToggle from "../ui/WaterOpacityToggle";
 import RenderScaleToggle from "../ui/RenderScaleToggle";
+import CurrentSpeedInput from "../ui/CurrentSpeedInput";
+import ChoppinessInput from "../ui/ChoppinessInput";
 import "../../styles/game-layout.css";
 
 function GameLayout({ onQuit }) {
@@ -42,6 +44,8 @@ function GameLayout({ onQuit }) {
               <GiveUpButton />
               <WaterOpacityToggle />
               <RenderScaleToggle />
+              <CurrentSpeedInput />
+              <ChoppinessInput />
               <button className="quit-btn" onClick={onQuit}>
                 ← Menu
               </button>

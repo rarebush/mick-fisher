@@ -4,10 +4,10 @@
  */
 
 export const WORLD_X = {
-  MIN: -2, // Left bank
-  MAX: 2, // Right bank
+  MIN: -4, // Left bank
+  MAX: 4, // Right bank
   CENTER: 0,
-  WIDTH: 4,
+  WIDTH: 8,
 };
 
 export const WORLD_Z = {
