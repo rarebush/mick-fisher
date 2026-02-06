@@ -44,7 +44,6 @@ const useGameStore = create((set, get) => ({
   },
 
   // Visual toggles
-  waterSurfaceOpaque: false,
   renderScaleMode: "auto", // 'auto' | 'integer'
   renderResolutionScale: 1, // Internal render resolution multiplier
   currentSpeed: 1, // Water flow speed multiplier (1 = default)
@@ -66,9 +65,6 @@ const useGameStore = create((set, get) => ({
       },
     }),
 
-  setWaterSurfaceOpaque: (isOpaque) =>
-    set({ waterSurfaceOpaque: Boolean(isOpaque) }),
-
   setCurrentSpeed: (speed) => {
     const val = parseFloat(speed);
     set({ currentSpeed: Number.isFinite(val) ? val : 1 });
@@ -78,9 +74,6 @@ const useGameStore = create((set, get) => ({
     const val = parseFloat(choppiness);
     set({ choppiness: Number.isFinite(val) ? val : 1 });
   },
-
-  toggleWaterSurfaceOpaque: () =>
-    set((state) => ({ waterSurfaceOpaque: !state.waterSurfaceOpaque })),
 
   setRenderScaleMode: (mode) =>
     set({
@@ -163,7 +156,6 @@ const useGameStore = create((set, get) => ({
       currentCast: { quadrant: null, distance: 0, depth: 0, itemId: null },
       selectedCastingEquipmentId: "hand",
       fishingEquipment: getDefaultFishingEquipment(),
-      waterSurfaceOpaque: false,
       renderScaleMode: "auto",
       renderResolutionScale: 1,
       currentSpeed: 1,

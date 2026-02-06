@@ -428,8 +428,7 @@ export async function handleDragFailure(
       stopPosition.y,
       sessionStore,
       {
-        hideUnderwaterSegments:
-          gameStore?.getState()?.waterSurfaceOpaque ?? false,
+        hideUnderwaterSegments: false,
         reelClipScreenY,
         lineUnderwater,
         lineDebug,

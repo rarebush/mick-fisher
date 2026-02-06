@@ -9,7 +9,6 @@ import GameNotification from "../ui/GameNotification";
 import GiveUpButton from "../ui/GiveUpButton";
 import CastingEquipmentToggle from "../ui/CastingEquipmentToggle";
 import FishingEquipmentToggle from "../ui/FishingEquipmentToggle";
-import WaterOpacityToggle from "../ui/WaterOpacityToggle";
 import RenderScaleToggle from "../ui/RenderScaleToggle";
 import CurrentSpeedInput from "../ui/CurrentSpeedInput";
 import ChoppinessInput from "../ui/ChoppinessInput";
@@ -42,7 +41,6 @@ function GameLayout({ onQuit }) {
               <WaitIndicator />
               <TensionBar />
               <GiveUpButton />
-              <WaterOpacityToggle />
               <RenderScaleToggle />
               <CurrentSpeedInput />
               <ChoppinessInput />
