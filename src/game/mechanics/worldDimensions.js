@@ -1,8 +1,8 @@
 export const WORLD_X = {
-  MIN: -4, // Left bank
-  MAX: 4, // Right bank
+  MIN: -8, // Left bank
+  MAX: 8, // Right bank
   CENTER: 0,
-  WIDTH: 8,
+  WIDTH: 16,
 };
 
 export const WORLD_Z = {

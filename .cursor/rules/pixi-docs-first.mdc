@@ -1,0 +1,12 @@
+---
+description: Check PixiJS docs before writing Pixi code
+alwaysApply: true
+---
+
+# PixiJS Docs First
+
+- Before writing or updating PixiJS code, look up the relevant API in the local docs index:
+  - `documentation/pixi-api-links.json`
+  - `npm run pixi:lookup -- <query>`
+- Use the latest PixiJS API patterns (v8), avoid deprecated properties.
+- Prefer official docs wording for API usage and property names.

@@ -27,10 +27,10 @@
 // =============================================================================
 
 export const WORLD_X = {
-  MIN: -4, // Left bank
-  MAX: 4, // Right bank
+  MIN: -12, // Left bank
+  MAX: 12, // Right bank
   CENTER: 0,
-  WIDTH: 8,
+  WIDTH: 24,
 };
 
 export const WORLD_Z = {
@@ -92,17 +92,17 @@ export const WORLD_Y = {
 
   // Water and riverbed extend from near to far
   WATER_NEAR: 0, // Where water begins (at wall base)
-  WATER_FAR: 6, // Far edge of water
+  WATER_FAR: 18, // Far edge of water
   RIVERBED_NEAR: 0, // Where riverbed begins
-  RIVERBED_FAR: 6, // Far edge of riverbed
+  RIVERBED_FAR: 18, // Far edge of riverbed
 
   MIN: -3,
-  MAX: 6,
+  MAX: 18,
 };
 
 export const CAMERA_FOCUS = {
   x: 0,
-  y: (WORLD_Y.WALKWAY_BACK + WORLD_Y.WATER_FAR) / 2,
+  y: (WORLD_Y.WALKWAY_BACK + WORLD_Y.WATER_FAR) / 2 - 2,
   z: WORLD_Z.WATER_SURFACE,
 };
 

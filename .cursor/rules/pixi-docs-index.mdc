@@ -1,0 +1,11 @@
+---
+description: Use local PixiJS API index for docs links
+globs: src/**/*
+alwaysApply: false
+---
+
+# PixiJS API docs lookup
+
+- Prefer `documentation/pixi-api-links.json` for PixiJS API links
+- Use `npm run pixi:lookup -- <query>` to find specific API pages
+- Only browse the web if the local index lacks the needed link

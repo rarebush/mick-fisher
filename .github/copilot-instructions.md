@@ -15,6 +15,11 @@
 - When making decisions about game mechanics, always cite the relevant section from the design docs
 - If the design docs are unclear or silent on a topic, mention this explicitly
 
+## PixiJS API References
+
+- Prefer the local PixiJS API link index in `documentation/pixi-api-links.json`
+- Use the index to locate API docs quickly; only browse the web if a link is missing
+
 ### Design Doc Updates
 
 - **When deviating from design docs**: If you suggest an approach that differs from the documented design, or if we agree on a better implementation that contradicts the docs:

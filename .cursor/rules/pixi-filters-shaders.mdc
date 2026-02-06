@@ -1,0 +1,176 @@
+---
+description: How to create custom PixiJS v8 filters/shaders correctly
+globs: **/waterSystem/** , **/shaders/**
+alwaysApply: false
+---
+
+# PixiJS v8 Custom Filters & Shaders
+
+## Critical: You MUST provide a `GlProgram` for WebGL
+
+If you only provide a `gpuProgram` (or use `Filter.from` without a vertex), the filter is **silently skipped** on WebGL. The docs say: *"If you don't provide one, then the filter is skipped and just rendered as if it wasn't there for that renderer."*
+
+## Correct pattern (matches AlphaFilter source)
+
+```javascript
+import { Filter, GlProgram, UniformGroup } from "pixi.js";
+
+const glProgram = GlProgram.from({
+  vertex: defaultFilterVert, // see below
+  fragment: myFragment,
+  name: "my-filter",
+});
+
+const myUniforms = new UniformGroup({
+  uMyValue: { value: 1.0, type: "f32" },
+});
+
+const filter = new Filter({
+  glProgram,
+  resources: { myUniforms },
+});
+```
+
+## Default filter vertex shader
+
+Copy from `pixijs/src/filters/defaults/defaultFilter.vert`. The filter quad only has `aPosition` (no `aUV`, no `aTextureCoord`, no `aVertexPosition`).
+
+## Fragment shader conventions (Pixi hybrid GLSL)
+
+`GlProgram.from` auto-converts these to GLSL ES 1.00:
+
+- `in vec2 vTextureCoord;` (converted to `varying`)
+- `out vec4 finalColor;` (converted to `gl_FragColor`)
+- `texture(uTexture, ...)` (converted to `texture2D`)
+- `uniform sampler2D uTexture;` (Pixi's sampler name, NOT `uSampler`)
+- Flat uniforms (`uniform float uFoo;`), no uniform blocks
+
+## Transparent pixel masking (isometric / non-rectangular tiles)
+
+Filters process the container's **full bounding rectangle**. Transparent areas between/around diamond-shaped tiles are `rgba(0,0,0,0)` in the filter texture. If the shader only checks RGB to decide what to color, transparent-black pixels pass the check and fill the entire rectangle.
+
+**Fix:** Always add an alpha early-out at the top of the fragment shader:
+
+```glsl
+if (tex.a < 0.01) {
+  finalColor = vec4(0.0);
+  return;
+}
+```
+
+**Premultiplied alpha:** PixiJS uses premultiplied alpha internally. Output `vec4(color * alpha, alpha)`, not `vec4(color, alpha)`.
+
+**Padding:** Set `padding: 0` on the Filter to avoid processing extra area beyond the container bounds.
+
+## Filter scope: apply to parent container for shared effects
+
+When multiple child containers (e.g. area tiles + edge tiles) need the same filter, apply it to the **parent container** instead of each child. The filter renders all children into one temporary texture and processes it once.
+
+## Recovering screen position in the fragment shader
+
+Filters run in texture space. To get absolute screen coordinates for world-aware effects (e.g. isometric depth gradients), pass the position as a **varying from the vertex shader**:
+
+```glsl
+// VERTEX — add vScreenPos alongside the standard vTextureCoord
+out vec2 vScreenPos;
+// in main():
+vScreenPos = aPosition * uOutputFrame.zw + uOutputFrame.xy;
+
+// FRAGMENT — just declare the varying, no need for uInputSize/uOutputFrame
+in vec2 vScreenPos;
+```
+
+**DO NOT** re-declare `uInputSize` / `uOutputFrame` in the fragment shader. PixiJS's GLSL ES 1.00 conversion gives the vertex shader `highp` and the fragment shader `mediump` default precision, causing a fatal "precisions differ" error.
+
+**Isometric depth gradient:** Do NOT use a scalar projection (dot product onto a near→far vector). Isometric depth contours (constant world-Y lines) are not perpendicular to the near→far center-line in screen space — the grid is a parallelogram, not a rectangle. A scalar projection skews the gradient toward the horizontal.
+
+Instead, precompute linear coefficients `A, B, C` from three projected reference points so `depth = A*screenX + B*screenY + C` follows the true isometric Y axis:
+
+```javascript
+// JS — solve from 3 points: p0 & p2 at depth=0, p1 at depth=1
+const dx1 = p2.x - p0.x, dy1 = p2.y - p0.y; // along near edge (depth=0)
+const dx2 = p1.x - p0.x, dy2 = p1.y - p0.y; // near → far (depth 0→1)
+const det = dx1 * dy2 - dx2 * dy1;
+const A = -dy1 / det, B = dx1 / det, C = -(A*p0.x + B*p0.y);
+```
+
+```glsl
+// GLSL — single dot product, exact for all screen positions
+float depth = uDepthCoeffs.x * vScreenPos.x
+            + uDepthCoeffs.y * vScreenPos.y
+            + uDepthCoeffs.z;
+depth = clamp(depth, 0.0, 1.0);
+```
+
+## Animating filters with uTime
+
+To animate a filter, add a `uTime` uniform to the UniformGroup and increment it from a PixiJS ticker:
+
+```javascript
+// In the ticker callback:
+filter.resources.myUniforms.uniforms.uTime += app.ticker.deltaMS / 1000;
+```
+
+Do NOT use `filter.uniforms.uTime` (v7 API, undefined in v8).
+
+## Reusing depth coefficients across Z-planes
+
+Extract a `computeDepthCoeffs(z, viewport)` helper for the 3-point solve. Different Z-planes (riverbed at Z=0, water surface at Z=1) produce different screen projections but use the same solve pattern. Pass the resulting `[A, B, C]` as a `vec3<f32>` uniform to each filter.
+
+## DisplacementFilter for animated water flow
+
+PixiJS v8 provides a built-in `DisplacementFilter` that warps pixels based on a displacement map sprite. Useful for water ripple/flow effects applied to an entire layer group.
+
+### Setup pattern
+
+```javascript
+import { DisplacementFilter } from "pixi.js";
+
+// 1. Generate a procedural noise texture (grey ±40 around 128)
+const canvas = document.createElement("canvas");
+// ... fill with noise ...
+const texture = PIXI.Texture.from(canvas);
+texture.source.scaleMode = "nearest";
+texture.source.style.addressMode = "repeat"; // tile seamlessly
+
+// 2. Create sprite covering the water area
+const displacementSprite = new PIXI.Sprite(texture);
+displacementSprite.width = width;
+displacementSprite.height = height;
+
+// 3. Apply filter to a parent container wrapping all water layers
+const waterGroup = new PIXI.Container();
+waterGroup.addChild(riverbedTiles, waterSurfaceTiles, displacementSprite);
+waterGroup.filters = [new DisplacementFilter({ sprite: displacementSprite, scale: 4 })];
+```
+
+### Animating flow direction
+
+Scroll the displacement sprite position each frame along the desired flow direction. For isometric world-X flow, normalise `(screenXPerWorldUnit, screenYPerWorldUnit)` from projection metrics and multiply by speed.
+
+```javascript
+// In ticker:
+sprite.x += flowDirX * flowSpeed * dt;
+sprite.y += flowDirY * flowSpeed * dt;
+```
+
+### Key points
+
+- **REPEAT wrap mode** is essential; without it the noise texture doesn't tile and the displacement stops at edges.
+- **NEAREST scale mode** preserves pixel art crispness.
+- **scale: 4** is subtle; values above ~10 look like jelly. Tune per project.
+- The displacement sprite must be a child of the container it displaces.
+- Existing per-layer filters (caustics, water surface tint) are unaffected — the displacement is applied on top via the parent container.
+
+## Common mistakes
+
+- Using `Filter.from({ fragment })` alone: no `glProgram` created for WebGL
+- Using `uSampler` instead of `uTexture`
+- Using `aUV` / `aVertexPosition` / `aTextureCoord`: filter quad only has `aPosition`
+- Using GLSL uniform blocks: not supported in ES 1.00 conversion
+- Passing `new Filter(null, frag, uniforms)`: v7 API, does nothing in v8
+- Setting `filter.uniforms.x`: undefined in v8, use `filter.resources.group.uniforms.x`
+- Passing `new AlphaFilter(0.25)`: v8 takes options object `{ alpha: 0.25 }`
+- Forgetting alpha early-out: transparent pixels between iso tiles get colored, filling the filter rectangle
+- Outputting straight alpha (`vec4(color, alpha)`) instead of premultiplied (`vec4(color * alpha, alpha)`): causes blending artifacts
+- Re-declaring `uInputSize`/`uOutputFrame` in the fragment shader: precision mismatch kills the shader. Pass screen position as a varying from the vertex shader instead

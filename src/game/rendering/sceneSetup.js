@@ -8,10 +8,10 @@
  */
 
 import * as PIXI from "pixi.js";
-import {
-  loadSpriteSheet,
-  createTiledBackground,
-} from "../graphics/spriteLoader.js";
+import { DisplacementFilter } from "pixi.js";
+import { loadSpriteSheet } from "../graphics/spriteLoader.js";
+import { createWaterSurfaceShader } from "../graphics/waterSystem/waterSurfaceShader.js";
+import { createCausticsShader } from "../graphics/waterSystem/causticsShader.js";
 import {
   WORLD_X,
   WORLD_Z,
@@ -19,8 +19,54 @@ import {
   createViewport,
   getProjectionMetrics,
   projectToScreen,
-  screenToWorld,
 } from "../mechanics/worldConstants.js";
+
+/**
+ * Compute linear depth coefficients for a given Z-plane.
+ * Returns [A, B, C] where depth = A*screenX + B*screenY + C maps
+ * screen coordinates to normalised world-Y (0 = WATER_NEAR, 1 = WATER_FAR).
+ * Uses a 3-point solve so the gradient follows the true isometric Y axis.
+ */
+function computeDepthCoeffs(z, viewport) {
+  const p0 = projectToScreen(0, WORLD_Y.WATER_NEAR, z, viewport);
+  const p1 = projectToScreen(0, WORLD_Y.WATER_FAR, z, viewport);
+  const p2 = projectToScreen(WORLD_X.MAX, WORLD_Y.WATER_NEAR, z, viewport);
+
+  const dx1 = p2.x - p0.x;
+  const dy1 = p2.y - p0.y;
+  const dx2 = p1.x - p0.x;
+  const dy2 = p1.y - p0.y;
+  const det = dx1 * dy2 - dx2 * dy1;
+  const A = -dy1 / det;
+  const B = dx1 / det;
+  const C = -(A * p0.x + B * p0.y);
+  return [A, B, C];
+}
+
+/**
+ * Generate a small tileable noise texture for displacement.
+ * Grey values centre around 128 (no displacement); variation drives the ripple.
+ */
+function generateNoiseTexture(size = 128) {
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  const imageData = ctx.createImageData(size, size);
+  const data = imageData.data;
+  for (let i = 0; i < data.length; i += 4) {
+    const val = 128 + Math.floor((Math.random() - 0.5) * 80);
+    data[i] = val; // R
+    data[i + 1] = val; // G
+    data[i + 2] = val; // B
+    data[i + 3] = 255; // A
+  }
+  ctx.putImageData(imageData, 0, 0);
+  const texture = PIXI.Texture.from(canvas);
+  texture.source.scaleMode = "nearest";
+  texture.source.style.addressMode = "repeat";
+  return texture;
+}
 
 function drawWireframeBox(graphics, bounds, viewport, color) {
   const corners = [
@@ -91,7 +137,7 @@ export async function setupEnvironmentLayers(container, width, height) {
       zMax: WORLD_Z.WATER_SURFACE,
     },
     viewport,
-    0x00c2ff,
+    0x00c2ff
   );
   container.addChild(waterVolume);
 
@@ -101,35 +147,35 @@ export async function setupEnvironmentLayers(container, width, height) {
       WORLD_X.MIN,
       WORLD_Y.WATER_NEAR,
       WORLD_Z.WATER_SURFACE,
-      viewport,
+      viewport
     ),
     projectToScreen(
       WORLD_X.MAX,
       WORLD_Y.WATER_NEAR,
       WORLD_Z.WATER_SURFACE,
-      viewport,
+      viewport
     ),
     projectToScreen(
       WORLD_X.MAX,
       WORLD_Y.WATER_FAR,
       WORLD_Z.WATER_SURFACE,
-      viewport,
+      viewport
     ),
     projectToScreen(
       WORLD_X.MIN,
       WORLD_Y.WATER_FAR,
       WORLD_Z.WATER_SURFACE,
-      viewport,
+      viewport
     ),
   ];
   waterSurfaceWireframe.moveTo(
     waterSurfaceCorners[0].x,
-    waterSurfaceCorners[0].y,
+    waterSurfaceCorners[0].y
   );
   for (let i = 1; i < waterSurfaceCorners.length; i += 1) {
     waterSurfaceWireframe.lineTo(
       waterSurfaceCorners[i].x,
-      waterSurfaceCorners[i].y,
+      waterSurfaceCorners[i].y
     );
   }
   waterSurfaceWireframe.closePath();
@@ -137,18 +183,21 @@ export async function setupEnvironmentLayers(container, width, height) {
 
   // Riverbed tiles (draw first, behind water)
   const riverbedTiles = new PIXI.Container();
-  let riverbedTexture = null;
+  let riverbedSpritesheet = null;
   try {
-    riverbedTexture = await PIXI.Assets.load("/sprites/isoriverbedtest.png");
-  } catch (error) {
-    console.warn(
-      "[RIVERBED] Failed to load /sprites/isoriverbedtest.png",
-      error,
+    riverbedSpritesheet = await loadSpriteSheet(
+      "/sprites/riverbed.png",
+      "/sprites/riverbed.json"
     );
+  } catch (error) {
+    console.warn("[RIVERBED] Failed to load /sprites/riverbed.json", error);
   }
 
-  if (riverbedTexture?.baseTexture) {
-    riverbedTexture.baseTexture.scaleMode = PIXI.SCALE_MODES.NEAREST;
+  // frame0 = empty, frame1 = the riverbed tile
+  const riverbedTexture = riverbedSpritesheet?.textures?.frame1 ?? null;
+
+  if (riverbedTexture?.source) {
+    riverbedTexture.source.scaleMode = PIXI.SCALE_MODES.NEAREST;
 
     const tileWidthPx = projectionMetrics.screenXPerWorldUnit * 2;
     const tileHeightPx = projectionMetrics.screenYPerWorldUnit * 2;
@@ -167,7 +216,7 @@ export async function setupEnvironmentLayers(container, width, height) {
           x + 0.5,
           y + 0.5,
           WORLD_Z.RIVERBED,
-          viewport,
+          viewport
         );
         const tile = new PIXI.Sprite(riverbedTexture);
         tile.anchor.set(0.5, 0.5);
@@ -178,24 +227,68 @@ export async function setupEnvironmentLayers(container, width, height) {
       }
     }
   }
-  container.addChild(riverbedTiles);
+
+  // Apply caustics filter to riverbed tiles (visible through semi-transparent water above)
+  const riverbedDepthCoeffs = computeDepthCoeffs(WORLD_Z.RIVERBED, viewport);
+  const causticsFilter = createCausticsShader({
+    depthCoeffs: riverbedDepthCoeffs,
+    causticsScale: 4.0,
+    causticsSpeed: 0.4,
+    causticsIntensity: 0.15,
+    causticsColor: [1.0, 0.95, 0.8],
+  });
+  riverbedTiles.filters = [causticsFilter];
 
   // Water surface tiles (draw second, on top of riverbed)
   const waterSurfaceTiles = new PIXI.Container();
-  let waterTexture = null;
+  const waterSurfaceAreaTiles = new PIXI.Container();
+  const waterSurfaceEdgeTiles = new PIXI.Container();
+  waterSurfaceTiles.addChild(waterSurfaceAreaTiles, waterSurfaceEdgeTiles);
+
+  let waterSpritesheet = null;
   try {
-    waterTexture = await PIXI.Assets.load("/sprites/isowatertest.png");
+    waterSpritesheet = await loadSpriteSheet(
+      "/sprites/water.png",
+      "/sprites/water.json"
+    );
   } catch (error) {
-    console.warn("[WATER] Failed to load /sprites/isowatertest.png", error);
+    console.warn("[WATER] Failed to load /sprites/water.json", error);
   }
 
-  if (waterTexture?.baseTexture) {
-    waterTexture.baseTexture.scaleMode = PIXI.SCALE_MODES.NEAREST;
+  const waterAreaTexture = waterSpritesheet?.textures?.frame1 ?? null;
+  const waterEdgeTexture = waterSpritesheet?.textures?.frame2 ?? null;
+
+  let waterSurfaceShader = null;
+
+  if (waterAreaTexture?.source) {
+    waterAreaTexture.source.scaleMode = PIXI.SCALE_MODES.NEAREST;
+    if (waterEdgeTexture?.source) {
+      waterEdgeTexture.source.scaleMode = PIXI.SCALE_MODES.NEAREST;
+    }
 
     const tileWidthPx = projectionMetrics.screenXPerWorldUnit * 2;
     const tileHeightPx = projectionMetrics.screenYPerWorldUnit * 2;
-    const tileScaleX = tileWidthPx / waterTexture.width;
-    const tileScaleY = tileHeightPx / waterTexture.height;
+    const tileScaleX = tileWidthPx / waterAreaTexture.width;
+    const tileScaleY = tileHeightPx / waterAreaTexture.height;
+
+    const waterSurfaceDepthCoeffs = computeDepthCoeffs(
+      WORLD_Z.WATER_SURFACE,
+      viewport
+    );
+
+    waterSurfaceShader = createWaterSurfaceShader({
+      waterColor: [0.17, 0.45, 0.63],
+      waterAlpha: 0.7,
+      maskThreshold: 0.9,
+      depthCoeffs: waterSurfaceDepthCoeffs,
+      depthDarken: 0.4,
+      noiseScale: 0.015,
+      noiseStrength: 0.15,
+      depthBands: 6,
+    });
+    // Apply to parent so both area and edge tiles get the water tint.
+    // Black pixels → water color, white pixels (wall seam) → passthrough.
+    waterSurfaceTiles.filters = [waterSurfaceShader];
 
     // Tile only over the defined water surface area
     const startX = Math.floor(WORLD_X.MIN);
@@ -204,24 +297,47 @@ export async function setupEnvironmentLayers(container, width, height) {
     const endY = Math.ceil(WORLD_Y.WATER_FAR);
 
     for (let y = startY; y < endY; y += 1) {
+      const useEdgeTile = y === startY && waterEdgeTexture?.source;
+      const tileTexture = useEdgeTile ? waterEdgeTexture : waterAreaTexture;
+      const targetContainer = useEdgeTile
+        ? waterSurfaceEdgeTiles
+        : waterSurfaceAreaTiles;
+
       for (let x = startX; x < endX; x += 1) {
         const screen = projectToScreen(
           x + 0.5,
           y + 0.5,
           WORLD_Z.WATER_SURFACE,
-          viewport,
+          viewport
         );
-        const tile = new PIXI.Sprite(waterTexture);
+        const tile = new PIXI.Sprite(tileTexture);
         tile.anchor.set(0.5, 0.5);
         tile.scale.set(tileScaleX, tileScaleY);
-        tile.alpha = 0.5;
         tile.x = screen.x;
         tile.y = screen.y;
-        waterSurfaceTiles.addChild(tile);
+        targetContainer.addChild(tile);
       }
     }
   }
-  container.addChild(waterSurfaceTiles);
+  // Wrap riverbed + water surface in a shared waterGroup container.
+  // The DisplacementFilter on this group makes both layers ripple together.
+  const waterGroup = new PIXI.Container();
+  waterGroup.addChild(riverbedTiles, waterSurfaceTiles);
+
+  // Procedural noise displacement for water flow
+  const noiseTexture = generateNoiseTexture(128);
+  const displacementSprite = new PIXI.Sprite(noiseTexture);
+  displacementSprite.width = width;
+  displacementSprite.height = height;
+  waterGroup.addChild(displacementSprite);
+
+  const displacementFilter = new DisplacementFilter({
+    sprite: displacementSprite,
+    scale: 4,
+  });
+  waterGroup.filters = [displacementFilter];
+
+  container.addChild(waterGroup);
   // container.addChild(waterSurfaceWireframe);
 
   const walkwayVolume = new PIXI.Graphics();
@@ -236,19 +352,33 @@ export async function setupEnvironmentLayers(container, width, height) {
       zMax: WORLD_Z.WALKWAY,
     },
     viewport,
-    0xff00ff,
+    0xff00ff
   );
   container.addChild(walkwayVolume);
 
   console.log(
-    `[ENVIRONMENT] Wireframe volumes: water (Z=${WORLD_Z.RIVERBED}-${WORLD_Z.WATER_SURFACE}), walkway (Z=${WORLD_Z.RIVERBED}-${WORLD_Z.WALKWAY})`,
+    `[ENVIRONMENT] Wireframe volumes: water (Z=${WORLD_Z.RIVERBED}-${WORLD_Z.WATER_SURFACE}), walkway (Z=${WORLD_Z.RIVERBED}-${WORLD_Z.WALKWAY})`
   );
+
+  // Compute the isometric X-axis direction in screen space for flow animation.
+  // World -X → +X maps to top-left → bottom-right on screen.
+  const isoXLen = Math.sqrt(
+    projectionMetrics.screenXPerWorldUnit ** 2 +
+      projectionMetrics.screenYPerWorldUnit ** 2
+  );
+  const flowDirX = projectionMetrics.screenXPerWorldUnit / isoXLen;
+  const flowDirY = projectionMetrics.screenYPerWorldUnit / isoXLen;
 
   return {
     waterVolume,
     waterSurfaceTiles,
     walkwayVolume,
     viewport,
+    causticsFilter,
+    waterSurfaceShader,
+    displacementSprite,
+    flowDirX,
+    flowDirY,
   };
 }
 
@@ -296,7 +426,7 @@ export function drawQuadrantGrid(app) {
   app.stage.addChild(grid);
 
   console.log(
-    `[QUADRANTS] Grid: worldX ${xMin}-${xMax}, worldY ${yMin}-${yMax}, Z=${z}`,
+    `[QUADRANTS] Grid: worldX ${xMin}-${xMax}, worldY ${yMin}-${yMax}, Z=${z}`
   );
 }
 

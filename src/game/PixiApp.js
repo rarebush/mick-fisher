@@ -110,11 +110,24 @@ export class PixiApp {
         width: this.width,
         height: this.height,
         backgroundColor: 0x4a7c9e,
+        preference: "webgl",
+        hello: true,
         antialias: false, // Disable antialiasing for pixel art
         resolution: initialRenderResolutionScale,
         autoDensity: false,
         roundPixels: true, // Round coordinates to whole pixels
       });
+
+      console.log(
+        "[RENDERER] Type:",
+        this.app.renderer?.constructor?.name,
+        this.app.renderer?.type
+      );
+      console.log("[RENDERER] Filter system:", this.app.renderer?.filter);
+      console.log(
+        "[RENDERER] Systems keys:",
+        Object.keys(this.app.renderer?.systems ?? {})
+      );
 
       if (this.isDestroyed) {
         console.log("PixiApp was destroyed during init");
@@ -157,6 +170,7 @@ export class PixiApp {
     this.app.ticker.add(this.tickerUpdateDragMechanics, this);
     this.app.ticker.add(this.tickerUpdateRope, this);
     this.app.ticker.add(this.tickerUpdateCastAim, this);
+    this.app.ticker.add(this.tickerUpdateCaustics, this);
 
     // Create scene container to offset for 3D perspective
     // This prevents negative Y coordinates from rendering off-screen
@@ -189,18 +203,12 @@ export class PixiApp {
     // Initialize managers
     this.spriteManager = new SpriteManager(this.app, this.spriteLayers);
 
-    const initialWaterOpaque =
-      this.gameStore?.getState()?.waterSurfaceOpaque ?? false;
-    this.applyWaterSurfaceOpacity(initialWaterOpaque);
     const initialRenderResolutionScale =
       this.gameStore?.getState()?.renderResolutionScale ?? 1;
     this.setRenderResolutionScale(initialRenderResolutionScale);
     if (this.gameStore && !this.gameStoreUnsubscribe) {
       this.gameStoreUnsubscribe = this.gameStore.subscribe(
         (state, prevState) => {
-          if (state.waterSurfaceOpaque !== prevState.waterSurfaceOpaque) {
-            this.applyWaterSurfaceOpacity(state.waterSurfaceOpaque);
-          }
           if (state.renderResolutionScale !== prevState.renderResolutionScale) {
             this.setRenderResolutionScale(state.renderResolutionScale);
           }
@@ -256,11 +264,6 @@ export class PixiApp {
 
     // Setup event listeners
     this.inputManager.setupInteraction();
-  }
-
-  applyWaterSurfaceOpacity(isOpaque) {
-    if (!this.app || !this.environmentLayers?.waterVolume) return;
-    this.environmentLayers.waterVolume.alpha = isOpaque ? 1.0 : 0.6;
   }
 
   setRenderResolutionScale(scale) {
@@ -474,6 +477,43 @@ export class PixiApp {
       gameStore: this.gameStore,
       sessionStore: this.sessionStore,
     });
+  }
+
+  // Ticker method for caustics + displacement animation
+  tickerUpdateCaustics() {
+    if (!this.app || this.isDestroyed || !this.environmentLayers) return;
+
+    const dt = this.app.ticker.deltaMS / 1000;
+
+    // Animate caustics uTime
+    const causticsFilter = this.environmentLayers.causticsFilter;
+    if (causticsFilter) {
+      causticsFilter.resources.causticsUniforms.uniforms.uTime += dt;
+    }
+
+    // Animate water surface sparkles uTime
+    const waterSurfaceShader = this.environmentLayers.waterSurfaceShader;
+    if (waterSurfaceShader) {
+      waterSurfaceShader.resources.waterUniforms.uniforms.uTime += dt;
+    }
+
+    // Scroll displacement sprite along isometric X axis for water flow.
+    // Quantized to 24 FPS to match the pixel art animation cadence.
+    const sprite = this.environmentLayers.displacementSprite;
+    if (sprite) {
+      const flowSpeed = 20; // pixels per second
+      const FPS_STEP = 1 / 24;
+      this._displacementTime = (this._displacementTime || 0) + dt;
+      if (this._displacementTime >= FPS_STEP) {
+        const steps = Math.floor(this._displacementTime / FPS_STEP);
+        this._displacementTime -= steps * FPS_STEP;
+        const elapsed = steps * FPS_STEP;
+        const dirX = this.environmentLayers.flowDirX || 0.894;
+        const dirY = this.environmentLayers.flowDirY || 0.447;
+        sprite.x += dirX * flowSpeed * elapsed;
+        sprite.y += dirY * flowSpeed * elapsed;
+      }
+    }
   }
 
   resize(width, height) {
