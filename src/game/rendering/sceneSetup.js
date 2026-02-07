@@ -386,7 +386,7 @@ export async function setupEnvironmentLayers(container, width, height) {
       flowDir: [flowDirX, flowDirY],
       noiseBasisX,
       noiseBasisY,
-      sparkleClipDebug: 1,
+      sparkleClipDebug: 0,
     });
     // Apply to parent so both area and edge tiles get the water tint.
     // Black pixels → water color, white pixels (wall seam) → passthrough.
