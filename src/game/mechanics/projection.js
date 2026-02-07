@@ -1,20 +1,28 @@
 import { WORLD_Y, WORLD_Z } from "./worldDimensions.js";
 import { normalize } from "../physics/vectorUtils.js";
 
-const ISO_ANGLE_RAD = Math.atan(0.5); // 26.565° for 2:1 pixel ratio
-const ISO_SIN = Math.sin(ISO_ANGLE_RAD); // ~0.4472
-const ISO_COS = Math.cos(ISO_ANGLE_RAD); // ~0.8944
-const TARGET_TILE_PIXEL_WIDTH = 64; // Standard pixel art isometric width
-const TARGET_TILE_PIXEL_HEIGHT = 32; // Standard pixel art isometric height
+const ISO_RATIO = 3; // 2 = classic 2:1, 3 = 3:1, etc.
+const TILE_PIXEL_MULTIPLIER = 10; // half tile height in pixels
+
+const ISO_ANGLE_RAD = Math.atan(1 / ISO_RATIO); // 18.435° for 3:1 pixel ratio
+const ISO_SIN = Math.sin(ISO_ANGLE_RAD); // ~0.3162
+const ISO_COS = Math.cos(ISO_ANGLE_RAD); // ~0.9487
+export const TARGET_TILE_PIXEL_WIDTH = 2 * ISO_RATIO * TILE_PIXEL_MULTIPLIER;
+export const TARGET_TILE_PIXEL_HEIGHT = 2 * TILE_PIXEL_MULTIPLIER;
 const TARGET_PPU_FROM_WIDTH = TARGET_TILE_PIXEL_WIDTH / (2 * ISO_COS);
 const TARGET_PPU_FROM_HEIGHT = TARGET_TILE_PIXEL_HEIGHT / (2 * ISO_SIN);
 export const TARGET_PPU = Math.round(
-  (TARGET_PPU_FROM_WIDTH + TARGET_PPU_FROM_HEIGHT) / 2
-); // ≈36 pixels per world unit
+  (TARGET_PPU_FROM_WIDTH + TARGET_PPU_FROM_HEIGHT) / 2,
+); // ≈32 pixels per world unit
 const WORLD_UNITS_PER_METER =
   (TARGET_TILE_PIXEL_WIDTH / (2 * ISO_COS * TARGET_PPU) +
     TARGET_TILE_PIXEL_HEIGHT / (2 * ISO_SIN * TARGET_PPU)) /
-  2; // ≈0.9938 (scaling factor for projection)
+  2; // ≈0.9882 (scaling factor for projection)
+
+export const TILE_WORLD_UNITS_X =
+  TARGET_TILE_PIXEL_WIDTH / (ISO_COS * TARGET_PPU * WORLD_UNITS_PER_METER);
+export const TILE_WORLD_UNITS_Y =
+  TARGET_TILE_PIXEL_HEIGHT / (ISO_SIN * TARGET_PPU * WORLD_UNITS_PER_METER);
 
 /**
  * Project a 3D world position into isometric space (world units, no pixels)
@@ -48,6 +56,19 @@ export function getProjectionMetrics(viewport) {
     screenXPerWorldUnit: ISO_COS * WORLD_UNITS_PER_METER * pixelsPerUnit,
     screenYPerWorldUnit: ISO_SIN * WORLD_UNITS_PER_METER * pixelsPerUnit,
     screenYPerWorldZUnit: WORLD_UNITS_PER_METER * pixelsPerUnit,
+  };
+}
+
+/**
+ * Get the screen-space size of a single ground tile at the current viewport scale.
+ * @param {Object} viewport
+ * @returns {{width:number,height:number}}
+ */
+export function getTileScreenSizePx(viewport) {
+  const metrics = getProjectionMetrics(viewport);
+  return {
+    width: metrics.screenXPerWorldUnit * TILE_WORLD_UNITS_X,
+    height: metrics.screenYPerWorldUnit * TILE_WORLD_UNITS_Y,
   };
 }
 
@@ -150,7 +171,7 @@ export function getWorldDirectionScreenAngle(
   fromWorld,
   toWorld,
   planeZ,
-  viewport
+  viewport,
 ) {
   const deltaX = toWorld.x - fromWorld.x;
   const deltaY = toWorld.y - fromWorld.y;
@@ -159,7 +180,7 @@ export function getWorldDirectionScreenAngle(
 
   const screenOrigin = worldToScreen(
     { x: toWorld.x, y: toWorld.y, z: planeZ },
-    viewport
+    viewport,
   );
   const screenAhead = worldToScreen(
     {
@@ -167,11 +188,11 @@ export function getWorldDirectionScreenAngle(
       y: toWorld.y + direction.y,
       z: planeZ,
     },
-    viewport
+    viewport,
   );
   return Math.atan2(
     screenAhead.y - screenOrigin.y,
-    screenAhead.x - screenOrigin.x
+    screenAhead.x - screenOrigin.x,
   );
 }
 

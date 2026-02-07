@@ -17,6 +17,7 @@ import {
   setupEnvironmentLayers,
   drawWorldBoundsWireframe,
 } from "./rendering/sceneSetup.js";
+import { getProjectionMetrics } from "./mechanics/worldConstants.js";
 import { SpriteManager } from "./rendering/spriteManager.js";
 import { clamp } from "./physics/vectorUtils.js";
 import { InputManager } from "./input/inputManager.js";
@@ -578,8 +579,17 @@ export class PixiApp {
         const steps = Math.floor(this._displacementTime / FPS_STEP);
         this._displacementTime -= steps * FPS_STEP;
         const elapsed = steps * FPS_STEP;
-        const dirX = this.environmentLayers.flowDirX || 0.894;
-        const dirY = this.environmentLayers.flowDirY || 0.447;
+        let dirX = this.environmentLayers.flowDirX;
+        let dirY = this.environmentLayers.flowDirY;
+        if (!Number.isFinite(dirX) || !Number.isFinite(dirY)) {
+          const metrics = getProjectionMetrics(this.environmentLayers.viewport);
+          const isoXLen = Math.hypot(
+            metrics.screenXPerWorldUnit,
+            metrics.screenYPerWorldUnit,
+          );
+          dirX = metrics.screenXPerWorldUnit / isoXLen;
+          dirY = metrics.screenYPerWorldUnit / isoXLen;
+        }
         sprite.x += dirX * baseFlowSpeed * currentSpeed * elapsed;
         sprite.y += dirY * baseFlowSpeed * currentSpeed * elapsed;
       }

@@ -40,20 +40,27 @@ out vec4 finalColor;
 uniform sampler2D uTexture;
 
 // Custom uniforms (bound via resources.waterUniforms)
-uniform vec3 uWaterColor;
+uniform vec3 uWaterColorNear;
+uniform vec3 uWaterColorFar;
 uniform float uWaterAlpha;
 uniform float uMaskThreshold;
 uniform vec3 uDepthCoeffs;
-uniform float uDepthDarken;
 uniform float uNoiseScale;
 uniform float uNoiseStrength;
 uniform float uDepthBands;
+uniform vec3 uSkyColor;
+uniform float uReflectionStrength;
+uniform float uFresnelPower;
 uniform float uSparkleScale;
 uniform float uSparkleSpeed;
 uniform float uSparkleThreshold;
 uniform float uSparkleIntensity;
+uniform float uSparkleClipDebug;
 uniform float uFlowPhase;
 uniform float uChoppiness;
+uniform vec2 uFlowDir;
+uniform vec2 uNoiseBasisX;
+uniform vec2 uNoiseBasisY;
 
 // --- 2D gradient noise (Perlin-style) ---
 
@@ -115,15 +122,19 @@ void main() {
     depthWithNoise = floor(depthWithNoise * uDepthBands) / uDepthBands;
   }
 
-  // Darken the water colour based on depth (deeper = darker)
-  float darken = mix(1.0, uDepthDarken, depthWithNoise);
-  vec3 depthColor = uWaterColor * darken;
+  // Blend between near and far water colours based on depth
+  vec3 depthColor = mix(uWaterColorNear, uWaterColorFar, depthWithNoise);
 
   // Deeper water is slightly more opaque (harder to see riverbed)
   float depthAlpha = mix(uWaterAlpha, min(uWaterAlpha + 0.25, 1.0), depthWithNoise);
 
   vec3 color = mix(tex.rgb, depthColor, mask);
   float alpha = mix(tex.a, depthAlpha, mask);
+
+  // Sky reflection increases toward the far edge (grazing angle in iso view)
+  float fresnel = pow(depth, uFresnelPower);
+  float reflection = fresnel * uReflectionStrength;
+  color = mix(color, uSkyColor, reflection * mask);
 
   // --- Sparkles: dual scrolling noise subtracted for chaotic glints ---
   // Two Perlin noise layers scroll downstream (isometric X axis) at
@@ -133,8 +144,15 @@ void main() {
   // uFlowPhase is accumulated downstream distance (pre-quantized to 24 FPS
   // in JS). Using it instead of time*speed avoids discontinuities when
   // currentSpeed transitions smoothly.
-  vec2 scrollDir = vec2(0.894, 0.447);   // isometric X direction
-  vec2 sp = vScreenPos * uSparkleScale;
+  vec2 sparkleBasis = vec2(
+    dot(vScreenPos, uNoiseBasisX),
+    dot(vScreenPos, uNoiseBasisY)
+  );
+  vec2 scrollDir = vec2(
+    dot(uFlowDir, uNoiseBasisX),
+    dot(uFlowDir, uNoiseBasisY)
+  );
+  vec2 sp = sparkleBasis * uSparkleScale;
 
   float n1 = gradientNoise(sp - scrollDir * uFlowPhase * uSparkleSpeed);
   float n2 = gradientNoise(sp * 1.3 - scrollDir * uFlowPhase * uSparkleSpeed * 0.55 + 50.0);
@@ -146,6 +164,12 @@ void main() {
   // Clip with a dense high-frequency noise to break blobs into smaller fragments
   float clipNoise = gradientNoise(sp * 2.0);
   sparkle *= step(0.0, clipNoise);
+
+  if (uSparkleClipDebug > 0.5) {
+    float debugValue = clipNoise * 0.5 + 0.5;
+    finalColor = vec4(vec3(debugValue), 1.0);
+    return;
+  }
 
   // Where sparkles are active, force pure white at full opacity
   // so they punch through the semi-transparent water surface.
@@ -161,20 +185,38 @@ void main() {
  * Create the water surface filter.
  *
  * @param {Object} options
- * @param {number[]} options.waterColor     - RGB [0-1] base water colour  (default [0.17, 0.45, 0.63])
+ * @param {number[]} options.waterColorNear - RGB [0-1] near water colour (default [0.17, 0.45, 0.63])
+ * @param {number[]} options.waterColorFar  - RGB [0-1] far water colour (default derived from depthDarken)
+ * @param {number[]} options.waterColor     - legacy base water colour (near, default [0.17, 0.45, 0.63])
  * @param {number}   options.waterAlpha     - base opacity                 (default 0.7)
  * @param {number}   options.maskThreshold  - brightness cutoff for mask   (default 0.9)
  * @param {number[]} options.depthCoeffs    - [A,B,C] where depth = A*sx + B*sy + C (required)
- * @param {number}   options.depthDarken    - brightness at max depth 0-1  (default 0.4)
+ * @param {number}   options.depthDarken    - used only if waterColorFar not provided (default 0.4)
  * @param {number}   options.noiseScale     - noise frequency              (default 0.015)
  * @param {number}   options.noiseStrength  - noise amplitude              (default 0.15)
  * @param {number}   options.depthBands     - quantize depth into N steps  (default 0 = smooth)
+ * @param {number[]} options.skyColor       - RGB sky reflection color     (default [0.5, 0.7, 0.9])
+ * @param {number}   options.reflectionStrength - reflection amount 0-1    (default 0.35)
+ * @param {number}   options.fresnelPower   - reflection falloff exponent  (default 1.6)
  * @param {number}   options.sparkleScale   - sparkle noise frequency     (default 0.03)
  * @param {number}   options.sparkleSpeed   - sparkle scroll speed        (default 1.0)
  * @param {number}   options.sparkleThreshold - rarity threshold 0-2      (default 1.4)
  * @param {number}   options.sparkleIntensity - sparkle brightness 0-1    (default 0.4)
+ * @param {number}   options.sparkleClipDebug - show clip noise 0/1       (default 0)
+ * @param {number[]} options.flowDir          - normalized screen-space flow direction [x,y]
+ * @param {number[]} options.noiseBasisX      - screen-space iso X basis [x,y] (default [1,0])
+ * @param {number[]} options.noiseBasisY      - screen-space iso Y basis [x,y] (default [0,1])
  */
 export function createWaterSurfaceShader(options = {}) {
+  const depthDarken = Number.isFinite(options.depthDarken)
+    ? options.depthDarken
+    : 0.4;
+  const waterColorNear = options.waterColorNear ||
+    options.waterColor || [0.17, 0.45, 0.63];
+  const waterColorFar =
+    options.waterColorFar ||
+    waterColorNear.map((channel) => channel * depthDarken);
+
   const glProgram = GlProgram.from({
     vertex: defaultFilterVert,
     fragment: waterSurfaceFragment,
@@ -182,8 +224,12 @@ export function createWaterSurfaceShader(options = {}) {
   });
 
   const waterUniforms = new UniformGroup({
-    uWaterColor: {
-      value: options.waterColor || [0.17, 0.45, 0.63],
+    uWaterColorNear: {
+      value: waterColorNear,
+      type: "vec3<f32>",
+    },
+    uWaterColorFar: {
+      value: waterColorFar,
       type: "vec3<f32>",
     },
     uWaterAlpha: {
@@ -200,10 +246,6 @@ export function createWaterSurfaceShader(options = {}) {
       value: options.depthCoeffs || [0, 0, 0],
       type: "vec3<f32>",
     },
-    uDepthDarken: {
-      value: Number.isFinite(options.depthDarken) ? options.depthDarken : 0.4,
-      type: "f32",
-    },
     uNoiseScale: {
       value: Number.isFinite(options.noiseScale) ? options.noiseScale : 0.015,
       type: "f32",
@@ -216,6 +258,20 @@ export function createWaterSurfaceShader(options = {}) {
     },
     uDepthBands: {
       value: Number.isFinite(options.depthBands) ? options.depthBands : 0,
+      type: "f32",
+    },
+    uSkyColor: {
+      value: options.skyColor || [0.5, 0.7, 0.9],
+      type: "vec3<f32>",
+    },
+    uReflectionStrength: {
+      value: Number.isFinite(options.reflectionStrength)
+        ? options.reflectionStrength
+        : 0.35,
+      type: "f32",
+    },
+    uFresnelPower: {
+      value: Number.isFinite(options.fresnelPower) ? options.fresnelPower : 1.6,
       type: "f32",
     },
     uSparkleScale: {
@@ -239,6 +295,33 @@ export function createWaterSurfaceShader(options = {}) {
         ? options.sparkleIntensity
         : 0.4,
       type: "f32",
+    },
+    uSparkleClipDebug: {
+      value: Number.isFinite(options.sparkleClipDebug)
+        ? options.sparkleClipDebug
+        : 0,
+      type: "f32",
+    },
+    uFlowDir: {
+      value:
+        Array.isArray(options.flowDir) && options.flowDir.length === 2
+          ? options.flowDir
+          : [1, 0],
+      type: "vec2<f32>",
+    },
+    uNoiseBasisX: {
+      value:
+        Array.isArray(options.noiseBasisX) && options.noiseBasisX.length === 2
+          ? options.noiseBasisX
+          : [1, 0],
+      type: "vec2<f32>",
+    },
+    uNoiseBasisY: {
+      value:
+        Array.isArray(options.noiseBasisY) && options.noiseBasisY.length === 2
+          ? options.noiseBasisY
+          : [0, 1],
+      type: "vec2<f32>",
     },
     uFlowPhase: {
       value: 0,

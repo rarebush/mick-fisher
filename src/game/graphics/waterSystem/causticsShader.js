@@ -48,6 +48,9 @@ uniform float uSpecularIntensity;
 uniform vec3 uCausticsColor;
 uniform float uFlowPhase;
 uniform float uChoppiness;
+uniform vec2 uFlowDir;
+uniform vec2 uNoiseBasisX;
+uniform vec2 uNoiseBasisY;
 
 // --- Hash for Voronoi cell centres ---
 
@@ -121,10 +124,17 @@ void main() {
   // so cells can never merge/clump — only the warp field moves.
   // Warp scroll and drift are biased along the downstream (isometric X)
   // direction so caustics visually track the river current.
-  vec2 basePos = vScreenPos * uCausticsScale * 0.01;
+  vec2 causticsBasis = vec2(
+    dot(vScreenPos, uNoiseBasisX),
+    dot(vScreenPos, uNoiseBasisY)
+  );
+  vec2 basePos = causticsBasis * uCausticsScale * 0.01;
   // Quantize time to 12 FPS for pixel art animation style
   float t = floor(uTime * uCausticsSpeed * 24.0) / 24.0;
-  vec2 flowDir = vec2(0.894, 0.447); // isometric X (downstream)
+  vec2 flowDir = vec2(
+    dot(uFlowDir, uNoiseBasisX),
+    dot(uFlowDir, uNoiseBasisY)
+  );
   vec2 warp = vec2(
     valueNoise(basePos * 3.0 + flowDir * t * 0.3 + 50.0),
     valueNoise(basePos * 3.0 + flowDir * t * 0.2 + 100.0)
@@ -177,6 +187,9 @@ void main() {
  * @param {number}   options.causticsIntensity - brightness multiplier           (default 0.3)
  * @param {number}   options.specularIntensity - specular core brightness        (default 0.4)
  * @param {number[]} options.causticsColor     - RGB tint for light              (default [1, 0.95, 0.8])
+ * @param {number[]} options.flowDir           - normalized screen-space flow direction [x,y]
+ * @param {number[]} options.noiseBasisX       - screen-space iso X basis [x,y] (default [1,0])
+ * @param {number[]} options.noiseBasisY       - screen-space iso Y basis [x,y] (default [0,1])
  */
 export function createCausticsShader(options = {}) {
   const glProgram = GlProgram.from({
@@ -221,6 +234,27 @@ export function createCausticsShader(options = {}) {
     uCausticsColor: {
       value: options.causticsColor || [1.0, 0.95, 0.8],
       type: "vec3<f32>",
+    },
+    uFlowDir: {
+      value:
+        Array.isArray(options.flowDir) && options.flowDir.length === 2
+          ? options.flowDir
+          : [1, 0],
+      type: "vec2<f32>",
+    },
+    uNoiseBasisX: {
+      value:
+        Array.isArray(options.noiseBasisX) && options.noiseBasisX.length === 2
+          ? options.noiseBasisX
+          : [1, 0],
+      type: "vec2<f32>",
+    },
+    uNoiseBasisY: {
+      value:
+        Array.isArray(options.noiseBasisY) && options.noiseBasisY.length === 2
+          ? options.noiseBasisY
+          : [0, 1],
+      type: "vec2<f32>",
     },
     uFlowPhase: {
       value: 0,

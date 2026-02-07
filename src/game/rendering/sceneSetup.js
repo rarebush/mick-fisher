@@ -4,7 +4,7 @@
  *
  * Uses world constants for consistent projection from 3D world space to 2D screen.
  * World coordinates: X = horizontal, Y = depth (toward river), Z = height
- * Screen projection: pixel isometric (~26.565°) from world coordinates
+ * Screen projection: pixel isometric (~18.435°) from world coordinates
  */
 
 import * as PIXI from "pixi.js";
@@ -18,6 +18,7 @@ import {
   WORLD_Y,
   createViewport,
   getProjectionMetrics,
+  getTileScreenSizePx,
   projectToScreen,
 } from "../mechanics/worldConstants.js";
 
@@ -124,6 +125,17 @@ export async function setupEnvironmentLayers(container, width, height) {
   // Create viewport for world-to-screen projection
   const viewport = createViewport(width, height);
   const projectionMetrics = getProjectionMetrics(viewport);
+  const tileScreenSize = getTileScreenSizePx(viewport);
+  // Compute the isometric X-axis direction in screen space for flow animation.
+  // World -X → +X maps to top-left → bottom-right on screen.
+  const isoXLen = Math.sqrt(
+    projectionMetrics.screenXPerWorldUnit ** 2 +
+      projectionMetrics.screenYPerWorldUnit ** 2,
+  );
+  const flowDirX = projectionMetrics.screenXPerWorldUnit / isoXLen;
+  const flowDirY = projectionMetrics.screenYPerWorldUnit / isoXLen;
+  const noiseBasisX = [flowDirX, flowDirY];
+  const noiseBasisY = [-flowDirY, flowDirX];
 
   const waterVolume = new PIXI.Graphics();
   drawWireframeBox(
@@ -197,10 +209,10 @@ export async function setupEnvironmentLayers(container, width, height) {
   const riverbedTexture = riverbedSpritesheet?.textures?.frame1 ?? null;
 
   if (riverbedTexture?.source) {
-    riverbedTexture.source.scaleMode = PIXI.SCALE_MODES.NEAREST;
+    riverbedTexture.source.scaleMode = "nearest";
 
-    const tileWidthPx = projectionMetrics.screenXPerWorldUnit * 2;
-    const tileHeightPx = projectionMetrics.screenYPerWorldUnit * 2;
+    const tileWidthPx = tileScreenSize.width;
+    const tileHeightPx = tileScreenSize.height;
     const tileScaleX = tileWidthPx / riverbedTexture.width;
     const tileScaleY = tileHeightPx / riverbedTexture.height;
 
@@ -236,6 +248,9 @@ export async function setupEnvironmentLayers(container, width, height) {
     causticsSpeed: 0.4,
     causticsIntensity: 0.15,
     causticsColor: [1.0, 0.95, 0.8],
+    flowDir: [flowDirX, flowDirY],
+    noiseBasisX,
+    noiseBasisY,
   });
   riverbedTiles.filters = [causticsFilter];
 
@@ -260,10 +275,10 @@ export async function setupEnvironmentLayers(container, width, height) {
   const riverWallTopTexture = riverWallSpritesheet?.textures?.frame3 ?? null;
 
   if (riverWallBottomTexture?.source && riverWallTopTexture?.source) {
-    riverWallBottomTexture.source.scaleMode = PIXI.SCALE_MODES.NEAREST;
-    riverWallTopTexture.source.scaleMode = PIXI.SCALE_MODES.NEAREST;
+    riverWallBottomTexture.source.scaleMode = "nearest";
+    riverWallTopTexture.source.scaleMode = "nearest";
     if (riverWallMiddleTexture?.source) {
-      riverWallMiddleTexture.source.scaleMode = PIXI.SCALE_MODES.NEAREST;
+      riverWallMiddleTexture.source.scaleMode = "nearest";
     }
 
     // Wall spans from riverbed (Z=0) up to walkway (Z=3).
@@ -285,7 +300,7 @@ export async function setupEnvironmentLayers(container, width, height) {
       // projectToScreen gives the midpoint of that base edge = sprite (16,44).
       // Anchor must point there so the tile aligns with Y=0 in world space.
       const tileH = texture.height; // 52
-      const halfIsoOverhang = projectionMetrics.screenYPerWorldUnit / 2; // 8
+      const halfIsoOverhang = tileScreenSize.height / 4;
       tile.anchor.set(
         0.5,
         (projectionMetrics.screenYPerWorldZUnit + halfIsoOverhang) / tileH,
@@ -341,13 +356,13 @@ export async function setupEnvironmentLayers(container, width, height) {
   let waterSurfaceShader = null;
 
   if (waterAreaTexture?.source) {
-    waterAreaTexture.source.scaleMode = PIXI.SCALE_MODES.NEAREST;
+    waterAreaTexture.source.scaleMode = "nearest";
     if (waterEdgeTexture?.source) {
-      waterEdgeTexture.source.scaleMode = PIXI.SCALE_MODES.NEAREST;
+      waterEdgeTexture.source.scaleMode = "nearest";
     }
 
-    const tileWidthPx = projectionMetrics.screenXPerWorldUnit * 2;
-    const tileHeightPx = projectionMetrics.screenYPerWorldUnit * 2;
+    const tileWidthPx = tileScreenSize.width;
+    const tileHeightPx = tileScreenSize.height;
     const tileScaleX = tileWidthPx / waterAreaTexture.width;
     const tileScaleY = tileHeightPx / waterAreaTexture.height;
 
@@ -357,14 +372,21 @@ export async function setupEnvironmentLayers(container, width, height) {
     );
 
     waterSurfaceShader = createWaterSurfaceShader({
-      waterColor: [0.17, 0.45, 0.63],
-      waterAlpha: 0.7,
+      waterColorNear: [0.22, 0.5, 0.34],
+      waterColorFar: [0.12, 0.32, 0.2],
+      waterAlpha: 0.95,
       maskThreshold: 0.9,
       depthCoeffs: waterSurfaceDepthCoeffs,
-      depthDarken: 0.4,
       noiseScale: 0.015,
       noiseStrength: 0.15,
       depthBands: 6,
+      skyColor: [0.62, 0.78, 0.95],
+      reflectionStrength: 0.35,
+      fresnelPower: 1.6,
+      flowDir: [flowDirX, flowDirY],
+      noiseBasisX,
+      noiseBasisY,
+      sparkleClipDebug: 1,
     });
     // Apply to parent so both area and edge tiles get the water tint.
     // Black pixels → water color, white pixels (wall seam) → passthrough.
@@ -498,15 +520,6 @@ export async function setupEnvironmentLayers(container, width, height) {
   console.log(
     `[ENVIRONMENT] Wireframe volumes: water (Z=${WORLD_Z.RIVERBED}-${WORLD_Z.WATER_SURFACE}), walkway (Z=${WORLD_Z.RIVERBED}-${WORLD_Z.WALKWAY})`,
   );
-
-  // Compute the isometric X-axis direction in screen space for flow animation.
-  // World -X → +X maps to top-left → bottom-right on screen.
-  const isoXLen = Math.sqrt(
-    projectionMetrics.screenXPerWorldUnit ** 2 +
-      projectionMetrics.screenYPerWorldUnit ** 2,
-  );
-  const flowDirX = projectionMetrics.screenXPerWorldUnit / isoXLen;
-  const flowDirY = projectionMetrics.screenYPerWorldUnit / isoXLen;
 
   return {
     waterVolume,

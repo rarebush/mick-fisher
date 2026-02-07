@@ -16,11 +16,16 @@ export {
 
 export {
   TARGET_PPU,
+  TARGET_TILE_PIXEL_WIDTH,
+  TARGET_TILE_PIXEL_HEIGHT,
+  TILE_WORLD_UNITS_X,
+  TILE_WORLD_UNITS_Y,
   projectToIsometric,
   projectToScreen,
   worldToScreen,
   screenToWorld,
   getProjectionMetrics,
+  getTileScreenSizePx,
   getProjectedWorldBounds,
   getWorldDirectionScreenAngle,
   getSurfaceScreenBounds,
