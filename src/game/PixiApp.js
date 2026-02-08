@@ -550,12 +550,12 @@ export class PixiApp {
       cu.uChoppiness = choppiness;
     }
 
-    // Animate water surface sparkles (drift uses flowPhase, no uTime needed)
-    const waterSurfaceShader = this.environmentLayers.waterSurfaceShader;
-    if (waterSurfaceShader) {
-      const wu = waterSurfaceShader.resources.waterUniforms.uniforms;
-      wu.uFlowPhase = flowPhase;
-      wu.uChoppiness = choppiness;
+    // Animate sparkle overlay (separate layer on top of reflections)
+    const sparkleShader = this.environmentLayers.sparkleShader;
+    if (sparkleShader) {
+      const su = sparkleShader.resources.sparkleUniforms.uniforms;
+      su.uFlowPhase = flowPhase;
+      su.uChoppiness = choppiness;
     }
 
     // Apply choppiness to displacement filter scale.

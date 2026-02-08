@@ -51,16 +51,6 @@ uniform float uDepthBands;
 uniform vec3 uSkyColor;
 uniform float uReflectionStrength;
 uniform float uFresnelPower;
-uniform float uSparkleScale;
-uniform float uSparkleSpeed;
-uniform float uSparkleThreshold;
-uniform float uSparkleIntensity;
-uniform float uSparkleClipDebug;
-uniform float uFlowPhase;
-uniform float uChoppiness;
-uniform vec2 uFlowDir;
-uniform vec2 uNoiseBasisX;
-uniform vec2 uNoiseBasisY;
 
 // --- 2D gradient noise (Perlin-style) ---
 
@@ -135,46 +125,7 @@ void main() {
   float fresnel = pow(depth, uFresnelPower);
   float reflection = fresnel * uReflectionStrength;
   color = mix(color, uSkyColor, reflection * mask);
-
-  // --- Sparkles: dual scrolling noise subtracted for chaotic glints ---
-  // Two Perlin noise layers scroll downstream (isometric X axis) at
-  // different speeds. The speed difference keeps the interference
-  // pattern flickering while the bulk motion drifts with the current.
-  // A hard step on the difference isolates rare peaks as bright sparkles.
-  // uFlowPhase is accumulated downstream distance (pre-quantized to 24 FPS
-  // in JS). Using it instead of time*speed avoids discontinuities when
-  // currentSpeed transitions smoothly.
-  vec2 sparkleBasis = vec2(
-    dot(vScreenPos, uNoiseBasisX),
-    dot(vScreenPos, uNoiseBasisY)
-  );
-  vec2 scrollDir = vec2(
-    dot(uFlowDir, uNoiseBasisX),
-    dot(uFlowDir, uNoiseBasisY)
-  );
-  vec2 sp = sparkleBasis * uSparkleScale;
-
-  float n1 = gradientNoise(sp - scrollDir * uFlowPhase * uSparkleSpeed);
-  float n2 = gradientNoise(sp * 1.3 - scrollDir * uFlowPhase * uSparkleSpeed * 0.55 + 50.0);
-
-  float diff = n1 - n2;
-  // Choppier water → lower threshold → more frequent sparkles
-  float sparkle = step(uSparkleThreshold / uChoppiness, abs(diff));
-
-  // Clip with a dense high-frequency noise to break blobs into smaller fragments
-  float clipNoise = gradientNoise(sp * 2.0);
-  sparkle *= step(0.0, clipNoise);
-
-  if (uSparkleClipDebug > 0.5) {
-    float debugValue = clipNoise * 0.5 + 0.5;
-    finalColor = vec4(vec3(debugValue), 1.0);
-    return;
-  }
-
-  // Where sparkles are active, force pure white at full opacity
-  // so they punch through the semi-transparent water surface.
-  color = mix(color, vec3(1.0), sparkle * mask);
-  alpha = mix(alpha, 1.0, sparkle * mask);
+  alpha = mix(alpha, 1.0, reflection * mask);
 
   // Output premultiplied alpha (PixiJS internal format)
   finalColor = vec4(color * alpha, alpha);
@@ -198,14 +149,6 @@ void main() {
  * @param {number[]} options.skyColor       - RGB sky reflection color     (default [0.5, 0.7, 0.9])
  * @param {number}   options.reflectionStrength - reflection amount 0-1    (default 0.35)
  * @param {number}   options.fresnelPower   - reflection falloff exponent  (default 1.6)
- * @param {number}   options.sparkleScale   - sparkle noise frequency     (default 0.03)
- * @param {number}   options.sparkleSpeed   - sparkle scroll speed        (default 1.0)
- * @param {number}   options.sparkleThreshold - rarity threshold 0-2      (default 1.4)
- * @param {number}   options.sparkleIntensity - sparkle brightness 0-1    (default 0.4)
- * @param {number}   options.sparkleClipDebug - show clip noise 0/1       (default 0)
- * @param {number[]} options.flowDir          - normalized screen-space flow direction [x,y]
- * @param {number[]} options.noiseBasisX      - screen-space iso X basis [x,y] (default [1,0])
- * @param {number[]} options.noiseBasisY      - screen-space iso Y basis [x,y] (default [0,1])
  */
 export function createWaterSurfaceShader(options = {}) {
   const depthDarken = Number.isFinite(options.depthDarken)
@@ -272,63 +215,6 @@ export function createWaterSurfaceShader(options = {}) {
     },
     uFresnelPower: {
       value: Number.isFinite(options.fresnelPower) ? options.fresnelPower : 1.6,
-      type: "f32",
-    },
-    uSparkleScale: {
-      value: Number.isFinite(options.sparkleScale)
-        ? options.sparkleScale
-        : 0.08,
-      type: "f32",
-    },
-    uSparkleSpeed: {
-      value: Number.isFinite(options.sparkleSpeed) ? options.sparkleSpeed : 1.0,
-      type: "f32",
-    },
-    uSparkleThreshold: {
-      value: Number.isFinite(options.sparkleThreshold)
-        ? options.sparkleThreshold
-        : 0.63,
-      type: "f32",
-    },
-    uSparkleIntensity: {
-      value: Number.isFinite(options.sparkleIntensity)
-        ? options.sparkleIntensity
-        : 0.4,
-      type: "f32",
-    },
-    uSparkleClipDebug: {
-      value: Number.isFinite(options.sparkleClipDebug)
-        ? options.sparkleClipDebug
-        : 0,
-      type: "f32",
-    },
-    uFlowDir: {
-      value:
-        Array.isArray(options.flowDir) && options.flowDir.length === 2
-          ? options.flowDir
-          : [1, 0],
-      type: "vec2<f32>",
-    },
-    uNoiseBasisX: {
-      value:
-        Array.isArray(options.noiseBasisX) && options.noiseBasisX.length === 2
-          ? options.noiseBasisX
-          : [1, 0],
-      type: "vec2<f32>",
-    },
-    uNoiseBasisY: {
-      value:
-        Array.isArray(options.noiseBasisY) && options.noiseBasisY.length === 2
-          ? options.noiseBasisY
-          : [0, 1],
-      type: "vec2<f32>",
-    },
-    uFlowPhase: {
-      value: 0,
-      type: "f32",
-    },
-    uChoppiness: {
-      value: 1.0,
       type: "f32",
     },
   });

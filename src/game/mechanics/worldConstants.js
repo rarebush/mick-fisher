@@ -15,6 +15,7 @@ export {
 } from "./worldDimensions.js";
 
 export {
+  ISO_RATIO,
   TARGET_PPU,
   TARGET_TILE_PIXEL_WIDTH,
   TARGET_TILE_PIXEL_HEIGHT,
