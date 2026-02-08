@@ -82,6 +82,15 @@ export class PixiApp {
     this.dragPlayerX = 0;
     this.dragPlayerY = 0;
     this.castAimOverlay = null;
+
+    // Water animation state (used by tickerUpdateCaustics)
+    this._smoothCurrentSpeed = 1;
+    this._smoothChoppiness = 1;
+    this._flowAccumTime = 0;
+    this._flowPhase = 0;
+    this._displacementTime = 0;
+    this._reflectionTime = 0;
+    this._smoothCloudCover = 0.5;
   }
 
   async initialize() {
@@ -215,6 +224,7 @@ export class PixiApp {
       if (this.environmentLayers) {
         this.environmentLayers.currentSpeed = storeState.currentSpeed ?? 1;
         this.environmentLayers.choppiness = storeState.choppiness ?? 1;
+        this.environmentLayers.cloudCover = storeState.cloudCover ?? 0.5;
       }
 
       this.gameStoreUnsubscribe = this.gameStore.subscribe(
@@ -230,6 +240,11 @@ export class PixiApp {
           if (state.choppiness !== prevState.choppiness) {
             if (this.environmentLayers) {
               this.environmentLayers.choppiness = state.choppiness;
+            }
+          }
+          if (state.cloudCover !== prevState.cloudCover) {
+            if (this.environmentLayers) {
+              this.environmentLayers.cloudCover = state.cloudCover;
             }
           }
         },
@@ -508,6 +523,7 @@ export class PixiApp {
     // choppiness scales displacement amplitude, sparkle density, caustic warp.
     const targetSpeed = this.environmentLayers.currentSpeed ?? 1;
     const targetChoppiness = this.environmentLayers.choppiness ?? 1;
+    const targetCloudCover = this.environmentLayers.cloudCover ?? 0.5;
 
     // Smooth-lerp toward targets using frame-rate-independent exponential
     // easing. Rate controls how fast the transition is — higher = snappier.
@@ -515,16 +531,12 @@ export class PixiApp {
     const transitionRate = 3;
     const blend = 1 - Math.exp(-transitionRate * dt);
 
-    // Initialise smoothed values on first frame
-    if (this._smoothCurrentSpeed === undefined) {
-      this._smoothCurrentSpeed = targetSpeed;
-    }
-    if (this._smoothChoppiness === undefined) {
-      this._smoothChoppiness = targetChoppiness;
-    }
-
-    this._smoothCurrentSpeed += (targetSpeed - this._smoothCurrentSpeed) * blend;
-    this._smoothChoppiness += (targetChoppiness - this._smoothChoppiness) * blend;
+    this._smoothCurrentSpeed +=
+      (targetSpeed - this._smoothCurrentSpeed) * blend;
+    this._smoothChoppiness +=
+      (targetChoppiness - this._smoothChoppiness) * blend;
+    this._smoothCloudCover +=
+      (targetCloudCover - this._smoothCloudCover) * blend;
 
     const currentSpeed = this._smoothCurrentSpeed;
     const choppiness = this._smoothChoppiness;
@@ -533,19 +545,24 @@ export class PixiApp {
     // Using accumulated distance instead of time*speed avoids discontinuities
     // when currentSpeed transitions — the phase just grows faster/slower.
     const FLOW_FPS_STEP = 1 / 24;
-    this._flowAccumTime = (this._flowAccumTime || 0) + dt;
+    this._flowAccumTime += dt;
     if (this._flowAccumTime >= FLOW_FPS_STEP) {
       const steps = Math.floor(this._flowAccumTime / FLOW_FPS_STEP);
       this._flowAccumTime -= steps * FLOW_FPS_STEP;
-      this._flowPhase = (this._flowPhase || 0) + steps * FLOW_FPS_STEP * currentSpeed;
+      // Wrap at 1000 to prevent 32-bit float precision loss in GPU uniforms
+      // (above ~16384 sub-pixel detail is lost). 1000 is large enough that the
+      // wrap is invisible in the noise pattern.
+      this._flowPhase =
+        (this._flowPhase + steps * FLOW_FPS_STEP * currentSpeed) % 1000;
     }
-    const flowPhase = this._flowPhase || 0;
+    const flowPhase = this._flowPhase;
 
-    // Animate caustics uTime (normal rate — drift uses flowPhase)
+    // Animate caustics uTime (normal rate — drift uses flowPhase).
+    // Wrap at 1000 to prevent 32-bit float precision loss in the shader.
     const causticsFilter = this.environmentLayers.causticsFilter;
     if (causticsFilter) {
       const cu = causticsFilter.resources.causticsUniforms.uniforms;
-      cu.uTime += dt;
+      cu.uTime = (cu.uTime + dt) % 1000;
       cu.uFlowPhase = flowPhase;
       cu.uChoppiness = choppiness;
     }
@@ -556,6 +573,30 @@ export class PixiApp {
       const su = sparkleShader.resources.sparkleUniforms.uniforms;
       su.uFlowPhase = flowPhase;
       su.uChoppiness = choppiness;
+    }
+
+    // Animate reflection shader (sky + clouds)
+    const reflectionShader = this.environmentLayers.reflectionShader;
+    if (reflectionShader) {
+      const ru = reflectionShader.resources.reflectionUniforms.uniforms;
+      // Base cloud drift rate (tuned for gentle movement at windSpeed=1).
+      // windSpeed scales this: 2 = twice as fast, 0.5 = half speed.
+      const baseCloudDrift = 0.033;
+      ru.uTime =
+        (ru.uTime +
+          dt * baseCloudDrift * (this.environmentLayers.windSpeed ?? 1)) %
+        1000;
+      const wd = this.environmentLayers.windDir;
+      if (wd) {
+        ru.uWindDir[0] = wd[0];
+        ru.uWindDir[1] = wd[1];
+      }
+      // Map cloudCover (0 = clear, 1 = overcast) to FBM noise threshold.
+      // High threshold = few clouds, low threshold = heavy coverage.
+      // Range: cloudCover 0 → threshold 0.4 (nearly clear)
+      //        cloudCover 1 → threshold -0.15 (overcast)
+      const cloudCover = this._smoothCloudCover;
+      ru.uCloudThreshold = 0.4 - cloudCover * 0.55;
     }
 
     // Apply choppiness to displacement filter scale.
@@ -574,7 +615,7 @@ export class PixiApp {
     if (sprite) {
       const baseFlowSpeed = 12; // pixels per second at currentSpeed=1
       const FPS_STEP = 1 / 24;
-      this._displacementTime = (this._displacementTime || 0) + dt;
+      this._displacementTime += dt;
       if (this._displacementTime >= FPS_STEP) {
         const steps = Math.floor(this._displacementTime / FPS_STEP);
         this._displacementTime -= steps * FPS_STEP;
@@ -678,29 +719,6 @@ export class PixiApp {
       }
       this.castAimOverlay.destroy();
       this.castAimOverlay = null;
-    }
-
-    // Clean up rope graphics
-    if (this.dragLine) {
-      if (this.dragLine.parent) {
-        this.dragLine.parent.removeChild(this.dragLine);
-      }
-      this.dragLine.destroy();
-      this.dragLine = null;
-    }
-    if (this.dragLineUnderwater) {
-      if (this.dragLineUnderwater.parent) {
-        this.dragLineUnderwater.parent.removeChild(this.dragLineUnderwater);
-      }
-      this.dragLineUnderwater.destroy();
-      this.dragLineUnderwater = null;
-    }
-    if (this.dragLineDebug) {
-      if (this.dragLineDebug.parent) {
-        this.dragLineDebug.parent.removeChild(this.dragLineDebug);
-      }
-      this.dragLineDebug.destroy();
-      this.dragLineDebug = null;
     }
 
     // Clean up manual failure listener

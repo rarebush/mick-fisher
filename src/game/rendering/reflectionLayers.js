@@ -1,7 +1,8 @@
 /**
  * Reflection Layers
  * Pixel-level iso-reflected wall textures and reflection tile placement
- * with water surface diamond masking.
+ * with water surface diamond masking, procedural sky/cloud reflections,
+ * and depth-based Fresnel opacity.
  */
 
 import * as PIXI from "pixi.js";
@@ -12,6 +13,7 @@ import {
   WORLD_Z,
   projectToScreen,
 } from "../mechanics/worldConstants.js";
+import { createReflectionShader } from "../graphics/waterSystem/reflectionShader.js";
 
 /**
  * Create a reflected version of a tile texture by reversing the iso column step
@@ -92,22 +94,33 @@ function createReflectedTexture(texture, isoRatio) {
 }
 
 /**
- * Create the wall reflection container with masked reflection tiles.
+ * Create the wall reflection container with masked reflection tiles,
+ * procedural sky/cloud reflections, and depth-based Fresnel opacity.
  *
  * @param {Object} context - Shared scene context
  * @param {Object} context.viewport - Viewport for projection
  * @param {Object} context.projectionMetrics - Projection metrics
  * @param {Object} context.tileScreenSize - Tile screen size { width, height }
  * @param {Array<{x: number, y: number}>} context.waterSurfaceCorners - Screen-space corners for masking
+ * @param {number[]} context.depthCoeffs - [A,B,C] isometric depth coefficients for the water surface
+ * @param {number[]} context.noiseBasisX - Isometric X basis vector [x,y]
+ * @param {number[]} context.noiseBasisY - Isometric Y basis vector [x,y]
  * @param {Object} textures - Wall textures (same as wallLayers)
  * @param {PIXI.Texture|null} textures.bottom - Bottom wall texture (used for guard check)
  * @param {PIXI.Texture|null} textures.middle - Middle wall texture (may be null)
  * @param {PIXI.Texture|null} textures.top - Top wall texture
- * @returns {PIXI.Container} The reflection container (masked to water diamond)
+ * @returns {{ reflectionContainer: PIXI.Container, reflectionShader: Filter }} Container and filter reference
  */
 export function createReflectionLayers(context, textures) {
-  const { viewport, projectionMetrics, tileScreenSize, waterSurfaceCorners } =
-    context;
+  const {
+    viewport,
+    projectionMetrics,
+    tileScreenSize,
+    waterSurfaceCorners,
+    depthCoeffs,
+    noiseBasisX,
+    noiseBasisY,
+  } = context;
   const reflectionContainer = new PIXI.Container();
 
   if (textures.bottom?.source && textures.top?.source) {
@@ -171,6 +184,17 @@ export function createReflectionLayers(context, textures) {
     }
   }
 
+  // Transparent diamond fill — ensures the filter's bounding box covers
+  // the full water diamond, not just the wall tile area near the top edge.
+  const diamondFill = new PIXI.Graphics();
+  diamondFill.moveTo(waterSurfaceCorners[0].x, waterSurfaceCorners[0].y);
+  for (let i = 1; i < waterSurfaceCorners.length; i += 1) {
+    diamondFill.lineTo(waterSurfaceCorners[i].x, waterSurfaceCorners[i].y);
+  }
+  diamondFill.closePath();
+  diamondFill.fill({ color: 0x000000, alpha: 0 });
+  reflectionContainer.addChildAt(diamondFill, 0);
+
   // Mask reflections to water surface diamond
   const reflectionMask = new PIXI.Graphics();
   reflectionMask.moveTo(waterSurfaceCorners[0].x, waterSurfaceCorners[0].y);
@@ -182,7 +206,14 @@ export function createReflectionLayers(context, textures) {
   reflectionContainer.mask = reflectionMask;
   reflectionContainer.addChild(reflectionMask);
 
-  reflectionContainer.alpha = 0.9;
+  // Apply reflection filter (sky gradient + clouds + Fresnel opacity).
+  // Replaces the old flat alpha: 0.9 — Fresnel now controls per-pixel opacity.
+  const reflectionShader = createReflectionShader({
+    depthCoeffs,
+    noiseBasisX,
+    noiseBasisY,
+  });
+  reflectionContainer.filters = [reflectionShader];
 
-  return reflectionContainer;
+  return { reflectionContainer, reflectionShader };
 }

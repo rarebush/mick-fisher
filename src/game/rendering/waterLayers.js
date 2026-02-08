@@ -87,8 +87,14 @@ export async function createWaterLayers(
   screenWidth,
   screenHeight,
 ) {
-  const { viewport, tileScreenSize, flowDirX, flowDirY, noiseBasisX, noiseBasisY } =
-    context;
+  const {
+    viewport,
+    tileScreenSize,
+    flowDirX,
+    flowDirY,
+    noiseBasisX,
+    noiseBasisY,
+  } = context;
   const { submergedWallTiles, reflectionContainer } = layerInputs;
 
   // --- Riverbed tiles ---
@@ -130,7 +136,7 @@ export async function createWaterLayers(
   const riverbedDepthCoeffs = computeDepthCoeffs(WORLD_Z.RIVERBED, viewport);
   const causticsFilter = createCausticsShader({
     depthCoeffs: riverbedDepthCoeffs,
-    causticsScale: 4.0,
+    causticsScale: 6,
     causticsSpeed: 0.4,
     causticsIntensity: 0.15,
     causticsColor: [1.0, 0.95, 0.8],
@@ -186,9 +192,6 @@ export async function createWaterLayers(
       noiseScale: 0.015,
       noiseStrength: 0.15,
       depthBands: 6,
-      skyColor: [0.408, 0.659, 0.906],
-      reflectionStrength: 0.9,
-      fresnelPower: 1.1,
     });
     // Apply to parent so both area and edge tiles get the water tint.
     waterSurfaceTiles.filters = [waterSurfaceShader];
@@ -250,8 +253,8 @@ export async function createWaterLayers(
   // Draw order (bottom to top):
   //   1. riverbedTiles        — riverbed floor (seen through water)
   //   2. submergedWallTiles   — wall below water surface
-  //   3. waterSurfaceTiles    — semi-transparent water tint + sky reflection
-  //   4. reflectionContainer  — wall reflections ON TOP of water (not dimmed)
+  //   3. waterSurfaceTiles    — semi-transparent water depth tint
+  //   4. reflectionContainer  — sky + clouds + wall reflections (Fresnel opacity)
   //   5. sparkleTiles         — specular highlights (topmost water effect)
   const waterGroup = new PIXI.Container();
   waterGroup.addChild(

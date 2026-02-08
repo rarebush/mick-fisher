@@ -1,35 +1,5 @@
 import { Filter, GlProgram, UniformGroup } from "pixi.js";
-
-// Pixi v8 default filter vertex shader
-// Source: pixijs/src/filters/defaults/defaultFilter.vert
-const defaultFilterVert = /* glsl */ `
-in vec2 aPosition;
-out vec2 vTextureCoord;
-out vec2 vScreenPos;
-
-uniform vec4 uInputSize;
-uniform vec4 uOutputFrame;
-uniform vec4 uOutputTexture;
-
-vec4 filterVertexPosition(void) {
-  vec2 position = aPosition * uOutputFrame.zw + uOutputFrame.xy;
-  position.x = position.x * (2.0 / uOutputTexture.x) - 1.0;
-  position.y = position.y * (2.0 * uOutputTexture.z / uOutputTexture.y) - uOutputTexture.z;
-  return vec4(position, 0.0, 1.0);
-}
-
-vec2 filterTextureCoord(void) {
-  return aPosition * (uOutputFrame.zw * uInputSize.zw);
-}
-
-void main(void) {
-  gl_Position = filterVertexPosition();
-  vTextureCoord = filterTextureCoord();
-  // Pass absolute screen position to fragment shader so it doesn't
-  // need to re-declare uInputSize/uOutputFrame (avoids precision mismatch).
-  vScreenPos = aPosition * uOutputFrame.zw + uOutputFrame.xy;
-}
-`;
+import { filterVertWithScreenPos } from "./filterVert.js";
 
 const waterSurfaceFragment = /* glsl */ `
 in vec2 vTextureCoord;
@@ -48,16 +18,13 @@ uniform vec3 uDepthCoeffs;
 uniform float uNoiseScale;
 uniform float uNoiseStrength;
 uniform float uDepthBands;
-uniform vec3 uSkyColor;
-uniform float uReflectionStrength;
-uniform float uFresnelPower;
-
 // --- 2D gradient noise (Perlin-style) ---
 
-vec2 hash22(vec2 p) {
-  p = vec2(dot(p, vec2(127.1, 311.7)),
-           dot(p, vec2(269.5, 183.3)));
-  return -1.0 + 2.0 * fract(sin(p) * 43758.5453123);
+// Signed hash [-1, 1]. Sin-free so it works at mediump (iPad / mobile GPUs).
+vec2 hash22s(vec2 p) {
+  vec3 p3 = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));
+  p3 += dot(p3, p3.yzx + 33.33);
+  return -1.0 + 2.0 * fract((p3.xx + p3.yz) * p3.zy);
 }
 
 float gradientNoise(vec2 p) {
@@ -65,10 +32,10 @@ float gradientNoise(vec2 p) {
   vec2 f = fract(p);
   vec2 u = f * f * (3.0 - 2.0 * f); // smoothstep
   return mix(
-    mix(dot(hash22(i + vec2(0.0, 0.0)), f - vec2(0.0, 0.0)),
-        dot(hash22(i + vec2(1.0, 0.0)), f - vec2(1.0, 0.0)), u.x),
-    mix(dot(hash22(i + vec2(0.0, 1.0)), f - vec2(0.0, 1.0)),
-        dot(hash22(i + vec2(1.0, 1.0)), f - vec2(1.0, 1.0)), u.x),
+    mix(dot(hash22s(i + vec2(0.0, 0.0)), f - vec2(0.0, 0.0)),
+        dot(hash22s(i + vec2(1.0, 0.0)), f - vec2(1.0, 0.0)), u.x),
+    mix(dot(hash22s(i + vec2(0.0, 1.0)), f - vec2(0.0, 1.0)),
+        dot(hash22s(i + vec2(1.0, 1.0)), f - vec2(1.0, 1.0)), u.x),
     u.y
   );
 }
@@ -121,12 +88,6 @@ void main() {
   vec3 color = mix(tex.rgb, depthColor, mask);
   float alpha = mix(tex.a, depthAlpha, mask);
 
-  // Sky reflection increases toward the far edge (grazing angle in iso view)
-  float fresnel = pow(depth, uFresnelPower);
-  float reflection = fresnel * uReflectionStrength;
-  color = mix(color, uSkyColor, reflection * mask);
-  alpha = mix(alpha, 1.0, reflection * mask);
-
   // Output premultiplied alpha (PixiJS internal format)
   finalColor = vec4(color * alpha, alpha);
 }
@@ -146,9 +107,6 @@ void main() {
  * @param {number}   options.noiseScale     - noise frequency              (default 0.015)
  * @param {number}   options.noiseStrength  - noise amplitude              (default 0.15)
  * @param {number}   options.depthBands     - quantize depth into N steps  (default 0 = smooth)
- * @param {number[]} options.skyColor       - RGB sky reflection color     (default [0.5, 0.7, 0.9])
- * @param {number}   options.reflectionStrength - reflection amount 0-1    (default 0.35)
- * @param {number}   options.fresnelPower   - reflection falloff exponent  (default 1.6)
  */
 export function createWaterSurfaceShader(options = {}) {
   const depthDarken = Number.isFinite(options.depthDarken)
@@ -161,7 +119,7 @@ export function createWaterSurfaceShader(options = {}) {
     waterColorNear.map((channel) => channel * depthDarken);
 
   const glProgram = GlProgram.from({
-    vertex: defaultFilterVert,
+    vertex: filterVertWithScreenPos,
     fragment: waterSurfaceFragment,
     name: "water-surface-filter",
   });
@@ -201,20 +159,6 @@ export function createWaterSurfaceShader(options = {}) {
     },
     uDepthBands: {
       value: Number.isFinite(options.depthBands) ? options.depthBands : 0,
-      type: "f32",
-    },
-    uSkyColor: {
-      value: options.skyColor || [0.5, 0.7, 0.9],
-      type: "vec3<f32>",
-    },
-    uReflectionStrength: {
-      value: Number.isFinite(options.reflectionStrength)
-        ? options.reflectionStrength
-        : 0.35,
-      type: "f32",
-    },
-    uFresnelPower: {
-      value: Number.isFinite(options.fresnelPower) ? options.fresnelPower : 1.6,
       type: "f32",
     },
   });

@@ -26,6 +26,14 @@ export function computeDepthCoeffs(z, viewport) {
   const dx2 = p1.x - p0.x;
   const dy2 = p1.y - p0.y;
   const det = dx1 * dy2 - dx2 * dy1;
+
+  if (Math.abs(det) < 1e-10) {
+    console.warn(
+      `[computeDepthCoeffs] Degenerate projection at Z=${z} — reference points are collinear. Returning flat depth.`,
+    );
+    return [0, 0, 0];
+  }
+
   const A = -dy1 / det;
   const B = dx1 / det;
   const C = -(A * p0.x + B * p0.y);

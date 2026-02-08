@@ -18,7 +18,7 @@ import {
   getTileScreenSizePx,
   projectToScreen,
 } from "../mechanics/worldConstants.js";
-import { drawWireframeBox } from "./sceneHelpers.js";
+import { drawWireframeBox, computeDepthCoeffs } from "./sceneHelpers.js";
 import {
   createDisplacementDebugRect,
   createOriginAxes,
@@ -134,9 +134,21 @@ export async function setupEnvironmentLayers(container, width, height) {
     wallTextures,
   );
 
-  // Wall reflections in water — reflected textures masked to water diamond
-  const reflectionContainer = createReflectionLayers(
-    { ...wallContext, waterSurfaceCorners },
+  // Depth coefficients at the water surface plane (shared by reflections)
+  const waterSurfaceDepthCoeffs = computeDepthCoeffs(
+    WORLD_Z.WATER_SURFACE,
+    viewport,
+  );
+
+  // Wall reflections in water — sky, clouds, wall tiles with Fresnel opacity
+  const { reflectionContainer, reflectionShader } = createReflectionLayers(
+    {
+      ...wallContext,
+      waterSurfaceCorners,
+      depthCoeffs: waterSurfaceDepthCoeffs,
+      noiseBasisX,
+      noiseBasisY,
+    },
     wallTextures,
   );
 
@@ -186,6 +198,7 @@ export async function setupEnvironmentLayers(container, width, height) {
     causticsFilter: waterResult.causticsFilter,
     waterSurfaceShader: waterResult.waterSurfaceShader,
     sparkleShader: waterResult.sparkleShader,
+    reflectionShader,
     displacementSprite: waterResult.displacementSprite,
     displacementFilter: waterResult.displacementFilter,
     flowDirX,
@@ -194,5 +207,11 @@ export async function setupEnvironmentLayers(container, width, height) {
     currentSpeed: 1,
     /** Multiplier for water choppiness (displacement amplitude). 1 = default. */
     choppiness: 1,
+    /** Wind direction in screen-space [x, y] for cloud drift. */
+    windDir: [0, -1],
+    /** Wind speed multiplier (1 = default). */
+    windSpeed: 1,
+    /** Cloud cover 0-1 (0 = clear sky, 1 = overcast). */
+    cloudCover: 0.5,
   };
 }

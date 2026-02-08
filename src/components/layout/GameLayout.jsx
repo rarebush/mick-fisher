@@ -12,6 +12,7 @@ import FishingEquipmentToggle from "../ui/FishingEquipmentToggle";
 import RenderScaleToggle from "../ui/RenderScaleToggle";
 import CurrentSpeedInput from "../ui/CurrentSpeedInput";
 import ChoppinessInput from "../ui/ChoppinessInput";
+import CloudCoverInput from "../ui/CloudCoverInput";
 import "../../styles/game-layout.css";
 
 function GameLayout({ onQuit }) {
@@ -44,6 +45,7 @@ function GameLayout({ onQuit }) {
               <RenderScaleToggle />
               <CurrentSpeedInput />
               <ChoppinessInput />
+              <CloudCoverInput />
               <button className="quit-btn" onClick={onQuit}>
                 ← Menu
               </button>

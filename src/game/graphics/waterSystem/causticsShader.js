@@ -1,34 +1,5 @@
 import { Filter, GlProgram, UniformGroup } from "pixi.js";
-
-// Same custom vertex shader as waterSurfaceShader.js — passes vScreenPos
-// as a varying so the fragment shader can compute isometric depth without
-// re-declaring uInputSize/uOutputFrame (avoids precision mismatch).
-const causticsVert = /* glsl */ `
-in vec2 aPosition;
-out vec2 vTextureCoord;
-out vec2 vScreenPos;
-
-uniform vec4 uInputSize;
-uniform vec4 uOutputFrame;
-uniform vec4 uOutputTexture;
-
-vec4 filterVertexPosition(void) {
-  vec2 position = aPosition * uOutputFrame.zw + uOutputFrame.xy;
-  position.x = position.x * (2.0 / uOutputTexture.x) - 1.0;
-  position.y = position.y * (2.0 * uOutputTexture.z / uOutputTexture.y) - uOutputTexture.z;
-  return vec4(position, 0.0, 1.0);
-}
-
-vec2 filterTextureCoord(void) {
-  return aPosition * (uOutputFrame.zw * uInputSize.zw);
-}
-
-void main(void) {
-  gl_Position = filterVertexPosition();
-  vTextureCoord = filterTextureCoord();
-  vScreenPos = aPosition * uOutputFrame.zw + uOutputFrame.xy;
-}
-`;
+import { filterVertWithScreenPos } from "./filterVert.js";
 
 const causticsFragment = /* glsl */ `
 in vec2 vTextureCoord;
@@ -52,12 +23,13 @@ uniform vec2 uFlowDir;
 uniform vec2 uNoiseBasisX;
 uniform vec2 uNoiseBasisY;
 
-// --- Hash for Voronoi cell centres ---
+// --- Hash for Voronoi cell centres (unsigned, returns [0,1]) ---
+// Sin-free so it works at mediump (iPad / mobile GPUs).
 
-vec2 hash22(vec2 p) {
-  p = vec2(dot(p, vec2(127.1, 311.7)),
-           dot(p, vec2(269.5, 183.3)));
-  return fract(sin(p) * 43758.5453123);
+vec2 hash22u(vec2 p) {
+  vec3 p3 = fract(vec3(p.xyx) * vec3(0.1031, 0.1030, 0.0973));
+  p3 += dot(p3, p3.yzx + 33.33);
+  return fract((p3.xx + p3.yz) * p3.zy);
 }
 
 // Simple value noise for coordinate warping
@@ -65,10 +37,10 @@ float valueNoise(vec2 p) {
   vec2 i = floor(p);
   vec2 f = fract(p);
   vec2 u = f * f * (3.0 - 2.0 * f);
-  float a = dot(hash22(i), vec2(1.0));
-  float b = dot(hash22(i + vec2(1.0, 0.0)), vec2(1.0));
-  float c = dot(hash22(i + vec2(0.0, 1.0)), vec2(1.0));
-  float d = dot(hash22(i + vec2(1.0, 1.0)), vec2(1.0));
+  float a = hash22u(i).x;
+  float b = hash22u(i + vec2(1.0, 0.0)).x;
+  float c = hash22u(i + vec2(0.0, 1.0)).x;
+  float d = hash22u(i + vec2(1.0, 1.0)).x;
   return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
 }
 
@@ -86,7 +58,7 @@ float voronoiCaustic(vec2 p) {
     for (int x = -1; x <= 1; x++) {
       vec2 neighbor = vec2(float(x), float(y));
       // Static cell centres — animation comes from warping the input coords.
-      vec2 cellCenter = hash22(i + neighbor);
+      vec2 cellCenter = hash22u(i + neighbor);
       float dist = length(neighbor + cellCenter - f);
       if (dist < f1) {
         f2 = f1;
@@ -129,7 +101,7 @@ void main() {
     dot(vScreenPos, uNoiseBasisY)
   );
   vec2 basePos = causticsBasis * uCausticsScale * 0.01;
-  // Quantize time to 12 FPS for pixel art animation style
+  // Quantize time to 24 FPS for pixel art animation style
   float t = floor(uTime * uCausticsSpeed * 24.0) / 24.0;
   vec2 flowDir = vec2(
     dot(uFlowDir, uNoiseBasisX),
@@ -144,18 +116,13 @@ void main() {
   // speed transitions don't cause discontinuities.
   vec2 warpedPos = basePos + (warp - 0.5) * 0.2 * uChoppiness - flowDir * uFlowPhase * 0.4;
 
-  // Two Voronoi F2-F1 layers at different scales for natural interference.
-  float v1 = voronoiCaustic(warpedPos);
-  float v2 = voronoiCaustic(warpedPos * 1.7);
-
-  // Combine layers — min emphasises the brightest web lines from either layer
-  float edgeDist = min(v1, v2);
+  // Single Voronoi F2-F1 with warped coordinates for organic cell edges.
+  float edgeDist = voronoiCaustic(warpedPos);
 
   // Hard-edged caustic lines (fully aliased for pixel art)
   float caustic = 1.0 - step(0.08, edgeDist);
 
-  // Specular highlight: brighter core in the thickest parts of the lines.
-  // A tighter threshold picks out only the very centre of each line.
+  // Specular highlight: brighter core at the very centre of each line.
   float specular = 1.0 - step(0.015, edgeDist);
 
   // Final caustic brightness: base + specular core
@@ -185,7 +152,7 @@ void main() {
  * @param {number}   options.causticsScale     - Voronoi cell size               (default 8.0)
  * @param {number}   options.causticsSpeed     - animation speed                 (default 0.4)
  * @param {number}   options.causticsIntensity - brightness multiplier           (default 0.3)
- * @param {number}   options.specularIntensity - specular core brightness        (default 0.4)
+ * @param {number}   options.specularIntensity - specular core brightness        (default 1.0)
  * @param {number[]} options.causticsColor     - RGB tint for light              (default [1, 0.95, 0.8])
  * @param {number[]} options.flowDir           - normalized screen-space flow direction [x,y]
  * @param {number[]} options.noiseBasisX       - screen-space iso X basis [x,y] (default [1,0])
@@ -193,7 +160,7 @@ void main() {
  */
 export function createCausticsShader(options = {}) {
   const glProgram = GlProgram.from({
-    vertex: causticsVert,
+    vertex: filterVertWithScreenPos,
     fragment: causticsFragment,
     name: "caustics-filter",
   });

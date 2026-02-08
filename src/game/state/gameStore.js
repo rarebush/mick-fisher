@@ -48,6 +48,7 @@ const useGameStore = create((set, get) => ({
   renderResolutionScale: 1, // Internal render resolution multiplier
   currentSpeed: 1, // Water flow speed multiplier (1 = default)
   choppiness: 1, // Water choppiness multiplier (1 = default)
+  cloudCover: 0.5, // Cloud cover 0-1 (0 = clear, 1 = overcast)
 
   // Actions
   setGamePhase: (phase) => set({ gamePhase: phase }),
@@ -73,6 +74,11 @@ const useGameStore = create((set, get) => ({
   setChoppiness: (choppiness) => {
     const val = parseFloat(choppiness);
     set({ choppiness: Number.isFinite(val) ? val : 1 });
+  },
+
+  setCloudCover: (cloudCover) => {
+    const val = parseFloat(cloudCover);
+    set({ cloudCover: Number.isFinite(val) ? Math.max(0, Math.min(1, val)) : 0.5 });
   },
 
   setRenderScaleMode: (mode) =>
@@ -160,6 +166,7 @@ const useGameStore = create((set, get) => ({
       renderResolutionScale: 1,
       currentSpeed: 1,
       choppiness: 1,
+      cloudCover: 0.5,
       sessionStats: {
         castsTotal: 0,
         castsSuccessful: 0,
