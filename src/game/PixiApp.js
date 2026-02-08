@@ -265,11 +265,9 @@ export class PixiApp {
     this.waterTiles = waterTiles || [];
     */
 
-    // Draw quadrant grid on top
-    drawQuadrantGrid(this.app);
-
-    // Debug: visualize viewport-fitting world bounds
-    drawWorldBoundsWireframe(this.app);
+    // Debug wireframes (disabled)
+    // drawQuadrantGrid(this.app);
+    // drawWorldBoundsWireframe(this.app);
 
     // Overlay for cast aim UI
     this.castAimOverlay = new PIXI.Graphics();

@@ -78,6 +78,7 @@ export async function setupEnvironmentLayers(container, width, height) {
     viewport,
     0x00c2ff,
   );
+  waterVolume.visible = false;
   container.addChild(waterVolume);
 
   // Compute water surface corners (shared by reflections + debug wireframe)
@@ -180,15 +181,17 @@ export async function setupEnvironmentLayers(container, width, height) {
     viewport,
     0xff00ff,
   );
+  walkwayVolume.visible = false;
   container.addChild(walkwayVolume);
 
-  // Debug overlays
-  container.addChild(createOriginAxes(viewport));
-  container.addChild(createDisplacementDebugRect(viewport));
+  // Debug overlays (hidden by default)
+  const originAxes = createOriginAxes(viewport);
+  originAxes.visible = false;
+  container.addChild(originAxes);
 
-  console.log(
-    `[ENVIRONMENT] Wireframe volumes: water (Z=${WORLD_Z.RIVERBED}-${WORLD_Z.WATER_SURFACE}), walkway (Z=${WORLD_Z.RIVERBED}-${WORLD_Z.WALKWAY})`,
-  );
+  const displacementDebugRect = createDisplacementDebugRect(viewport);
+  displacementDebugRect.visible = false;
+  container.addChild(displacementDebugRect);
 
   return {
     waterVolume,

@@ -165,6 +165,7 @@ export function animateCastLine(
     const lineUnderwater = new PIXI.Graphics();
     underwaterContainer.addChild(lineUnderwater);
     const lineDebug = new PIXI.Graphics();
+    lineDebug.visible = false;
     debugContainer.addChild(lineDebug);
 
     // Create magnet sprite
@@ -183,6 +184,7 @@ export function animateCastLine(
       },
     });
     magnetDebugText.zIndex = 10000;
+    magnetDebugText.visible = false;
     app.stage.addChild(magnetDebugText);
 
     // ===========================================
