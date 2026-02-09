@@ -215,17 +215,33 @@ export async function createWaterLayers(
 
   // --- Riverbed tiles ---
   const riverbedTiles = new PIXI.Container();
+  let defaultSpritesheet = null;
   let riverbedSpritesheet = null;
   try {
-    riverbedSpritesheet = await loadSpriteSheet(
-      "/sprites/riverbed.png",
-      "/sprites/riverbed.json",
+    defaultSpritesheet = await loadSpriteSheet(
+      "/sprites/default.png",
+      "/sprites/default.json",
     );
   } catch (error) {
-    console.warn("[RIVERBED] Failed to load /sprites/riverbed.json", error);
+    console.warn("[DEFAULT] Failed to load /sprites/default.json", error);
   }
 
-  const riverbedTexture = riverbedSpritesheet?.textures?.frame1 ?? null;
+  if (!defaultSpritesheet) {
+    try {
+      riverbedSpritesheet = await loadSpriteSheet(
+        "/sprites/riverbed.png",
+        "/sprites/riverbed.json",
+      );
+    } catch (error) {
+      console.warn("[RIVERBED] Failed to load /sprites/riverbed.json", error);
+    }
+  }
+
+  // Default sheet frame order: 0 empty, 1-2 legacy water, 3 walkway, 4 riverbed.
+  const riverbedTexture =
+    defaultSpritesheet?.textures?.frame4 ??
+    riverbedSpritesheet?.textures?.frame1 ??
+    null;
 
   if (riverbedTexture?.source) {
     riverbedTexture.source.scaleMode = "nearest";

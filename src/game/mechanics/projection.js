@@ -2,7 +2,7 @@ import { WORLD_Y, WORLD_Z } from "./worldDimensions.js";
 import { normalize } from "../physics/vectorUtils.js";
 
 export const ISO_RATIO = 2; // 2 = classic 2:1, 3 = 3:1, etc.
-const TILE_PIXEL_MULTIPLIER = 8; // half tile height in pixels
+const TILE_PIXEL_MULTIPLIER = 16; // half tile height in pixels
 
 const ISO_ANGLE_RAD = Math.atan(1 / ISO_RATIO); // 18.435° for 3:1 pixel ratio
 const ISO_SIN = Math.sin(ISO_ANGLE_RAD); // ~0.3162

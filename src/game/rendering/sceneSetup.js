@@ -31,6 +31,30 @@ import { createWaterLayers } from "./waterLayers.js";
 
 export { drawQuadrantGrid, drawWorldBoundsWireframe };
 
+function placeTilePlane({
+  container,
+  texture,
+  tileScale,
+  startX,
+  endX,
+  startY,
+  endY,
+  z,
+  viewport,
+}) {
+  for (let y = startY; y < endY; y += 1) {
+    for (let x = startX; x < endX; x += 1) {
+      const screen = projectToScreen(x + 0.5, y + 0.5, z, viewport);
+      const tile = new PIXI.Sprite(texture);
+      tile.anchor.set(0.5, 0.5);
+      tile.scale.set(tileScale.x, tileScale.y);
+      tile.x = screen.x;
+      tile.y = screen.y;
+      container.addChild(tile);
+    }
+  }
+}
+
 /**
  * Setup environment layers with 3D perspective
  * Creates pier, wall, water surface, and riverbed layers
@@ -122,6 +146,16 @@ export async function setupEnvironmentLayers(container, width, height) {
     console.warn("[RIVERWALL] Failed to load /sprites/riverWall.json", error);
   }
 
+  let defaultSpritesheet = null;
+  try {
+    defaultSpritesheet = await loadSpriteSheet(
+      "/sprites/default.png",
+      "/sprites/default.json",
+    );
+  } catch (error) {
+    console.warn("[DEFAULT] Failed to load /sprites/default.json", error);
+  }
+
   // frame0 = empty, frame1 = bottom, frame2 = middle, frame3 = top
   const wallTextures = {
     bottom: riverWallSpritesheet?.textures?.frame1 ?? null,
@@ -165,6 +199,27 @@ export async function setupEnvironmentLayers(container, width, height) {
   container.addChild(riverWallTiles);
   container.addChild(waterResult.waterGroup);
 
+  const walkwayTiles = new PIXI.Container();
+  const walkwayTexture = defaultSpritesheet?.textures?.frame3 ?? null;
+  if (walkwayTexture?.source) {
+    walkwayTexture.source.scaleMode = "nearest";
+    placeTilePlane({
+      container: walkwayTiles,
+      texture: walkwayTexture,
+      tileScale: {
+        x: tileScreenSize.width / walkwayTexture.width,
+        y: tileScreenSize.height / walkwayTexture.height,
+      },
+      startX: Math.floor(WORLD_X.MIN),
+      endX: Math.ceil(WORLD_X.MAX),
+      startY: Math.floor(WORLD_Y.WALKWAY_BACK),
+      endY: Math.ceil(WORLD_Y.WALKWAY_FRONT),
+      z: WORLD_Z.WALKWAY,
+      viewport,
+    });
+  }
+  container.addChild(walkwayTiles);
+
   const walkwayVolume = new PIXI.Graphics();
   drawWireframeBox(
     walkwayVolume,
@@ -194,6 +249,7 @@ export async function setupEnvironmentLayers(container, width, height) {
   return {
     waterVolume,
     waterSurfaceTiles: waterResult.waterSurfaceTiles,
+    walkwayTiles,
     walkwayVolume,
     viewport,
     causticsFilter: waterResult.causticsFilter,
