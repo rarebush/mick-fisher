@@ -586,6 +586,14 @@ export class PixiApp {
       fu.uCurrentSpeed = flowStepSpeed;
     }
 
+    const edgeFoamShader = this.environmentLayers.edgeFoamShader;
+    if (edgeFoamShader) {
+      const eu = edgeFoamShader.resources.edgeFoamUniforms.uniforms;
+      eu.uFlowPhase = flowPhase;
+      eu.uChoppiness = choppiness;
+      eu.uCurrentSpeed = flowStepSpeed;
+    }
+
     // Animate reflection shader (sky + clouds)
     const reflectionShader = this.environmentLayers.reflectionShader;
     if (reflectionShader) {
@@ -621,7 +629,6 @@ export class PixiApp {
       const gameState = this.gameStore.getState();
       wu.uWaterAlpha = gameState.waterAlpha;
       wu.uMaskThreshold = gameState.waterMaskThreshold;
-
     }
 
     // Apply choppiness to displacement filter scale.

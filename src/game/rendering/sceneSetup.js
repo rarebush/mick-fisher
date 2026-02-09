@@ -161,11 +161,9 @@ export async function setupEnvironmentLayers(container, width, height) {
     height,
   );
 
-  container.addChild(waterResult.waterGroup);
-
-  // River wall renders after (in front of) the water surface — it's the
-  // near vertical face above the water line, unaffected by displacement.
+  // River wall renders behind the water surface so water effects can overlay it.
   container.addChild(riverWallTiles);
+  container.addChild(waterResult.waterGroup);
 
   const walkwayVolume = new PIXI.Graphics();
   drawWireframeBox(
@@ -204,6 +202,7 @@ export async function setupEnvironmentLayers(container, width, height) {
     waterSurfaceShader: waterResult.waterSurfaceShader,
     sparkleShader: waterResult.sparkleShader,
     foamShader: waterResult.foamShader,
+    edgeFoamShader: waterResult.edgeFoamShader,
     reflectionShader,
     displacementSprite: waterResult.displacementSprite,
     displacementFilter: waterResult.displacementFilter,

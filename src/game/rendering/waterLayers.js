@@ -29,6 +29,7 @@ import { loadSpriteSheet } from "../graphics/spriteLoader.js";
 import { createWaterSurfaceShader } from "../graphics/waterSystem/waterSurfaceShader.js";
 import { createSparkleShader } from "../graphics/waterSystem/sparkleShader.js";
 import { createFoamShader } from "../graphics/waterSystem/foamShader.js";
+import { createEdgeFoamShader } from "../graphics/waterSystem/edgeFoamShader.js";
 import { createCausticsShader } from "../graphics/waterSystem/causticsShader.js";
 import {
   WORLD_X,
@@ -50,16 +51,34 @@ import { computeDepthCoeffs, generateNoiseTexture } from "./sceneHelpers.js";
  */
 export function applyUnderwaterTint(filter, color, scale = 3) {
   // Standard Rec. 601 luminance weights
-  const lr = 0.299, lg = 0.587, lb = 0.114;
+  const lr = 0.299,
+    lg = 0.587,
+    lb = 0.114;
   const wR = color[0] * scale;
   const wG = color[1] * scale;
   const wB = color[2] * scale;
 
   filter.matrix = [
-    lr * wR, lg * wR, lb * wR, 0, 0,  // R output
-    lr * wG, lg * wG, lb * wG, 0, 0,  // G output
-    lr * wB, lg * wB, lb * wB, 0, 0,  // B output
-    0,       0,       0,       1, 0,  // Alpha unchanged
+    lr * wR,
+    lg * wR,
+    lb * wR,
+    0,
+    0, // R output
+    lr * wG,
+    lg * wG,
+    lb * wG,
+    0,
+    0, // G output
+    lr * wB,
+    lg * wB,
+    lb * wB,
+    0,
+    0, // B output
+    0,
+    0,
+    0,
+    1,
+    0, // Alpha unchanged
   ];
 }
 
@@ -191,7 +210,7 @@ export async function createWaterLayers(
   });
   // Shared water colour used by both the surface shader and the underwater tint.
   // Warm sage-teal — natural river alongside sandy banks.
-  const waterColorNear = [0.12, 0.24, 0.20];
+  const waterColorNear = [0.12, 0.24, 0.2];
   const waterColorFar = [0.05, 0.13, 0.12];
 
   // Luminosity-blend tint for underwater layers. Uses a custom colour matrix
@@ -222,7 +241,7 @@ export async function createWaterLayers(
   }
 
   const waterAreaTexture = waterSpritesheet?.textures?.frame1 ?? null;
-  const waterEdgeTexture = waterSpritesheet?.textures?.frame2 ?? null;
+  const waterEdgeTexture = waterAreaTexture;
 
   let waterSurfaceShader = null;
 
@@ -312,6 +331,10 @@ export async function createWaterLayers(
   const foamTiles = new PIXI.Container();
   let foamShader = null;
 
+  // Edge foam (localized to the river wall line at Y=0)
+  const edgeFoamTiles = new PIXI.Container();
+  let edgeFoamShader = null;
+
   if (waterAreaTexture?.source) {
     const tileScale = {
       x: tileScreenSize.width / waterAreaTexture.width,
@@ -341,6 +364,82 @@ export async function createWaterLayers(
     });
   }
 
+  if (waterAreaTexture?.source) {
+    const tileScale = {
+      x: tileScreenSize.width / waterAreaTexture.width,
+      y: tileScreenSize.height / waterAreaTexture.height,
+    };
+
+    const edgeStart = projectToScreen(
+      WORLD_X.MIN,
+      WORLD_Y.WATER_NEAR,
+      WORLD_Z.WATER_SURFACE,
+      viewport,
+    );
+    const edgeEnd = projectToScreen(
+      WORLD_X.MAX,
+      WORLD_Y.WATER_NEAR,
+      WORLD_Z.WATER_SURFACE,
+      viewport,
+    );
+    const edgeDir = {
+      x: edgeEnd.x - edgeStart.x,
+      y: edgeEnd.y - edgeStart.y,
+    };
+    const edgeLen = Math.hypot(edgeDir.x, edgeDir.y) || 1;
+    const edgeTangent = {
+      x: edgeDir.x / edgeLen,
+      y: edgeDir.y / edgeLen,
+    };
+    let edgeNormal = {
+      x: -edgeTangent.y,
+      y: edgeTangent.x,
+    };
+
+    const waterProbe = projectToScreen(
+      WORLD_X.CENTER,
+      WORLD_Y.WATER_NEAR + 1,
+      WORLD_Z.WATER_SURFACE,
+      viewport,
+    );
+    const probeVec = {
+      x: waterProbe.x - edgeStart.x,
+      y: waterProbe.y - edgeStart.y,
+    };
+    if (edgeNormal.x * probeVec.x + edgeNormal.y * probeVec.y < 0) {
+      edgeNormal = {
+        x: -edgeNormal.x,
+        y: -edgeNormal.y,
+      };
+    }
+
+    edgeFoamShader = createEdgeFoamShader({
+      maskThreshold: 0.9,
+      noiseBasisX,
+      noiseBasisY,
+      edgeLinePoint: [edgeStart.x, edgeStart.y],
+      edgeLineNormal: [edgeNormal.x, edgeNormal.y],
+      baseWidthPx: 3.5,
+      chopWidthPx: 2.0,
+      varWidthPx: 3.5,
+    });
+    edgeFoamTiles.filters = [edgeFoamShader];
+
+    placeTileGrid({
+      container: edgeFoamTiles,
+      areaTexture: waterAreaTexture,
+      edgeTexture: waterEdgeTexture,
+      edgeContainer: null,
+      tileScale,
+      startX: Math.floor(WORLD_X.MIN),
+      endX: Math.ceil(WORLD_X.MAX),
+      startY: Math.floor(WORLD_Y.WATER_NEAR),
+      endY: Math.ceil(WORLD_Y.WATER_FAR),
+      z: WORLD_Z.WATER_SURFACE,
+      viewport,
+    });
+  }
+
   // --- Water group assembly ---
   // Displacement (refraction warp) applies only to layers viewed *through*
   // the water surface. Foam and sparkles sit on top of the surface and have
@@ -355,7 +454,8 @@ export async function createWaterLayers(
   //     4. reflectionContainer  — sky + clouds + wall reflections
   //   undisplaced (no filter, composited on top):
   //     5. foamTiles            — surface foam (stretched Voronoi)
-  //     6. sparkleTiles         — specular highlights (topmost water effect)
+  //     6. edgeFoamTiles        — shoreline foam band (river wall edge)
+  //     7. sparkleTiles         — specular highlights (topmost water effect)
   const displacedLayers = new PIXI.Container();
   displacedLayers.addChild(
     riverbedTiles,
@@ -378,11 +478,7 @@ export async function createWaterLayers(
   displacedLayers.filters = [displacementFilter];
 
   const waterGroup = new PIXI.Container();
-  waterGroup.addChild(
-    displacedLayers,
-    foamTiles,
-    sparkleTiles,
-  );
+  waterGroup.addChild(displacedLayers, foamTiles, edgeFoamTiles, sparkleTiles);
 
   return {
     waterGroup,
@@ -392,6 +488,7 @@ export async function createWaterLayers(
     waterSurfaceShader,
     sparkleShader,
     foamShader,
+    edgeFoamShader,
     displacementSprite,
     displacementFilter,
   };
