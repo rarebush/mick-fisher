@@ -48,22 +48,30 @@ export const WORLD_Z = {
 ### Layer Stack (Bottom to Top)
 
 ```
-6. Rope Reflection (mirrored rope sprite + distortion)
-5. Cloud Reflections (bright patches on surface, procedural noise)
-4. Water Distortion (DuDv displacement + pixel snap to 2×2 grid)
-3. Caustics (tileable texture, scrolling, depth-faded)
-2. Cloud Shadows (dark patches on riverbed, procedural noise)
-1. Riverbed Base (simulated depth via heightmap)
+7. Rope Reflection (TODO — mirrored rope sprite + distortion)
+6. Sparkle Overlay (specular highlights, topmost water effect)
+5. Reflections (procedural sky gradient + FBM clouds + wall reflection sprites)
+4. Water Surface (semi-transparent depth-gradient tint with masking)
+3. Submerged Wall Tiles (bottom wall portion, luminosity-tinted)
+2. Riverbed Tiles (luminosity-tinted + animated Voronoi caustics)
+1. [Implicit] Water-coloured background (NOT rendered — see note below)
 ```
 
-**Rendering pipeline:**
+**Current rendering pipeline:**
 
-1. Riverbed renders with depth gradient + cloud shadows
-2. Caustics layer composites on top (additive blend)
-3. Both get wrapped in water container
-4. Water distortion applied to entire container (displacement + pixel snap)
-5. Cloud reflections added above water (also distorted)
-6. Rope reflection added (also distorted)
+1. Riverbed tiles rendered with underwater luminosity tint (ColorMatrixFilter), then caustics filter adds animated Voronoi light patterns on top
+2. Submerged wall tiles rendered with underwater luminosity tint (same ColorMatrixFilter)
+3. Water surface tiles rendered with depth-gradient shader (near-to-far colour + opacity + noise + banding)
+4. Reflection container rendered with procedural sky/clouds composited behind wall reflection sprites, controlled by `uReflectionAlpha`
+5. Sparkle tiles rendered with specular highlight shader
+6. All of the above wrapped in `waterGroup` with a shared `DisplacementFilter` for water flow animation
+
+**Underwater tint approach:**
+
+Tiles below the water surface use a `ColorMatrixFilter` with a luminosity-blend matrix that maps pixel luminance to the water colour (`waterColorNear * scale`). This makes tiles inherently carry the water hue based on their brightness. Filter chain order on riverbed: `[underwaterTintFilter, causticsFilter]` — tint first so caustics add warm highlights on top.
+
+**Alternative: PixiJS `luminosity` blend mode** (`import 'pixi.js/advanced-blend-modes'`):
+More performant (no render-to-texture) and more accurate, but requires a water-coloured background shape behind the tiles for the blend mode to pull hue/saturation from. Not currently used because: (a) the riverbed is the bottom-most layer with nothing behind it, and (b) the blend mode interacts unpredictably with the caustics filter chain (filters render to offscreen texture first, then blend mode composites the output). Revisit if the filter pipeline changes.
 
 ---
 

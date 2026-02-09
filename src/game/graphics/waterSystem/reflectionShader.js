@@ -91,18 +91,19 @@ void main() {
   // Composite: sky, then clouds on top
   vec3 reflection = mix(sky, uCloudColor, cloudMask * uCloudAlpha);
 
-  // Composite sky+clouds behind wall tiles.
-  // Sky/clouds use flat reflection alpha; wall tiles keep their own opacity.
+  // Composite sky+clouds behind wall tiles at full opacity first,
+  // then apply uReflectionAlpha to the entire result.
   vec3 bgColor = reflection;
-  float bgAlpha = uReflectionAlpha;
 
   // Un-premultiply wall tile color (PixiJS stores premultiplied)
   vec3 wallColor = tex.rgb / max(tex.a, 0.001);
   float wallAlpha = tex.a;
 
-  // Standard alpha-over: wall tiles on top of Fresnel-faded sky+clouds
-  float alpha = wallAlpha + bgAlpha * (1.0 - wallAlpha);
-  vec3 color = (wallColor * wallAlpha + bgColor * bgAlpha * (1.0 - wallAlpha)) / max(alpha, 0.001);
+  // Alpha-over: wall tiles on top of sky+clouds (both at full opacity)
+  vec3 color = mix(bgColor, wallColor, wallAlpha);
+
+  // Apply reflection opacity to the entire composite
+  float alpha = uReflectionAlpha;
 
   // Output premultiplied alpha (PixiJS internal format)
   finalColor = vec4(color * alpha, alpha);
@@ -113,8 +114,13 @@ void main() {
  * Create the reflection filter for sky, clouds, and wall reflections.
  *
  * Applied to the reflectionContainer. Generates procedural sky gradient
- * and hard-edged FBM clouds behind the existing wall reflection sprites,
- * with flat reflection opacity.
+ * and hard-edged FBM clouds behind the existing wall reflection sprites.
+ *
+ * Compositing: sky + clouds are composited behind wall tiles at full opacity
+ * first, then `uReflectionAlpha` is applied as a single opacity multiplier to
+ * the entire result. This ensures that lowering the slider fades the whole
+ * reflection uniformly — wall tiles don't become transparent and reveal
+ * clouds behind them.
  *
  * @param {Object} options
  * @param {number[]} options.depthCoeffs       - [A,B,C] depth = A*sx + B*sy + C (required)
@@ -125,7 +131,7 @@ void main() {
  * @param {number}   options.cloudThreshold    - step() cutoff for edges    (default 0.15)
  * @param {number}   options.cloudAlpha        - cloud opacity 0-1          (default 0.6)
  * @param {number[]} options.windDir           - screen-space wind [x,y]    (default [1,0])
- * @param {number}   options.reflectionAlpha   - flat opacity for sky/clouds (default 0.35)
+ * @param {number}   options.reflectionAlpha   - global reflection opacity  (default 0.35)
  * @param {number[]} options.noiseBasisX       - iso X basis [x,y]          (default [1,0])
  * @param {number[]} options.noiseBasisY       - iso Y basis [x,y]          (default [0,1])
  */

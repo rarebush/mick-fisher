@@ -199,6 +199,8 @@ export async function setupEnvironmentLayers(container, width, height) {
     walkwayVolume,
     viewport,
     causticsFilter: waterResult.causticsFilter,
+    /** ColorMatrixFilter with luminosity-blend matrix for underwater tile tint. Set once at setup. */
+    underwaterTintFilter: waterResult.underwaterTintFilter,
     waterSurfaceShader: waterResult.waterSurfaceShader,
     sparkleShader: waterResult.sparkleShader,
     reflectionShader,

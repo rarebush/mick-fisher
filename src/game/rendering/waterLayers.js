@@ -2,10 +2,29 @@
  * Water Layers
  * Riverbed tiles (with caustics), water surface tiles (with depth shader),
  * sparkle overlay, and water group assembly with displacement filter.
+ *
+ * Underwater tint: tiles below the water surface (riverbed + submerged walls)
+ * are tinted via a ColorMatrixFilter using a luminosity-blend matrix. The matrix
+ * extracts Rec. 601 luminance and multiplies by waterColorNear * scale, so tiles
+ * carry the water hue based on their brightness. Applied once at setup (not
+ * per-frame) for performance.
+ *
+ * Filter chain on riverbed: [underwaterTintFilter, causticsFilter] — tint first
+ * so caustics add warm highlights on the tinted base. Submerged walls get the
+ * tint filter only.
+ *
+ * Alternative considered: PixiJS advanced `luminosity` blend mode
+ * (`container.blendMode = 'luminosity'` via `import 'pixi.js/advanced-blend-modes'`).
+ * More performant (no render-to-texture) and more accurate, but requires a
+ * water-coloured background shape behind tiles for hue/saturation source. Not
+ * viable because: (a) riverbed is bottom-most layer with nothing behind it, and
+ * (b) blend mode interacts unpredictably with the caustics filter chain (filters
+ * render offscreen first, then blend mode composites the output). Revisit if
+ * the filter pipeline changes — it eliminates 2 render-to-texture operations.
  */
 
 import * as PIXI from "pixi.js";
-import { DisplacementFilter } from "pixi.js";
+import { ColorMatrixFilter, DisplacementFilter } from "pixi.js";
 import { loadSpriteSheet } from "../graphics/spriteLoader.js";
 import { createWaterSurfaceShader } from "../graphics/waterSystem/waterSurfaceShader.js";
 import { createSparkleShader } from "../graphics/waterSystem/sparkleShader.js";
@@ -17,6 +36,31 @@ import {
   projectToScreen,
 } from "../mechanics/worldConstants.js";
 import { computeDepthCoeffs, generateNoiseTexture } from "./sceneHelpers.js";
+
+/**
+ * Apply a luminosity blend to the underwater tint filter.
+ *
+ * Extracts the luminance of each pixel (Rec. 601 weights) and multiplies it
+ * by the water color, so tiles carry the water hue based on their brightness.
+ *
+ * @param {import("pixi.js").ColorMatrixFilter} filter
+ * @param {number[]} color - RGB [0-1] water color (e.g. waterColorNear)
+ * @param {number} [scale=3] - Brightness multiplier to compensate for dark water colors
+ */
+export function applyUnderwaterTint(filter, color, scale = 3) {
+  // Standard Rec. 601 luminance weights
+  const lr = 0.299, lg = 0.587, lb = 0.114;
+  const wR = color[0] * scale;
+  const wG = color[1] * scale;
+  const wB = color[2] * scale;
+
+  filter.matrix = [
+    lr * wR, lg * wR, lb * wR, 0, 0,  // R output
+    lr * wG, lg * wG, lb * wG, 0, 0,  // G output
+    lr * wB, lg * wB, lb * wB, 0, 0,  // B output
+    0,       0,       0,       1, 0,  // Alpha unchanged
+  ];
+}
 
 /**
  * Place a grid of iso tiles into a container.
@@ -144,7 +188,21 @@ export async function createWaterLayers(
     noiseBasisX,
     noiseBasisY,
   });
-  riverbedTiles.filters = [causticsFilter];
+  // Shared water colour used by both the surface shader and the underwater tint.
+  // Warm sage-teal — natural river alongside sandy banks.
+  const waterColorNear = [0.12, 0.24, 0.20];
+  const waterColorFar = [0.05, 0.13, 0.12];
+
+  // Luminosity-blend tint for underwater layers. Uses a custom colour matrix
+  // (see applyUnderwaterTint) that maps pixel luminance × waterColorNear so
+  // tiles carry the water hue based on their brightness. Applied once at setup.
+  const underwaterTintFilter = new ColorMatrixFilter();
+  applyUnderwaterTint(underwaterTintFilter, waterColorNear);
+
+  // Tint first, then caustics — caustic light adds warm highlights on top
+  // of the water-coloured base rather than being tinted away.
+  riverbedTiles.filters = [underwaterTintFilter, causticsFilter];
+  submergedWallTiles.filters = [underwaterTintFilter];
 
   // --- Water surface tiles ---
   const waterSurfaceTiles = new PIXI.Container();
@@ -184,8 +242,8 @@ export async function createWaterLayers(
     );
 
     waterSurfaceShader = createWaterSurfaceShader({
-      waterColorNear: [0.086, 0.243, 0.247],
-      waterColorFar: [0.035, 0.161, 0.169],
+      waterColorNear,
+      waterColorFar,
       waterAlpha: 0.7,
       maskThreshold: 0.9,
       depthCoeffs: waterSurfaceDepthCoeffs,
@@ -282,6 +340,7 @@ export async function createWaterLayers(
     waterGroup,
     waterSurfaceTiles,
     causticsFilter,
+    underwaterTintFilter,
     waterSurfaceShader,
     sparkleShader,
     displacementSprite,

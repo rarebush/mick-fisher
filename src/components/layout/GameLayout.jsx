@@ -13,6 +13,9 @@ import RenderScaleToggle from "../ui/RenderScaleToggle";
 import CurrentSpeedInput from "../ui/CurrentSpeedInput";
 import ChoppinessInput from "../ui/ChoppinessInput";
 import CloudCoverInput from "../ui/CloudCoverInput";
+import ReflectionAlphaSlider from "../ui/ReflectionAlphaSlider";
+import WaterAlphaSlider from "../ui/WaterAlphaSlider";
+import WaterMaskSlider from "../ui/WaterMaskSlider";
 import "../../styles/game-layout.css";
 
 function GameLayout({ onQuit }) {
@@ -46,6 +49,9 @@ function GameLayout({ onQuit }) {
               <CurrentSpeedInput />
               <ChoppinessInput />
               <CloudCoverInput />
+              <ReflectionAlphaSlider />
+              <WaterAlphaSlider />
+              <WaterMaskSlider />
               <button className="quit-btn" onClick={onQuit}>
                 ← Menu
               </button>

@@ -1,0 +1,22 @@
+{
+  "name": "color-array-highlighter",
+  "displayName": "Color Array Highlighter",
+  "description": "Highlights [r, g, b] float arrays (0..1) as colors.",
+  "version": "0.1.0",
+  "publisher": "workspace",
+  "engines": {
+    "vscode": "^1.82.0"
+  },
+  "categories": [
+    "Other"
+  ],
+  "main": "./extension.js",
+  "activationEvents": [
+    "onLanguage:javascript",
+    "onLanguage:typescript",
+    "onLanguage:javascriptreact",
+    "onLanguage:typescriptreact",
+    "onLanguage:json"
+  ],
+  "contributes": {}
+}

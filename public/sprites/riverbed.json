@@ -1,6 +1,6 @@
 { "frames": [
    {
-    "filename": "isoriverbedtest.aseprite",
+    "filename": "riverbed.aseprite",
     "frame": { "x": 0, "y": 0, "w": 64, "h": 32 },
     "rotated": false,
     "trimmed": false,
@@ -9,7 +9,7 @@
     "duration": 100
    },
    {
-    "filename": "isoriverbedtest.aseprite",
+    "filename": "riverbed.aseprite",
     "frame": { "x": 64, "y": 0, "w": 64, "h": 32 },
     "rotated": false,
     "trimmed": false,

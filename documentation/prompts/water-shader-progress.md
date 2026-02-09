@@ -55,10 +55,72 @@ Also documented in `.cursor/rules/pixi-filters-shaders.mdc`:
 - Uniforms go in a `new UniformGroup({ ... })` passed via `resources`
 - `Filter.from({ fragment })` alone does NOT create a `GlProgram`, so the filter is silently skipped on WebGL
 
+## Reflection system (sky + clouds + wall reflections)
+
+- `reflectionShader.js` generates procedural sky gradient + FBM clouds behind wall reflection sprites
+- Sky/clouds composited at full opacity first, then `uReflectionAlpha` applied to the entire composite as a single opacity multiplier — this prevents wall tiles from becoming transparent and revealing clouds behind them
+- `uReflectionAlpha` is exposed as a UI slider via the game store (`reflectionAlpha` state)
+- Cloud coverage mapped from `cloudCover` (0-1) to FBM `uCloudThreshold` via `0.25 - cloudCover * 0.4` — tuned so clouds appear across the full slider range
+
+## Underwater tint (luminosity blend via ColorMatrixFilter)
+
+Tiles below the water surface (riverbed + submerged walls) are tinted using a `ColorMatrixFilter` with a custom luminosity-blend matrix. The matrix extracts Rec. 601 luminance from each pixel and multiplies it by the water colour, so tiles inherently carry the water hue based on their brightness rather than appearing as grey tiles with a transparent colour wash on top.
+
+```javascript
+// Luminance × waterColor matrix (applied once at setup, not per-frame)
+filter.matrix = [
+  lr*wR, lg*wR, lb*wR, 0, 0,   // R = luminance * waterColor.r * scale
+  lr*wG, lg*wG, lb*wG, 0, 0,   // G = luminance * waterColor.g * scale
+  lr*wB, lg*wB, lb*wB, 0, 0,   // B = luminance * waterColor.b * scale
+  0,     0,     0,     1, 0,   // Alpha unchanged
+];
+```
+
+**Tuning levers:**
+- `scale` parameter (default 3): brightens the result to compensate for dark water colour values
+- `filter.alpha` (0-1): blends between original tile colours and the tinted result
+
+**Filter chain order:** `[underwaterTintFilter, causticsFilter]` on riverbed — tint first so caustics add warm highlights on top of the tinted base rather than being desaturated away. Submerged walls get `[underwaterTintFilter]` only.
+
+### Alternative considered: PixiJS advanced `luminosity` blend mode
+
+PixiJS provides `container.blendMode = 'luminosity'` via `import 'pixi.js/advanced-blend-modes'`. This would be more performant (no render-to-texture pass — compositing happens during normal draw calls) and more accurate to true luminosity blending.
+
+**Why it wasn't used:**
+1. Requires a solid water-coloured rectangle (or diamond) behind the tiles for the blend mode to pull hue/saturation from — the riverbed is the bottom-most layer with nothing below it
+2. The blend mode interacts unpredictably with filter chains: PixiJS applies container filters first (in an offscreen texture), then composites the filter output with the blend mode. The caustics filter on the riverbed means the blend mode wouldn't see the water-coloured background — it would see whatever is below the filter output
+3. A diamond-shaped fill matching the water area bounds would add complexity for an uncertain interaction with the existing filter pipeline
+
+**Revisiting:** If the caustics filter is ever removed or the filter pipeline is restructured, the blend mode approach should be reconsidered. It eliminates 2 render-to-texture operations (one per underwater container).
+
+## UI sliders (debug controls)
+
+Added slider controls wired to the game store and updated per-frame in `PixiApp.js`:
+- **Reflection α** (`reflectionAlpha`) — controls `uReflectionAlpha` on the reflection shader
+- **Water α** (`waterAlpha`) — controls `uWaterAlpha` on the water surface shader
+- **Mask thresh** (`waterMaskThreshold`) — controls `uMaskThreshold` on the water surface shader
+- **Cloud cover** (`cloudCover`) — mapped to `uCloudThreshold` on the reflection shader
+
+## Key files (updated)
+
+- `src/game/rendering/waterLayers.js` — water layer assembly, underwater tint (`applyUnderwaterTint`), shared water colours
+- `src/game/rendering/reflectionLayers.js` — wall reflection textures, reflection container, sky/cloud shader setup
+- `src/game/graphics/waterSystem/reflectionShader.js` — sky + clouds + wall reflection compositing shader
+- `src/game/graphics/waterSystem/waterSurfaceShader.js` — water surface depth gradient, opacity, masking
+- `src/game/graphics/waterSystem/causticsShader.js` — animated Voronoi caustics on riverbed
+- `src/game/graphics/waterSystem/sparkleShader.js` — specular highlight overlay
+- `src/game/rendering/sceneSetup.js` — orchestrates all layers, returns `environmentLayers` to PixiApp
+- `src/game/PixiApp.js` — tick loop animating shader uniforms, UI slider sync
+- `src/components/ui/ReflectionAlphaSlider.jsx` — reflection opacity slider
+- `src/components/ui/WaterAlphaSlider.jsx` — water surface opacity slider
+- `src/components/ui/WaterMaskSlider.jsx` — mask threshold slider
+- `src/components/ui/CloudCoverInput.jsx` — cloud cover slider
+
 ## Next steps
 
-1. Tune caustics params (`causticsScale`, `causticsSpeed`, `causticsIntensity`, `causticsColor`)
-2. Tune water surface params (`depthDarken`, `depthBands`, `waterColor`, `waterAlpha`)
+1. Tune water colours (`waterColorNear`, `waterColorFar`) and underwater tint `scale` for the target art style
+2. Tune caustics params (`causticsScale`, `causticsSpeed`, `causticsIntensity`, `causticsColor`)
 3. Tune displacement params (`scale`, `flowSpeed`, noise texture size/amplitude)
-4. Add `uTime` to the water surface shader for animated ripple/shimmer
-5. Follow `water-rendering.md` for cloud shadows, reflections, and rope reflection
+4. Consider adding `uTime` to the water surface shader for animated ripple/shimmer
+5. Revisit PixiJS `luminosity` blend mode if filter pipeline changes (see notes above)
+6. Follow `water-rendering.md` for rope reflection layer

@@ -12,11 +12,7 @@ import { DebugOverlay } from "./graphics/debugOverlay.js";
 import useLocationStore from "./state/locationStore.js";
 
 // Import new modules
-import {
-  drawQuadrantGrid,
-  setupEnvironmentLayers,
-  drawWorldBoundsWireframe,
-} from "./rendering/sceneSetup.js";
+import { setupEnvironmentLayers } from "./rendering/sceneSetup.js";
 import { getProjectionMetrics } from "./mechanics/worldConstants.js";
 import { SpriteManager } from "./rendering/spriteManager.js";
 import { clamp } from "./physics/vectorUtils.js";
@@ -368,7 +364,7 @@ export class PixiApp {
 
   setupManualFailureListener() {
     // Handle manual "Give Up" button
-    this.handleManualFailure = async (event) => {
+    this.handleManualFailure = async () => {
       const gamePhase = this.gameStore?.getState().gamePhase;
       const physicsState = this.sessionStore?.getState().physicsState;
 
@@ -591,10 +587,24 @@ export class PixiApp {
       }
       // Map cloudCover (0 = clear, 1 = overcast) to FBM noise threshold.
       // High threshold = few clouds, low threshold = heavy coverage.
-      // Range: cloudCover 0 → threshold 0.4 (nearly clear)
+      // Range: cloudCover 0 → threshold 0.25 (nearly clear)
       //        cloudCover 1 → threshold -0.15 (overcast)
       const cloudCover = this._smoothCloudCover;
-      ru.uCloudThreshold = 0.4 - cloudCover * 0.55;
+      ru.uCloudThreshold = 0.25 - cloudCover * 0.4;
+
+      // Live-update reflection opacity from UI slider
+      const reflectionAlpha = this.gameStore.getState().reflectionAlpha;
+      ru.uReflectionAlpha = reflectionAlpha;
+    }
+
+    // Live-update water surface uniforms from UI sliders
+    const waterSurfaceShader = this.environmentLayers.waterSurfaceShader;
+    if (waterSurfaceShader) {
+      const wu = waterSurfaceShader.resources.waterUniforms.uniforms;
+      const gameState = this.gameStore.getState();
+      wu.uWaterAlpha = gameState.waterAlpha;
+      wu.uMaskThreshold = gameState.waterMaskThreshold;
+
     }
 
     // Apply choppiness to displacement filter scale.
