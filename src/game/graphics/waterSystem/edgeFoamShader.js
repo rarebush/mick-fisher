@@ -9,9 +9,6 @@ out vec4 finalColor;
 
 uniform sampler2D uTexture;
 
-// Masking
-uniform float uMaskThreshold;
-
 // Edge band
 uniform vec2 uEdgeLinePoint;
 uniform vec2 uEdgeLineNormal;
@@ -59,18 +56,6 @@ float gradientNoise(vec2 p) {
 }
 
 void main() {
-  vec4 tex = texture(uTexture, vTextureCoord);
-
-  // Skip transparent pixels (gaps between diamond-shaped iso tiles)
-  if (tex.a < 0.01) {
-    finalColor = vec4(0.0);
-    return;
-  }
-
-  // Mask out bright tile edges (same approach as sparkle shader)
-  float maxChannel = max(max(tex.r, tex.g), tex.b);
-  float mask = 1.0 - step(uMaskThreshold, maxChannel);
-
   // --- Transform screen position into isometric-aligned noise space ---
   // --- Transform screen position into isometric-aligned noise space ---
   vec2 foamBasis = vec2(
@@ -112,7 +97,7 @@ void main() {
   float core = step(localPos, widthPx * uCoreWidthRatio);
   float foamAlpha = mix(uFoamAlpha * 0.65, uFoamAlpha, core);
 
-  float alpha = foamAlpha * edgeBand * mask;
+  float alpha = foamAlpha * edgeBand;
   vec3 color = uFoamColor * alpha;
   finalColor = vec4(color, alpha);
 }
@@ -132,12 +117,6 @@ export function createEdgeFoamShader(options = {}) {
   });
 
   const edgeFoamUniforms = new UniformGroup({
-    uMaskThreshold: {
-      value: Number.isFinite(options.maskThreshold)
-        ? options.maskThreshold
-        : 0.9,
-      type: "f32",
-    },
     uEdgeLinePoint: {
       value:
         Array.isArray(options.edgeLinePoint) &&

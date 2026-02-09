@@ -4,10 +4,10 @@
  */
 
 export const WORLD_X = {
-  MIN: -14, // Left bank
-  MAX: 14, // Right bank
+  MIN: -6, // Left bank
+  MAX: 6, // Right bank
   CENTER: 0,
-  WIDTH: 28,
+  WIDTH: 12,
 };
 
 export const WORLD_Z = {
@@ -63,12 +63,12 @@ export const WORLD_Y = {
 
   // Water and riverbed extend from near to far
   WATER_NEAR: 0, // Where water begins (at wall base)
-  WATER_FAR: 16, // Far edge of water
+  WATER_FAR: 12, // Far edge of water
   RIVERBED_NEAR: 0, // Where riverbed begins
-  RIVERBED_FAR: 16, // Far edge of riverbed
+  RIVERBED_FAR: 12, // Far edge of riverbed
 
   MIN: -3,
-  MAX: 16,
+  MAX: 12,
 };
 
 export const CAMERA_FOCUS = {

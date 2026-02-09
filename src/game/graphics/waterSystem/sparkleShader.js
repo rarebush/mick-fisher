@@ -9,7 +9,6 @@ out vec4 finalColor;
 
 uniform sampler2D uTexture;
 
-uniform float uMaskThreshold;
 uniform float uSparkleScale;
 uniform float uSparkleSpeed;
 uniform float uSparkleThreshold;
@@ -43,17 +42,6 @@ float gradientNoise(vec2 p) {
 }
 
 void main() {
-  vec4 tex = texture(uTexture, vTextureCoord);
-
-  // Skip transparent pixels (gaps between diamond-shaped iso tiles)
-  if (tex.a < 0.01) {
-    finalColor = vec4(0.0);
-    return;
-  }
-
-  float maxChannel = max(max(tex.r, tex.g), tex.b);
-  float mask = 1.0 - step(uMaskThreshold, maxChannel);
-
   // --- Sparkles: dual scrolling noise subtracted for chaotic glints ---
   vec2 sparkleBasis = vec2(
     dot(vScreenPos, uNoiseBasisX),
@@ -84,7 +72,7 @@ void main() {
 
   // Only output sparkle pixels — fully transparent elsewhere.
   // Sparkles are pure white at full opacity (premultiplied alpha).
-  float alpha = sparkle * mask;
+  float alpha = sparkle;
   finalColor = vec4(alpha, alpha, alpha, alpha);
 }
 `;
@@ -97,7 +85,6 @@ void main() {
  * surface and wall reflections so sparkles are the topmost water effect.
  *
  * @param {Object} options
- * @param {number}   options.maskThreshold  - brightness cutoff for mask   (default 0.9)
  * @param {number}   options.sparkleScale   - sparkle noise frequency     (default 0.16)
  * @param {number}   options.sparkleSpeed   - sparkle scroll speed        (default 1.0)
  * @param {number}   options.sparkleThreshold - rarity threshold 0-2      (default 0.78)
@@ -114,12 +101,6 @@ export function createSparkleShader(options = {}) {
   });
 
   const sparkleUniforms = new UniformGroup({
-    uMaskThreshold: {
-      value: Number.isFinite(options.maskThreshold)
-        ? options.maskThreshold
-        : 0.9,
-      type: "f32",
-    },
     uSparkleScale: {
       value: Number.isFinite(options.sparkleScale)
         ? options.sparkleScale

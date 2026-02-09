@@ -9,9 +9,6 @@ out vec4 finalColor;
 
 uniform sampler2D uTexture;
 
-// Masking
-uniform float uMaskThreshold;
-
 // Foam shape
 uniform float uFoamScale;
 uniform float uFoamThreshold;
@@ -91,18 +88,6 @@ float gradientNoise(vec2 p) {
 // --- main ---
 
 void main() {
-  vec4 tex = texture(uTexture, vTextureCoord);
-
-  // Skip transparent pixels (gaps between diamond-shaped iso tiles)
-  if (tex.a < 0.01) {
-    finalColor = vec4(0.0);
-    return;
-  }
-
-  // Mask out bright tile edges (same approach as sparkle shader)
-  float maxChannel = max(max(tex.r, tex.g), tex.b);
-  float mask = 1.0 - step(uMaskThreshold, maxChannel);
-
   // --- Transform screen position into isometric-aligned noise space ---
   vec2 foamBasis = vec2(
     dot(vScreenPos, uNoiseBasisX),
@@ -158,7 +143,7 @@ void main() {
 
   // --- 7. Output foam pixels ---
   // Premultiplied alpha (PixiJS internal format).
-  float alpha = foamAlpha * mask;
+  float alpha = foamAlpha;
   vec3 color = uFoamColor * alpha;
   finalColor = vec4(color, alpha);
 }
@@ -176,7 +161,6 @@ void main() {
  * so patterns align with the river orientation.
  *
  * @param {Object} options
- * @param {number}   options.maskThreshold       - brightness cutoff for tile mask (default 0.9)
  * @param {number}   options.foamScale           - cell size in noise space        (default 0.04)
  * @param {number}   options.foamThreshold       - density cutoff 0-1              (default 0.45)
  * @param {number}   options.foamDriftRate       - flow scroll multiplier          (default 0.4)
@@ -198,12 +182,6 @@ export function createFoamShader(options = {}) {
   });
 
   const foamUniforms = new UniformGroup({
-    uMaskThreshold: {
-      value: Number.isFinite(options.maskThreshold)
-        ? options.maskThreshold
-        : 0.9,
-      type: "f32",
-    },
     uFoamScale: {
       value: Number.isFinite(options.foamScale) ? options.foamScale : 0.04,
       type: "f32",

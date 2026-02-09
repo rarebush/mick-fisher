@@ -51,7 +51,6 @@ const useGameStore = create((set, get) => ({
   cloudCover: 0.5, // Cloud cover 0-1 (0 = clear, 1 = overcast)
   reflectionAlpha: 0.35, // Reflection opacity 0-1 (default 0.35)
   waterAlpha: 0.7, // Water surface base opacity (default 0.7)
-  waterMaskThreshold: 0.9, // Brightness cutoff for water mask (default 0.9)
 
   // Actions
   setGamePhase: (phase) => set({ gamePhase: phase }),
@@ -81,22 +80,25 @@ const useGameStore = create((set, get) => ({
 
   setCloudCover: (cloudCover) => {
     const val = parseFloat(cloudCover);
-    set({ cloudCover: Number.isFinite(val) ? Math.max(0, Math.min(1, val)) : 0.5 });
+    set({
+      cloudCover: Number.isFinite(val) ? Math.max(0, Math.min(1, val)) : 0.5,
+    });
   },
 
   setReflectionAlpha: (alpha) => {
     const val = parseFloat(alpha);
-    set({ reflectionAlpha: Number.isFinite(val) ? Math.max(0, Math.min(1, val)) : 0.35 });
+    set({
+      reflectionAlpha: Number.isFinite(val)
+        ? Math.max(0, Math.min(1, val))
+        : 0.35,
+    });
   },
 
   setWaterAlpha: (alpha) => {
     const val = parseFloat(alpha);
-    set({ waterAlpha: Number.isFinite(val) ? Math.max(0, Math.min(1, val)) : 0.7 });
-  },
-
-  setWaterMaskThreshold: (threshold) => {
-    const val = parseFloat(threshold);
-    set({ waterMaskThreshold: Number.isFinite(val) ? Math.max(0, Math.min(1, val)) : 0.9 });
+    set({
+      waterAlpha: Number.isFinite(val) ? Math.max(0, Math.min(1, val)) : 0.7,
+    });
   },
 
   setRenderScaleMode: (mode) =>
@@ -187,7 +189,6 @@ const useGameStore = create((set, get) => ({
       cloudCover: 0.5,
       reflectionAlpha: 0.35,
       waterAlpha: 0.7,
-      waterMaskThreshold: 0.9,
       sessionStats: {
         castsTotal: 0,
         castsSuccessful: 0,

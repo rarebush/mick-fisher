@@ -7,13 +7,10 @@ in vec2 vScreenPos;
 
 out vec4 finalColor;
 
-uniform sampler2D uTexture;
-
 // Custom uniforms (bound via resources.waterUniforms)
 uniform vec3 uWaterColorNear;
 uniform vec3 uWaterColorFar;
 uniform float uWaterAlpha;
-uniform float uMaskThreshold;
 uniform vec3 uDepthCoeffs;
 uniform float uNoiseScale;
 uniform float uNoiseStrength;
@@ -50,17 +47,6 @@ float fbm(vec2 p) {
 // --- main ---
 
 void main() {
-  vec4 tex = texture(uTexture, vTextureCoord);
-
-  // Skip transparent pixels (gaps between diamond-shaped iso tiles)
-  if (tex.a < 0.01) {
-    finalColor = vec4(0.0);
-    return;
-  }
-
-  float maxChannel = max(max(tex.r, tex.g), tex.b);
-  float mask = 1.0 - step(uMaskThreshold, maxChannel);
-
   // Depth from isometric world Y, precomputed as a linear function of screen position.
   // uDepthCoeffs = (A, B, C) where depth = A*screenX + B*screenY + C
   // Coefficients are derived from three projected reference points so the
@@ -85,11 +71,8 @@ void main() {
   // Deeper water is slightly more opaque (harder to see riverbed)
   float depthAlpha = mix(uWaterAlpha, min(uWaterAlpha + 0.25, 1.0), depthWithNoise);
 
-  vec3 color = mix(tex.rgb, depthColor, mask);
-  float alpha = mix(tex.a, depthAlpha, mask);
-
   // Output premultiplied alpha (PixiJS internal format)
-  finalColor = vec4(color * alpha, alpha);
+  finalColor = vec4(depthColor * depthAlpha, depthAlpha);
 }
 `;
 
@@ -101,7 +84,6 @@ void main() {
  * @param {number[]} options.waterColorFar  - RGB [0-1] far water colour (default derived from depthDarken)
  * @param {number[]} options.waterColor     - legacy base water colour (near, default [0.17, 0.45, 0.63])
  * @param {number}   options.waterAlpha     - base opacity                 (default 0.7)
- * @param {number}   options.maskThreshold  - brightness cutoff for mask   (default 0.9)
  * @param {number[]} options.depthCoeffs    - [A,B,C] where depth = A*sx + B*sy + C (required)
  * @param {number}   options.depthDarken    - used only if waterColorFar not provided (default 0.4)
  * @param {number}   options.noiseScale     - noise frequency              (default 0.015)
@@ -135,12 +117,6 @@ export function createWaterSurfaceShader(options = {}) {
     },
     uWaterAlpha: {
       value: Number.isFinite(options.waterAlpha) ? options.waterAlpha : 0.7,
-      type: "f32",
-    },
-    uMaskThreshold: {
-      value: Number.isFinite(options.maskThreshold)
-        ? options.maskThreshold
-        : 0.9,
       type: "f32",
     },
     uDepthCoeffs: {

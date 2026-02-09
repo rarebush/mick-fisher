@@ -128,6 +128,58 @@ function placeTileGrid({
   }
 }
 
+function getWaterSurfaceCorners(viewport) {
+  return [
+    projectToScreen(
+      WORLD_X.MIN,
+      WORLD_Y.WATER_NEAR,
+      WORLD_Z.WATER_SURFACE,
+      viewport,
+    ),
+    projectToScreen(
+      WORLD_X.MAX,
+      WORLD_Y.WATER_NEAR,
+      WORLD_Z.WATER_SURFACE,
+      viewport,
+    ),
+    projectToScreen(
+      WORLD_X.MAX,
+      WORLD_Y.WATER_FAR,
+      WORLD_Z.WATER_SURFACE,
+      viewport,
+    ),
+    projectToScreen(
+      WORLD_X.MIN,
+      WORLD_Y.WATER_FAR,
+      WORLD_Z.WATER_SURFACE,
+      viewport,
+    ),
+  ];
+}
+
+function createWaterSurfacePolygon(viewport, color, alpha) {
+  const corners = getWaterSurfaceCorners(viewport);
+  const polygon = new PIXI.Graphics();
+  polygon.moveTo(corners[0].x, corners[0].y);
+  for (let i = 1; i < corners.length; i += 1) {
+    polygon.lineTo(corners[i].x, corners[i].y);
+  }
+  polygon.closePath();
+  polygon.fill({ color, alpha });
+  return polygon;
+}
+
+function addWaterSurfaceFill(container, viewport) {
+  const fill = createWaterSurfacePolygon(viewport, 0x000000, 0);
+  container.addChildAt(fill, 0);
+}
+
+function applyWaterSurfaceMask(container, parent, viewport) {
+  const mask = createWaterSurfacePolygon(viewport, 0xffffff, 1);
+  parent.addChild(mask);
+  container.mask = mask;
+}
+
 /**
  * Create all water-related layers and assemble them into a waterGroup.
  *
@@ -244,8 +296,9 @@ export async function createWaterLayers(
   const waterEdgeTexture = waterAreaTexture;
 
   let waterSurfaceShader = null;
+  const hasWaterTiles = Boolean(waterAreaTexture?.source);
 
-  if (waterAreaTexture?.source) {
+  if (hasWaterTiles) {
     waterAreaTexture.source.scaleMode = "nearest";
     if (waterEdgeTexture?.source) {
       waterEdgeTexture.source.scaleMode = "nearest";
@@ -265,7 +318,6 @@ export async function createWaterLayers(
       waterColorNear,
       waterColorFar,
       waterAlpha: 0.7,
-      maskThreshold: 0.9,
       depthCoeffs: waterSurfaceDepthCoeffs,
       noiseScale: 0.015,
       noiseStrength: 0.15,
@@ -292,20 +344,21 @@ export async function createWaterLayers(
       z: WORLD_Z.WATER_SURFACE,
       viewport,
     });
+
+    addWaterSurfaceFill(waterSurfaceTiles, viewport);
   }
 
   // --- Sparkle overlay ---
   const sparkleTiles = new PIXI.Container();
   let sparkleShader = null;
 
-  if (waterAreaTexture?.source) {
+  if (hasWaterTiles) {
     const tileScale = {
       x: tileScreenSize.width / waterAreaTexture.width,
       y: tileScreenSize.height / waterAreaTexture.height,
     };
 
     sparkleShader = createSparkleShader({
-      maskThreshold: 0.9,
       flowDir: [flowDirX, flowDirY],
       noiseBasisX,
       noiseBasisY,
@@ -325,6 +378,8 @@ export async function createWaterLayers(
       z: WORLD_Z.WATER_SURFACE,
       viewport,
     });
+
+    addWaterSurfaceFill(sparkleTiles, viewport);
   }
 
   // --- Foam overlay ---
@@ -335,14 +390,13 @@ export async function createWaterLayers(
   const edgeFoamTiles = new PIXI.Container();
   let edgeFoamShader = null;
 
-  if (waterAreaTexture?.source) {
+  if (hasWaterTiles) {
     const tileScale = {
       x: tileScreenSize.width / waterAreaTexture.width,
       y: tileScreenSize.height / waterAreaTexture.height,
     };
 
     foamShader = createFoamShader({
-      maskThreshold: 0.9,
       flowDir: [flowDirX, flowDirY],
       noiseBasisX,
       noiseBasisY,
@@ -362,9 +416,11 @@ export async function createWaterLayers(
       z: WORLD_Z.WATER_SURFACE,
       viewport,
     });
+
+    addWaterSurfaceFill(foamTiles, viewport);
   }
 
-  if (waterAreaTexture?.source) {
+  if (hasWaterTiles) {
     const tileScale = {
       x: tileScreenSize.width / waterAreaTexture.width,
       y: tileScreenSize.height / waterAreaTexture.height,
@@ -414,7 +470,6 @@ export async function createWaterLayers(
     }
 
     edgeFoamShader = createEdgeFoamShader({
-      maskThreshold: 0.9,
       noiseBasisX,
       noiseBasisY,
       edgeLinePoint: [edgeStart.x, edgeStart.y],
@@ -438,6 +493,8 @@ export async function createWaterLayers(
       z: WORLD_Z.WATER_SURFACE,
       viewport,
     });
+
+    addWaterSurfaceFill(edgeFoamTiles, viewport);
   }
 
   // --- Water group assembly ---
@@ -479,6 +536,13 @@ export async function createWaterLayers(
 
   const waterGroup = new PIXI.Container();
   waterGroup.addChild(displacedLayers, foamTiles, edgeFoamTiles, sparkleTiles);
+
+  if (hasWaterTiles) {
+    applyWaterSurfaceMask(waterSurfaceTiles, displacedLayers, viewport);
+    applyWaterSurfaceMask(foamTiles, waterGroup, viewport);
+    applyWaterSurfaceMask(edgeFoamTiles, waterGroup, viewport);
+    applyWaterSurfaceMask(sparkleTiles, waterGroup, viewport);
+  }
 
   return {
     waterGroup,

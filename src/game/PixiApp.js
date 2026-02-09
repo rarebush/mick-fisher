@@ -628,7 +628,6 @@ export class PixiApp {
       const wu = waterSurfaceShader.resources.waterUniforms.uniforms;
       const gameState = this.gameStore.getState();
       wu.uWaterAlpha = gameState.waterAlpha;
-      wu.uMaskThreshold = gameState.waterMaskThreshold;
     }
 
     // Apply choppiness to displacement filter scale.
