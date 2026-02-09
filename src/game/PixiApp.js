@@ -538,6 +538,10 @@ export class PixiApp {
     // Accumulate downstream flow distance at 24 FPS cadence.
     // Using accumulated distance instead of time*speed avoids discontinuities
     // when currentSpeed transitions — the phase just grows faster/slower.
+    // _flowStepSpeed is snapshotted here so any uniform that depends on the
+    // instantaneous speed (e.g. foam stretch) updates at the same cadence as
+    // flowPhase — preventing visual desyncs where shape morphs at 60 FPS but
+    // scroll position steps at 24 FPS.
     const FLOW_FPS_STEP = 1 / 24;
     this._flowAccumTime += dt;
     if (this._flowAccumTime >= FLOW_FPS_STEP) {
@@ -548,8 +552,10 @@ export class PixiApp {
       // wrap is invisible in the noise pattern.
       this._flowPhase =
         (this._flowPhase + steps * FLOW_FPS_STEP * currentSpeed) % 1000;
+      this._flowStepSpeed = currentSpeed;
     }
     const flowPhase = this._flowPhase;
+    const flowStepSpeed = this._flowStepSpeed ?? currentSpeed;
 
     // Animate caustics uTime (normal rate — drift uses flowPhase).
     // Wrap at 1000 to prevent 32-bit float precision loss in the shader.
@@ -567,6 +573,17 @@ export class PixiApp {
       const su = sparkleShader.resources.sparkleUniforms.uniforms;
       su.uFlowPhase = flowPhase;
       su.uChoppiness = choppiness;
+    }
+
+    // Animate foam overlay (stretched Voronoi, between reflections and sparkles).
+    // Use flowStepSpeed (snapshotted at 24 FPS) so stretch and scroll step in
+    // lockstep — avoids cells morphing at 60 FPS while position jumps at 24 FPS.
+    const foamShader = this.environmentLayers.foamShader;
+    if (foamShader) {
+      const fu = foamShader.resources.foamUniforms.uniforms;
+      fu.uFlowPhase = flowPhase;
+      fu.uChoppiness = choppiness;
+      fu.uCurrentSpeed = flowStepSpeed;
     }
 
     // Animate reflection shader (sky + clouds)

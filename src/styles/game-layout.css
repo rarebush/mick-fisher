@@ -35,10 +35,14 @@
   pointer-events: none;
 }
 
-.ui-row--top,
-.ui-row--bottom {
+.ui-row--top {
   justify-content: space-between;
   align-items: flex-start;
+}
+
+.ui-row--bottom {
+  justify-content: space-between;
+  align-items: flex-end;
 }
 
 .ui-row--center {

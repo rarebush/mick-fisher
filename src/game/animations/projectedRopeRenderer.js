@@ -12,8 +12,8 @@ export const CORNER_PROJECTION_CONFIG = {
   enableDebugVisualization: true,
   slack: 0.2,
   line: {
-    color: 0x000000,
-    width: 2,
+    color: 0x414141,
+    width: 1.1,
     alpha: 1,
   },
   debug: {

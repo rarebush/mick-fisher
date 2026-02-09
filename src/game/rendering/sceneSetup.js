@@ -203,6 +203,7 @@ export async function setupEnvironmentLayers(container, width, height) {
     underwaterTintFilter: waterResult.underwaterTintFilter,
     waterSurfaceShader: waterResult.waterSurfaceShader,
     sparkleShader: waterResult.sparkleShader,
+    foamShader: waterResult.foamShader,
     reflectionShader,
     displacementSprite: waterResult.displacementSprite,
     displacementFilter: waterResult.displacementFilter,

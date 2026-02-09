@@ -98,9 +98,9 @@ void main() {
  *
  * @param {Object} options
  * @param {number}   options.maskThreshold  - brightness cutoff for mask   (default 0.9)
- * @param {number}   options.sparkleScale   - sparkle noise frequency     (default 0.08)
+ * @param {number}   options.sparkleScale   - sparkle noise frequency     (default 0.16)
  * @param {number}   options.sparkleSpeed   - sparkle scroll speed        (default 1.0)
- * @param {number}   options.sparkleThreshold - rarity threshold 0-2      (default 0.63)
+ * @param {number}   options.sparkleThreshold - rarity threshold 0-2      (default 0.78)
  * @param {number}   options.sparkleClipDebug - show clip noise 0/1       (default 0)
  * @param {number[]} options.flowDir          - normalized screen-space flow direction [x,y]
  * @param {number[]} options.noiseBasisX      - screen-space iso X basis [x,y] (default [1,0])
@@ -123,7 +123,7 @@ export function createSparkleShader(options = {}) {
     uSparkleScale: {
       value: Number.isFinite(options.sparkleScale)
         ? options.sparkleScale
-        : 0.08,
+        : 0.16,
       type: "f32",
     },
     uSparkleSpeed: {
@@ -133,7 +133,7 @@ export function createSparkleShader(options = {}) {
     uSparkleThreshold: {
       value: Number.isFinite(options.sparkleThreshold)
         ? options.sparkleThreshold
-        : 0.63,
+        : 0.78,
       type: "f32",
     },
     uSparkleClipDebug: {

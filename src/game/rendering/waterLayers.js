@@ -28,6 +28,7 @@ import { ColorMatrixFilter, DisplacementFilter } from "pixi.js";
 import { loadSpriteSheet } from "../graphics/spriteLoader.js";
 import { createWaterSurfaceShader } from "../graphics/waterSystem/waterSurfaceShader.js";
 import { createSparkleShader } from "../graphics/waterSystem/sparkleShader.js";
+import { createFoamShader } from "../graphics/waterSystem/foamShader.js";
 import { createCausticsShader } from "../graphics/waterSystem/causticsShader.js";
 import {
   WORLD_X,
@@ -307,34 +308,81 @@ export async function createWaterLayers(
     });
   }
 
+  // --- Foam overlay ---
+  const foamTiles = new PIXI.Container();
+  let foamShader = null;
+
+  if (waterAreaTexture?.source) {
+    const tileScale = {
+      x: tileScreenSize.width / waterAreaTexture.width,
+      y: tileScreenSize.height / waterAreaTexture.height,
+    };
+
+    foamShader = createFoamShader({
+      maskThreshold: 0.9,
+      flowDir: [flowDirX, flowDirY],
+      noiseBasisX,
+      noiseBasisY,
+    });
+    foamTiles.filters = [foamShader];
+
+    placeTileGrid({
+      container: foamTiles,
+      areaTexture: waterAreaTexture,
+      edgeTexture: waterEdgeTexture,
+      edgeContainer: null,
+      tileScale,
+      startX: Math.floor(WORLD_X.MIN),
+      endX: Math.ceil(WORLD_X.MAX),
+      startY: Math.floor(WORLD_Y.WATER_NEAR),
+      endY: Math.ceil(WORLD_Y.WATER_FAR),
+      z: WORLD_Z.WATER_SURFACE,
+      viewport,
+    });
+  }
+
   // --- Water group assembly ---
+  // Displacement (refraction warp) applies only to layers viewed *through*
+  // the water surface. Foam and sparkles sit on top of the surface and have
+  // their own flow-phase animation, so they live outside the displaced
+  // sub-container to stay crisp and un-warped.
+  //
   // Draw order (bottom to top):
-  //   1. riverbedTiles        — riverbed floor (seen through water)
-  //   2. submergedWallTiles   — wall below water surface
-  //   3. waterSurfaceTiles    — semi-transparent water depth tint
-  //   4. reflectionContainer  — sky + clouds + wall reflections (Fresnel opacity)
-  //   5. sparkleTiles         — specular highlights (topmost water effect)
-  const waterGroup = new PIXI.Container();
-  waterGroup.addChild(
+  //   displacedLayers (with DisplacementFilter):
+  //     1. riverbedTiles        — riverbed floor (seen through water)
+  //     2. submergedWallTiles   — wall below water surface
+  //     3. waterSurfaceTiles    — semi-transparent water depth tint
+  //     4. reflectionContainer  — sky + clouds + wall reflections
+  //   undisplaced (no filter, composited on top):
+  //     5. foamTiles            — surface foam (stretched Voronoi)
+  //     6. sparkleTiles         — specular highlights (topmost water effect)
+  const displacedLayers = new PIXI.Container();
+  displacedLayers.addChild(
     riverbedTiles,
     submergedWallTiles,
     waterSurfaceTiles,
     reflectionContainer,
-    sparkleTiles,
   );
 
-  // Procedural noise displacement for water flow
+  // Procedural noise displacement for water flow (refraction through surface)
   const noiseTexture = generateNoiseTexture(128);
   const displacementSprite = new PIXI.Sprite(noiseTexture);
   displacementSprite.width = screenWidth;
   displacementSprite.height = screenHeight;
-  waterGroup.addChild(displacementSprite);
+  displacedLayers.addChild(displacementSprite);
 
   const displacementFilter = new DisplacementFilter({
     sprite: displacementSprite,
     scale: 4,
   });
-  waterGroup.filters = [displacementFilter];
+  displacedLayers.filters = [displacementFilter];
+
+  const waterGroup = new PIXI.Container();
+  waterGroup.addChild(
+    displacedLayers,
+    foamTiles,
+    sparkleTiles,
+  );
 
   return {
     waterGroup,
@@ -343,6 +391,7 @@ export async function createWaterLayers(
     underwaterTintFilter,
     waterSurfaceShader,
     sparkleShader,
+    foamShader,
     displacementSprite,
     displacementFilter,
   };
