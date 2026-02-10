@@ -38,6 +38,7 @@ import {
   projectToScreen,
 } from "../mechanics/worldConstants.js";
 import { computeDepthCoeffs, generateNoiseTexture } from "./sceneHelpers.js";
+import { WATER_OBJECT_TEST_LOGS } from "../data/waterObjectTestData.js";
 
 /**
  * Apply a luminosity blend to the underwater tint filter.
@@ -513,6 +514,55 @@ export async function createWaterLayers(
     addWaterSurfaceFill(edgeFoamTiles, viewport);
   }
 
+  // --- Water objects (test logs) ---
+  const waterObjectsBelow = new PIXI.Container();
+  const waterObjectsAbove = new PIXI.Container();
+  let objectSpritesheet = null;
+
+  try {
+    objectSpritesheet = await loadSpriteSheet(
+      "/sprites/objects.png",
+      "/sprites/objects.json",
+    );
+  } catch (error) {
+    console.warn("[OBJECTS] Failed to load /sprites/objects.json", error);
+  }
+
+  const objectBelowTexture = objectSpritesheet?.textures?.frame0 ?? null;
+  const objectMaskTexture = objectSpritesheet?.textures?.frame1 ?? null;
+  const objectAboveTexture = objectSpritesheet?.textures?.frame2 ?? null;
+  const hasWaterObjects = Boolean(
+    objectBelowTexture?.source && objectAboveTexture?.source,
+  );
+
+  if (hasWaterObjects) {
+    objectBelowTexture.source.scaleMode = "nearest";
+    objectAboveTexture.source.scaleMode = "nearest";
+    if (objectMaskTexture?.source) {
+      objectMaskTexture.source.scaleMode = "nearest";
+    }
+
+    for (const log of WATER_OBJECT_TEST_LOGS) {
+      const screen = projectToScreen(
+        log.position.x,
+        log.position.y,
+        log.position.z,
+        viewport,
+      );
+      const belowSprite = new PIXI.Sprite(objectBelowTexture);
+      belowSprite.anchor.set(0.5, 0.5);
+      belowSprite.x = screen.x;
+      belowSprite.y = screen.y;
+      waterObjectsBelow.addChild(belowSprite);
+
+      const aboveSprite = new PIXI.Sprite(objectAboveTexture);
+      aboveSprite.anchor.set(0.5, 0.5);
+      aboveSprite.x = screen.x;
+      aboveSprite.y = screen.y;
+      waterObjectsAbove.addChild(aboveSprite);
+    }
+  }
+
   // --- Water group assembly ---
   // Displacement (refraction warp) applies only to layers viewed *through*
   // the water surface. Foam and sparkles sit on top of the surface and have
@@ -523,16 +573,19 @@ export async function createWaterLayers(
   //   displacedLayers (with DisplacementFilter):
   //     1. riverbedTiles        — riverbed floor (seen through water)
   //     2. submergedWallTiles   — wall below water surface
-  //     3. waterSurfaceTiles    — semi-transparent water depth tint
-  //     4. reflectionContainer  — sky + clouds + wall reflections
+  //     3. waterObjectsBelow    — submerged parts of water objects
+  //     4. waterSurfaceTiles    — semi-transparent water depth tint
+  //     5. reflectionContainer  — sky + clouds + wall reflections
   //   undisplaced (no filter, composited on top):
-  //     5. foamTiles            — surface foam (stretched Voronoi)
-  //     6. edgeFoamTiles        — shoreline foam band (river wall edge)
-  //     7. sparkleTiles         — specular highlights (topmost water effect)
+  //     6. foamTiles            — surface foam (stretched Voronoi)
+  //     7. edgeFoamTiles        — shoreline foam band (river wall edge)
+  //     8. sparkleTiles         — specular highlights
+  //     9. waterObjectsAbove    — above-water parts of water objects
   const displacedLayers = new PIXI.Container();
   displacedLayers.addChild(
     riverbedTiles,
     submergedWallTiles,
+    waterObjectsBelow,
     waterSurfaceTiles,
     reflectionContainer,
   );
@@ -551,7 +604,13 @@ export async function createWaterLayers(
   displacedLayers.filters = [displacementFilter];
 
   const waterGroup = new PIXI.Container();
-  waterGroup.addChild(displacedLayers, foamTiles, edgeFoamTiles, sparkleTiles);
+  waterGroup.addChild(
+    displacedLayers,
+    foamTiles,
+    edgeFoamTiles,
+    sparkleTiles,
+    waterObjectsAbove,
+  );
 
   if (hasWaterTiles) {
     applyWaterSurfaceMask(waterSurfaceTiles, displacedLayers, viewport);
@@ -563,6 +622,8 @@ export async function createWaterLayers(
   return {
     waterGroup,
     waterSurfaceTiles,
+    waterObjectsBelow,
+    waterObjectsAbove,
     causticsFilter,
     underwaterTintFilter,
     waterSurfaceShader,
