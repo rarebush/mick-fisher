@@ -3,11 +3,21 @@
  * World-space dimensions and avatar anchor positions.
  */
 
+const WORLD_X_MIN = -8;
+const WORLD_X_MAX = 4;
+const WORLD_X_WIDTH = WORLD_X_MAX - WORLD_X_MIN;
+const WORLD_X_SPAWN_BUFFER = 4;
+const WORLD_X_SPAWN_MIN = WORLD_X_MIN - WORLD_X_SPAWN_BUFFER;
+const WORLD_X_SPAWN_WIDTH = WORLD_X_WIDTH + WORLD_X_SPAWN_BUFFER;
+
 export const WORLD_X = {
-  MIN: -8, // Left bank
-  MAX: 4, // Right bank
+  MIN: WORLD_X_MIN, // Left bank
+  MAX: WORLD_X_MAX, // Right bank
   CENTER: 0,
-  WIDTH: 12,
+  WIDTH: WORLD_X_WIDTH,
+  SPAWN_BUFFER: WORLD_X_SPAWN_BUFFER,
+  SPAWN_MIN: WORLD_X_SPAWN_MIN,
+  SPAWN_WIDTH: WORLD_X_SPAWN_WIDTH,
 };
 
 export const WORLD_Z = {
@@ -51,6 +61,10 @@ export function getAvatarHandWorldPosition(offset = {}) {
   };
 }
 
+const WORLD_Y_WATER_NEAR = 0;
+const WORLD_Y_WATER_FAR = 8;
+const WORLD_Y_WATER_DEPTH = WORLD_Y_WATER_FAR - WORLD_Y_WATER_NEAR;
+
 export const WORLD_Y = {
   // Walkway extends behind avatar to fill backdrop
   WALKWAY_BACK: -3, // Back edge of walkway (toward camera)
@@ -62,8 +76,9 @@ export const WORLD_Y = {
   WALL_EDGE: 0, // Wall is at Y=0, spans Z from walkway to water
 
   // Water and riverbed extend from near to far
-  WATER_NEAR: 0, // Where water begins (at wall base)
-  WATER_FAR: 8, // Far edge of water
+  WATER_NEAR: WORLD_Y_WATER_NEAR, // Where water begins (at wall base)
+  WATER_FAR: WORLD_Y_WATER_FAR, // Far edge of water
+  WATER_DEPTH: WORLD_Y_WATER_DEPTH,
   RIVERBED_NEAR: 0, // Where riverbed begins
   RIVERBED_FAR: 8, // Far edge of riverbed
 

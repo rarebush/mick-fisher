@@ -10,10 +10,13 @@ export class FluidFoamDebugOverlay {
   /**
    * @param {FluidFoamCoordinator} coordinator - Foam coordinator to debug
    * @param {PIXI.Container} parentContainer - Container to add overlay to
+   * @param {{screenSize?: {width:number,height:number}, getScreenSize?: Function}} [options]
    */
-  constructor(coordinator, parentContainer) {
+  constructor(coordinator, parentContainer, options = {}) {
     this.coordinator = coordinator;
     this.parentContainer = parentContainer;
+    this.screenSize = options.screenSize || null;
+    this.getScreenSize = options.getScreenSize || null;
 
     // Create debug text
     this.debugText = new PIXI.Text({
@@ -27,13 +30,11 @@ export class FluidFoamDebugOverlay {
       },
     });
 
-    this.debugText.x = 10;
-    this.debugText.y = 10;
+    this.debugText.anchor.set(0, 1);
+    this._updatePosition();
     this.debugText.zIndex = 10000; // High z-index to render on top
 
     parentContainer.addChild(this.debugText);
-
-    console.log("[FluidFoam] Debug overlay created");
   }
 
   /**
@@ -41,6 +42,8 @@ export class FluidFoamDebugOverlay {
    */
   update() {
     if (!this.coordinator) return;
+
+    this._updatePosition();
 
     const activeCount = this.coordinator.activeParticleCount;
     const maxCount = this.coordinator.config.maxParticles;
@@ -60,6 +63,13 @@ Time Since Last Wave: ${timeSinceWave}s / ${nextWave}s
 Collision System: ${hasCollision}
 Total Collisions: ${collisionCount}
 Container Visible: ${this.coordinator.renderer?.particleContainer?.visible ?? "unknown"}`;
+  }
+
+  _updatePosition() {
+    const size = this.getScreenSize?.() || this.screenSize;
+    const height = size?.height || 0;
+    this.debugText.x = 10;
+    this.debugText.y = height > 0 ? height - 10 : 10;
   }
 
   /**

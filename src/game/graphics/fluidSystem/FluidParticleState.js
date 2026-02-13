@@ -13,15 +13,19 @@ export class FluidParticleState {
   /**
    * @param {Object} config
    * @param {number} config.maxParticles - Maximum number of particles
+   * @param {number} [config.spawnBufferX] - Extra world-space units to extend leftward
    */
   constructor(config) {
     this.maxParticles = config.maxParticles;
+    this.spawnBufferX = Number.isFinite(config.spawnBufferX)
+      ? config.spawnBufferX
+      : 0;
     this.collisionCount = 0; // Debug: Track collision events
     this.lastCollisionLog = 0; // Throttle collision logging
 
     // World space bounds for wrapping
     this.worldBounds = {
-      minX: WORLD_X.MIN,
+      minX: WORLD_X.MIN - this.spawnBufferX,
       maxX: WORLD_X.MAX,
       minY: WORLD_Y.WATER_NEAR,
       maxY: WORLD_Y.WATER_FAR,
@@ -153,7 +157,8 @@ export class FluidParticleState {
   }
 
   _resetParticle(particle) {
-    const spawnX = this.worldBounds.minX + Math.random() * 0.5;
+    const spawnBand = Math.max(0.5, this.spawnBufferX || 0.5);
+    const spawnX = this.worldBounds.minX + Math.random() * spawnBand;
     const spawnY =
       this.worldBounds.minY +
       Math.random() * (this.worldBounds.maxY - this.worldBounds.minY);

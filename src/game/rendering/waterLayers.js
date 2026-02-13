@@ -418,6 +418,13 @@ export async function createWaterLayers(
   let fluidFoamCoordinator = null;
   let fluidFoamDebugOverlay = null;
   let fluidFoamParticleContainer = null; // Separate top-level container for particles (debugging)
+  const foamGridHeight = 120;
+  const foamGridWidth = Math.round(
+    (WORLD_X.SPAWN_WIDTH / WORLD_Y.WATER_DEPTH) * foamGridHeight,
+  );
+  const foamGridDensity = foamGridHeight / WORLD_Y.WATER_DEPTH;
+  const boundaryGridWidth = Math.round(WORLD_X.WIDTH * foamGridDensity);
+  const boundaryGridHeight = Math.round(WORLD_Y.WATER_DEPTH * foamGridDensity);
 
   // Edge foam (localized to the river wall line at Y=0)
   const edgeFoamTiles = new PIXI.Container();
@@ -426,33 +433,33 @@ export async function createWaterLayers(
   // Create fluid foam system (replaces static Voronoi foam shader)
   // Always create it if renderer is available, even if water tiles are missing
   if (renderer) {
-    console.log("[FluidFoam] Creating fluid foam system...");
-
     // Create dedicated top-level container for particles (no masking for now)
     fluidFoamParticleContainer = new PIXI.Container();
     fluidFoamParticleContainer.label = "FluidFoamParticles"; // Use label instead of name for PixiJS v8
 
     // Initialize fluid foam coordinator with sub-systems
     fluidFoamCoordinator = new FluidFoamCoordinator({
-      gridWidth: 270, // Match water surface aspect ratio (12:8 = 1.5:1)
-      gridHeight: 180,
+      gridWidth: foamGridWidth,
+      gridHeight: foamGridHeight,
       maxParticles: 10000,
       waveInterval: 1.0,
       particlesPerWave: 200,
-      maxAge: 8.0,
+      maxAge: 16.0,
+      spawnBufferX: WORLD_X.SPAWN_BUFFER,
       baseFlowSpeed: 2.0, // Increased to ensure particles cross the 12-unit water width in time
     });
 
     // Create velocity field
     const velocityField = new FluidVelocityField({
-      width: 270, // Match boundary texture dimensions
-      height: 180,
+      width: foamGridWidth, // Match boundary texture dimensions
+      height: foamGridHeight,
       renderer: renderer,
     });
 
     // Create particle state manager
     const particleState = new FluidParticleState({
       maxParticles: 10000,
+      spawnBufferX: WORLD_X.SPAWN_BUFFER,
     });
 
     // Create particle renderer - add to dedicated top-level container
@@ -460,6 +467,7 @@ export async function createWaterLayers(
       maxParticles: 10000,
       parentContainer: fluidFoamParticleContainer, // Top-level, no masking
       worldToScreen: (x, y, z) => projectToScreen(x, y, z, viewport),
+      maxAge: 16.0,
     });
 
     // Create boundary texture for obstacle collision (will be populated later with waterObjectsAbove)
@@ -480,9 +488,58 @@ export async function createWaterLayers(
     fluidFoamDebugOverlay = new FluidFoamDebugOverlay(
       fluidFoamCoordinator,
       overlayContainer,
+      {
+        screenSize: { width: screenWidth, height: screenHeight },
+      },
     );
 
-    console.log("[FluidFoam] Fluid foam system initialized");
+    const foamBoundsMinX = WORLD_X.SPAWN_MIN;
+    const foamBoundsMaxX = WORLD_X.MAX;
+    const foamBoundsMinY = WORLD_Y.WATER_NEAR;
+    const foamBoundsMaxY = WORLD_Y.WATER_FAR;
+    const foamBoundsScreen = [
+      projectToScreen(
+        foamBoundsMinX,
+        foamBoundsMinY,
+        WORLD_Z.WATER_SURFACE,
+        viewport,
+      ),
+      projectToScreen(
+        foamBoundsMaxX,
+        foamBoundsMinY,
+        WORLD_Z.WATER_SURFACE,
+        viewport,
+      ),
+      projectToScreen(
+        foamBoundsMaxX,
+        foamBoundsMaxY,
+        WORLD_Z.WATER_SURFACE,
+        viewport,
+      ),
+      projectToScreen(
+        foamBoundsMinX,
+        foamBoundsMaxY,
+        WORLD_Z.WATER_SURFACE,
+        viewport,
+      ),
+    ];
+
+    const foamBoundsOutline = new PIXI.Graphics();
+    foamBoundsOutline
+      .poly([
+        foamBoundsScreen[0].x,
+        foamBoundsScreen[0].y,
+        foamBoundsScreen[1].x,
+        foamBoundsScreen[1].y,
+        foamBoundsScreen[2].x,
+        foamBoundsScreen[2].y,
+        foamBoundsScreen[3].x,
+        foamBoundsScreen[3].y,
+      ])
+      .fill({ color: 0x00ffff, alpha: 0.08 })
+      .stroke({ width: 2, color: 0x00ffff, alpha: 0.8 });
+    foamBoundsOutline.zIndex = 9998;
+    overlayContainer.addChild(foamBoundsOutline);
 
     // Note: Static foam shader disabled in favor of particle-based foam
     // foamShader = createFoamShader({
@@ -708,8 +765,8 @@ export async function createWaterLayers(
       // Match texture aspect ratio to water surface world bounds
       // Water surface: 12 units wide (X: -8 to 4), 8 units deep (Y: 0 to 8) = 1.5:1 ratio
       const boundaryTexture = new FluidBoundaryTexture({
-        width: 270, // 270x180 = 1.5:1 aspect ratio matching world space
-        height: 180,
+        width: boundaryGridWidth,
+        height: boundaryGridHeight,
         renderer: renderer,
         waterObjectMasksContainer: waterObjectMasks,
         viewport: viewport,

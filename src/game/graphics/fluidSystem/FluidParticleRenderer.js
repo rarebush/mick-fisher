@@ -13,11 +13,13 @@ export class FluidParticleRenderer {
    * @param {number} config.maxParticles - Maximum number of particles to render
    * @param {import("pixi.js").Container} config.parentContainer - Parent container to add particle container to
    * @param {Function} config.worldToScreen - Function to convert world coords to screen coords
+   * @param {number} [config.maxAge] - Max particle age in seconds
    */
   constructor(config) {
     this.maxParticles = config.maxParticles;
     this.worldToScreen = config.worldToScreen;
     this.parentContainer = config.parentContainer;
+    this.maxAge = Number.isFinite(config.maxAge) ? config.maxAge : 8.0;
 
     // Create regular container instead of ParticleContainer (PixiJS v8 compatibility)
     this.particleContainer = new Container();
@@ -27,10 +29,6 @@ export class FluidParticleRenderer {
     this.particleContainer.visible = true;
     this.particleContainer.alpha = 1.0;
     this.particleContainer.blendMode = "normal"; // Normal blend for white foam (can try 'add' for glow)
-
-    console.log(
-      "[FluidFoam] Using regular Container instead of ParticleContainer for v8 compatibility",
-    );
 
     // Create particle texture (simple white circle)
     this.particleTexture = this._createParticleTexture();
@@ -124,7 +122,7 @@ export class FluidParticleRenderer {
         sprite.scale.set(particle.scale * 0.8); // Smaller scale for fine foam
 
         // Fade out based on age
-        const ageRatio = particle.age / 8.0; // Assuming max age of 8 seconds
+        const ageRatio = particle.age / this.maxAge;
         sprite.alpha = Math.max(0, 1.0 - ageRatio) * 0.6; // Moderate alpha for soft foam
 
         sprite.visible = true;
