@@ -191,6 +191,7 @@ export class PixiApp {
       this.sceneContainer,
       this.app.screen.width,
       this.app.screen.height,
+      this.app.renderer,
     );
 
     this.spriteLayers = {
@@ -584,6 +585,26 @@ export class PixiApp {
       fu.uFlowPhase = flowPhase;
       fu.uChoppiness = choppiness;
       fu.uCurrentSpeed = flowStepSpeed;
+    }
+
+    // Update fluid foam coordinator (particle-based foam)
+    const fluidFoamCoordinator = this.environmentLayers.fluidFoamCoordinator;
+    if (fluidFoamCoordinator) {
+      fluidFoamCoordinator.setFlowSpeed(flowStepSpeed);
+      fluidFoamCoordinator.setChoppiness(choppiness);
+      fluidFoamCoordinator.update(dt);
+
+      // Update debug overlay
+      const debugOverlay = this.environmentLayers.fluidFoamDebugOverlay;
+      if (debugOverlay) {
+        debugOverlay.update();
+      }
+    } else {
+      // Debug: Log once if coordinator is missing
+      if (!this._loggedMissingCoordinator) {
+        console.warn("[FluidFoam] Coordinator not found in environmentLayers");
+        this._loggedMissingCoordinator = true;
+      }
     }
 
     const edgeFoamShader = this.environmentLayers.edgeFoamShader;

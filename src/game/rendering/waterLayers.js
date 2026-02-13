@@ -31,6 +31,12 @@ import { createSparkleShader } from "../graphics/waterSystem/sparkleShader.js";
 import { createFoamShader } from "../graphics/waterSystem/foamShader.js";
 import { createEdgeFoamShader } from "../graphics/waterSystem/edgeFoamShader.js";
 import { createCausticsShader } from "../graphics/waterSystem/causticsShader.js";
+import { FluidFoamCoordinator } from "../graphics/fluidSystem/FluidFoamCoordinator.js";
+import { FluidVelocityField } from "../graphics/fluidSystem/FluidVelocityField.js";
+import { FluidParticleState } from "../graphics/fluidSystem/FluidParticleState.js";
+import { FluidParticleRenderer } from "../graphics/fluidSystem/FluidParticleRenderer.js";
+import { FluidBoundaryTexture } from "../graphics/fluidSystem/FluidBoundaryTexture.js";
+import { FluidFoamDebugOverlay } from "../graphics/fluidSystem/FluidFoamDebugOverlay.js";
 import {
   WORLD_X,
   WORLD_Y,
@@ -211,6 +217,8 @@ export async function createWaterLayers(
     flowDirY,
     noiseBasisX,
     noiseBasisY,
+    renderer,
+    debugContainer,
   } = context;
   const { submergedWallTiles, reflectionContainer } = layerInputs;
 
@@ -315,6 +323,11 @@ export async function createWaterLayers(
   let waterSurfaceShader = null;
   const hasWaterTiles = Boolean(waterAreaTexture?.source);
 
+  console.log("[WaterLayers] hasWaterTiles:", hasWaterTiles, {
+    waterAreaTexture: Boolean(waterAreaTexture),
+    source: Boolean(waterAreaTexture?.source),
+  });
+
   if (hasWaterTiles) {
     waterAreaTexture.source.scaleMode = "nearest";
     if (waterEdgeTexture?.source) {
@@ -402,40 +415,119 @@ export async function createWaterLayers(
   // --- Foam overlay ---
   const foamTiles = new PIXI.Container();
   let foamShader = null;
+  let fluidFoamCoordinator = null;
+  let fluidFoamDebugOverlay = null;
+  let fluidFoamParticleContainer = null; // Separate top-level container for particles (debugging)
 
   // Edge foam (localized to the river wall line at Y=0)
   const edgeFoamTiles = new PIXI.Container();
   let edgeFoamShader = null;
 
-  if (hasWaterTiles) {
-    const tileScale = {
-      x: tileScreenSize.width / waterAreaTexture.width,
-      y: tileScreenSize.height / waterAreaTexture.height,
-    };
+  // Create fluid foam system (replaces static Voronoi foam shader)
+  // Always create it if renderer is available, even if water tiles are missing
+  if (renderer) {
+    console.log("[FluidFoam] Creating fluid foam system...");
 
-    foamShader = createFoamShader({
-      flowDir: [flowDirX, flowDirY],
-      noiseBasisX,
-      noiseBasisY,
-    });
-    foamTiles.filters = [foamShader];
+    // Create dedicated top-level container for particles (no masking for now)
+    fluidFoamParticleContainer = new PIXI.Container();
+    fluidFoamParticleContainer.label = "FluidFoamParticles"; // Use label instead of name for PixiJS v8
 
-    placeTileGrid({
-      container: foamTiles,
-      areaTexture: waterAreaTexture,
-      edgeTexture: waterEdgeTexture,
-      edgeContainer: null,
-      tileScale,
-      startX: Math.floor(WORLD_X.MIN),
-      endX: Math.ceil(WORLD_X.MAX),
-      startY: Math.floor(WORLD_Y.WATER_NEAR),
-      endY: Math.ceil(WORLD_Y.WATER_FAR),
-      z: WORLD_Z.WATER_SURFACE,
-      viewport,
+    // Initialize fluid foam coordinator with sub-systems
+    fluidFoamCoordinator = new FluidFoamCoordinator({
+      gridWidth: 270, // Match water surface aspect ratio (12:8 = 1.5:1)
+      gridHeight: 180,
+      maxParticles: 10000,
+      waveInterval: 1.0,
+      particlesPerWave: 200,
+      maxAge: 8.0,
+      baseFlowSpeed: 2.0, // Increased to ensure particles cross the 12-unit water width in time
     });
 
-    addWaterSurfaceFill(foamTiles, viewport);
+    // Create velocity field
+    const velocityField = new FluidVelocityField({
+      width: 270, // Match boundary texture dimensions
+      height: 180,
+      renderer: renderer,
+    });
+
+    // Create particle state manager
+    const particleState = new FluidParticleState({
+      maxParticles: 10000,
+      worldToScreen: (x, y, z) => projectToScreen(x, y, z, viewport),
+    });
+
+    // Create particle renderer - add to dedicated top-level container
+    const particleRenderer = new FluidParticleRenderer({
+      maxParticles: 10000,
+      parentContainer: fluidFoamParticleContainer, // Top-level, no masking
+      worldToScreen: (x, y, z) => projectToScreen(x, y, z, viewport),
+    });
+
+    // Create boundary texture for obstacle collision (will be populated later with waterObjectsAbove)
+    // Note: waterObjectsAbove is created later in this function, so we'll pass it separately
+    const boundaryTexture = null; // Will be created and set after waterObjectsAbove exists
+
+    // Initialize coordinator with sub-systems
+    fluidFoamCoordinator.initialize(
+      velocityField,
+      particleState,
+      particleRenderer,
+      boundaryTexture,
+    );
+
+    // Create debug overlay (temporary - for testing)
+    // Add to debugContainer if available, otherwise add to foamTiles
+    const overlayContainer = debugContainer || foamTiles;
+    fluidFoamDebugOverlay = new FluidFoamDebugOverlay(
+      fluidFoamCoordinator,
+      overlayContainer,
+    );
+
+    console.log("[FluidFoam] Fluid foam system initialized");
+
+    // Note: Static foam shader disabled in favor of particle-based foam
+    // foamShader = createFoamShader({
+    //   flowDir: [flowDirX, flowDirY],
+    //   noiseBasisX,
+    //   noiseBasisY,
+    // });
+    // foamTiles.filters = [foamShader];
+  } else {
+    console.warn(
+      "[FluidFoam] Renderer not available, skipping fluid foam creation",
+    );
   }
+
+  // Note: Static foam tiles disabled in favor of particle-based fluid foam
+  // if (hasWaterTiles) {
+  //   const tileScale = {
+  //     x: tileScreenSize.width / waterAreaTexture.width,
+  //     y: tileScreenSize.height / waterAreaTexture.height,
+  //   };
+  //
+  //   foamShader = createFoamShader({
+  //     flowDir: [flowDirX, flowDirY],
+  //     noiseBasisX,
+  //     noiseBasisY,
+  //   });
+  //   foamTiles.filters = [foamShader];
+  //
+  //   placeTileGrid({
+  //     container: foamTiles,
+  //     areaTexture: waterAreaTexture,
+  //     edgeTexture: waterEdgeTexture,
+  //     edgeContainer: null,
+  //     tileScale,
+  //     startX: Math.floor(WORLD_X.MIN),
+  //     endX: Math.ceil(WORLD_X.MAX),
+  //     startY: Math.floor(WORLD_Y.WATER_NEAR),
+  //     endY: Math.ceil(WORLD_Y.WATER_FAR),
+  //     z: WORLD_Z.WATER_SURFACE,
+  //     viewport,
+  //   });
+  //
+  //   addWaterSurfaceFill(foamTiles, viewport);
+  // }
 
   if (hasWaterTiles) {
     const tileScale = {
@@ -517,6 +609,7 @@ export async function createWaterLayers(
   // --- Water objects (test logs) ---
   const waterObjectsBelow = new PIXI.Container();
   const waterObjectsAbove = new PIXI.Container();
+  const waterObjectMasks = new PIXI.Container(); // Collision masks for boundary texture
   let objectSpritesheet = null;
 
   try {
@@ -542,24 +635,90 @@ export async function createWaterLayers(
       objectMaskTexture.source.scaleMode = "nearest";
     }
 
+    // Water surface center in world space for coordinate conversion
+    const waterSurfaceCenterX = (WORLD_X.MIN + WORLD_X.MAX) / 2; // -2
+    const waterSurfaceCenterY = (WORLD_Y.WATER_NEAR + WORLD_Y.WATER_FAR) / 2; // 4
+
     for (const log of WATER_OBJECT_TEST_LOGS) {
-      const screen = projectToScreen(
-        log.position.x,
-        log.position.y,
-        log.position.z,
-        viewport,
-      );
+      // Test data coordinates are LOCAL to water surface: (0,0) = center
+      // Convert to world coordinates
+      const worldX = log.position.x + waterSurfaceCenterX;
+      const worldY = log.position.y + waterSurfaceCenterY;
+
+      const screen = projectToScreen(worldX, worldY, log.position.z, viewport);
+
+      console.log(`[WaterObjects SPRITE] ${log.id}:`, {
+        local: `(${log.position.x}, ${log.position.y})`,
+        world: `(${worldX.toFixed(2)}, ${worldY.toFixed(2)})`,
+        screen: `(${screen.x.toFixed(1)}, ${screen.y.toFixed(1)})`,
+      });
+
       const belowSprite = new PIXI.Sprite(objectBelowTexture);
       belowSprite.anchor.set(0.5, 0.5);
-      belowSprite.x = screen.x;
-      belowSprite.y = screen.y;
+
+      // Compensate for sprite trimming:
+      // Original canvas center: (384, 192)
+      // Trimmed sprite center: (165+18.5, 184+25) = (183.5, 209)
+      // Offset needed: (200.5, -17)
+      const trimOffsetX =
+        objectBelowTexture.orig.width / 2 -
+        (objectBelowTexture.trim.x + objectBelowTexture.frame.width / 2);
+      const trimOffsetY =
+        objectBelowTexture.orig.height / 2 -
+        (objectBelowTexture.trim.y + objectBelowTexture.frame.height / 2);
+
+      belowSprite.x = screen.x + trimOffsetX;
+      belowSprite.y = screen.y + trimOffsetY;
       waterObjectsBelow.addChild(belowSprite);
 
       const aboveSprite = new PIXI.Sprite(objectAboveTexture);
       aboveSprite.anchor.set(0.5, 0.5);
-      aboveSprite.x = screen.x;
-      aboveSprite.y = screen.y;
+
+      // Reuse same trim offset (textures have identical trim data)
+      aboveSprite.x = screen.x + trimOffsetX;
+      aboveSprite.y = screen.y + trimOffsetY;
       waterObjectsAbove.addChild(aboveSprite);
+
+      // Create mask sprite for collision detection (if available)
+      if (objectMaskTexture?.source) {
+        const maskSprite = new PIXI.Sprite(objectMaskTexture);
+        maskSprite.anchor.set(0.5, 0.5);
+        maskSprite.x = screen.x;
+        maskSprite.y = screen.y;
+        // Store WORLD position for boundary texture rendering
+        maskSprite.worldPosition = { x: log.position.x, y: log.position.y };
+        // Debug visualization: semi-transparent red tint
+        maskSprite.alpha = 0.4;
+        maskSprite.tint = 0xff0000; // Red overlay to show collision areas
+        waterObjectMasks.addChild(maskSprite);
+      }
+
+      console.log(`[WaterObjects] ${log.id}:`, {
+        local: `(${log.position.x}, ${log.position.y})`,
+        world: `(${worldX.toFixed(1)}, ${worldY.toFixed(1)})`,
+        screen: `(${screen.x.toFixed(1)}, ${screen.y.toFixed(1)})`,
+      });
+    }
+
+    // Create boundary texture for collision detection after all mask sprites are added
+    if (
+      fluidFoamCoordinator &&
+      renderer &&
+      waterObjectMasks.children.length > 0
+    ) {
+      // Match texture aspect ratio to water surface world bounds
+      // Water surface: 12 units wide (X: -8 to 4), 8 units deep (Y: 0 to 8) = 1.5:1 ratio
+      const boundaryTexture = new FluidBoundaryTexture({
+        width: 270, // 270x180 = 1.5:1 aspect ratio matching world space
+        height: 180,
+        renderer: renderer,
+        waterObjectMasksContainer: waterObjectMasks,
+        viewport: viewport,
+        debugContainer: debugContainer, // Pass debug container for visualization
+      });
+
+      // Set the boundary texture in the coordinator
+      fluidFoamCoordinator.boundaryTexture = boundaryTexture;
     }
   }
 
@@ -610,14 +769,68 @@ export async function createWaterLayers(
     edgeFoamTiles,
     sparkleTiles,
     waterObjectsAbove,
+    waterObjectMasks, // Debug: Show collision masks as semi-transparent red overlay
   );
 
+  // Debug container for green dots - will be added outside waterGroup
+  const debugDotsContainer = new PIXI.Container();
+
+  // Debug: Add green dots to separate container so they render on top of everything
+  for (const log of WATER_OBJECT_TEST_LOGS) {
+    const waterSurfaceCenterX = (WORLD_X.MIN + WORLD_X.MAX) / 2; // -2
+    const waterSurfaceCenterY = (WORLD_Y.WATER_NEAR + WORLD_Y.WATER_FAR) / 2; // 4
+    const worldX = log.position.x + waterSurfaceCenterX;
+    const worldY = log.position.y + waterSurfaceCenterY;
+    const screen = projectToScreen(worldX, worldY, log.position.z, viewport);
+
+    console.log(`[WaterObjects GREEN DOT] ${log.id}:`, {
+      local: `(${log.position.x}, ${log.position.y})`,
+      world: `(${worldX.toFixed(2)}, ${worldY.toFixed(2)})`,
+      screen: `(${screen.x.toFixed(1)}, ${screen.y.toFixed(1)})`,
+    });
+
+    const debugCircle = new PIXI.Graphics();
+    debugCircle.circle(0, 0, 15);
+    debugCircle.fill({ color: 0x00ff00, alpha: 1.0 }); // Bright green
+    debugCircle.x = screen.x;
+    debugCircle.y = screen.y;
+    debugDotsContainer.addChild(debugCircle);
+
+    // TEST: Add a blue circle to waterObjectsAbove with exact same coordinates
+    const testCircle = new PIXI.Graphics();
+    testCircle.circle(0, 0, 20);
+    testCircle.fill({ color: 0x0000ff, alpha: 1.0 }); // Bright blue
+    testCircle.x = screen.x;
+    testCircle.y = screen.y;
+    testCircle.zIndex = 9999;
+    waterObjectsAbove.addChild(testCircle);
+    waterObjectsAbove.sortableChildren = true; // Enable z-index sorting
+
+    console.log(
+      `[TEST] Blue circle added at screen (${screen.x}, ${screen.y})`,
+    );
+    console.log(`[TEST] waterObjectsAbove:`, {
+      visible: waterObjectsAbove.visible,
+      alpha: waterObjectsAbove.alpha,
+      children: waterObjectsAbove.children.length,
+      mask: waterObjectsAbove.mask ? "YES" : "NO",
+    });
+  }
+
+  // Always apply mask to foam and sparkles (even if water tiles are shader-driven)
   if (hasWaterTiles) {
     applyWaterSurfaceMask(waterSurfaceTiles, displacedLayers, viewport);
-    applyWaterSurfaceMask(foamTiles, waterGroup, viewport);
-    applyWaterSurfaceMask(edgeFoamTiles, waterGroup, viewport);
-    applyWaterSurfaceMask(sparkleTiles, waterGroup, viewport);
   }
+  applyWaterSurfaceMask(foamTiles, waterGroup, viewport);
+  applyWaterSurfaceMask(edgeFoamTiles, waterGroup, viewport);
+  applyWaterSurfaceMask(sparkleTiles, waterGroup, viewport);
+
+  console.log(
+    "[WaterLayers] Applied water surface masks. foamTiles mask:",
+    foamTiles.mask ? "YES" : "NO",
+  );
+
+  console.log("[WaterLayers] Returning water layers with fluid foam system");
 
   return {
     waterGroup,
@@ -627,9 +840,13 @@ export async function createWaterLayers(
     causticsFilter,
     underwaterTintFilter,
     waterSurfaceShader,
+    fluidFoamDebugOverlay,
     sparkleShader,
     foamShader,
     edgeFoamShader,
+    fluidFoamCoordinator,
+    fluidFoamParticleContainer, // Return the top-level particle container
+    debugDotsContainer, // Debug: Green dots showing expected object positions
     displacementSprite,
     displacementFilter,
   };

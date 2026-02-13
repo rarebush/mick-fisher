@@ -4,10 +4,10 @@
  */
 
 export const WORLD_X = {
-  MIN: -16, // Left bank
-  MAX: 8, // Right bank
+  MIN: -8, // Left bank
+  MAX: 4, // Right bank
   CENTER: 0,
-  WIDTH: 24,
+  WIDTH: 12,
 };
 
 export const WORLD_Z = {
@@ -53,7 +53,7 @@ export function getAvatarHandWorldPosition(offset = {}) {
 
 export const WORLD_Y = {
   // Walkway extends behind avatar to fill backdrop
-  WALKWAY_BACK: -5, // Back edge of walkway (toward camera)
+  WALKWAY_BACK: -3, // Back edge of walkway (toward camera)
   WALKWAY_FRONT: 0, // Front edge of walkway (where avatar stands)
 
   AVATAR: -1, // Avatar is set back from the front edge
@@ -63,17 +63,17 @@ export const WORLD_Y = {
 
   // Water and riverbed extend from near to far
   WATER_NEAR: 0, // Where water begins (at wall base)
-  WATER_FAR: 16, // Far edge of water
+  WATER_FAR: 8, // Far edge of water
   RIVERBED_NEAR: 0, // Where riverbed begins
-  RIVERBED_FAR: 16, // Far edge of riverbed
+  RIVERBED_FAR: 8, // Far edge of riverbed
 
-  MIN: -5,
-  MAX: 16,
+  MIN: -3,
+  MAX: 8,
 };
 
 export const CAMERA_FOCUS = {
   x: -3,
-  y: (WORLD_Y.WALKWAY_BACK + WORLD_Y.WATER_FAR) / 2 - 2,
+  y: (WORLD_Y.WALKWAY_BACK + WORLD_Y.WATER_FAR) / 2,
   z: WORLD_Z.WATER_SURFACE,
 };
 

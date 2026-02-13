@@ -70,7 +70,12 @@ function placeTilePlane({
  * @param {number} height - Screen height
  * @returns {Object} Layer references
  */
-export async function setupEnvironmentLayers(container, width, height) {
+export async function setupEnvironmentLayers(
+  container,
+  width,
+  height,
+  renderer = null,
+) {
   if (!container) return null;
 
   // Create viewport for world-to-screen projection
@@ -189,15 +194,42 @@ export async function setupEnvironmentLayers(container, width, height) {
 
   // Water layers: riverbed, water surface, sparkles, displacement
   const waterResult = await createWaterLayers(
-    { viewport, tileScreenSize, flowDirX, flowDirY, noiseBasisX, noiseBasisY },
+    {
+      viewport,
+      tileScreenSize,
+      flowDirX,
+      flowDirY,
+      noiseBasisX,
+      noiseBasisY,
+      renderer,
+      debugContainer: container,
+    },
     { submergedWallTiles, reflectionContainer },
     width,
     height,
   );
 
+  console.log(
+    "[SceneSetup] waterResult.fluidFoamCoordinator:",
+    waterResult.fluidFoamCoordinator,
+  );
+
   // River wall renders behind the water surface so water effects can overlay it.
   container.addChild(riverWallTiles);
   container.addChild(waterResult.waterGroup);
+
+  // Add particle container on top of everything
+  if (waterResult.fluidFoamParticleContainer) {
+    container.addChild(waterResult.fluidFoamParticleContainer);
+  } else {
+    console.error("[SceneSetup] fluidFoamParticleContainer is NULL/undefined!");
+  }
+
+  // Add debug dots container on top of everything for visibility
+  if (waterResult.debugDotsContainer) {
+    container.addChild(waterResult.debugDotsContainer);
+    console.log("[SceneSetup] Debug dots container added on top");
+  }
 
   const walkwayTiles = new PIXI.Container();
   const walkwayTexture = defaultSpritesheet?.textures?.frame3 ?? null;
@@ -259,6 +291,8 @@ export async function setupEnvironmentLayers(container, width, height) {
     sparkleShader: waterResult.sparkleShader,
     foamShader: waterResult.foamShader,
     edgeFoamShader: waterResult.edgeFoamShader,
+    fluidFoamCoordinator: waterResult.fluidFoamCoordinator,
+    fluidFoamDebugOverlay: waterResult.fluidFoamDebugOverlay,
     reflectionShader,
     displacementSprite: waterResult.displacementSprite,
     displacementFilter: waterResult.displacementFilter,
