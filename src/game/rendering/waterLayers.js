@@ -453,7 +453,6 @@ export async function createWaterLayers(
     // Create particle state manager
     const particleState = new FluidParticleState({
       maxParticles: 10000,
-      worldToScreen: (x, y, z) => projectToScreen(x, y, z, viewport),
     });
 
     // Create particle renderer - add to dedicated top-level container
@@ -686,7 +685,7 @@ export async function createWaterLayers(
         maskSprite.x = screen.x;
         maskSprite.y = screen.y;
         // Store WORLD position for boundary texture rendering
-        maskSprite.worldPosition = { x: log.position.x, y: log.position.y };
+        maskSprite.worldPosition = { x: worldX, y: worldY };
         // Debug visualization: semi-transparent red tint
         maskSprite.alpha = 0.4;
         maskSprite.tint = 0xff0000; // Red overlay to show collision areas
@@ -718,7 +717,7 @@ export async function createWaterLayers(
       });
 
       // Set the boundary texture in the coordinator
-      fluidFoamCoordinator.boundaryTexture = boundaryTexture;
+      fluidFoamCoordinator.setBoundaryTexture(boundaryTexture);
     }
   }
 

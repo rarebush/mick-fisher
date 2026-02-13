@@ -62,6 +62,10 @@ export class FluidFoamCoordinator {
     this.renderer = renderer;
     this.boundaryTexture = boundaryTexture;
 
+    if (boundaryTexture) {
+      this.setBoundaryTexture(boundaryTexture);
+    }
+
     // Initialize particle pool to max capacity
     this._initializeParticlePool();
 
@@ -148,20 +152,14 @@ export class FluidFoamCoordinator {
 
     if (spawnCount <= 0) return;
 
-    // Spawn position: distributed across water surface for better coverage
-    const spawnCenterX =
-      WORLD_X.MIN + Math.random() * (WORLD_X.MAX - WORLD_X.MIN); // Across entire width
-    const spawnCenterY =
-      WORLD_Y.WATER_NEAR +
-      Math.random() * (WORLD_Y.WATER_FAR - WORLD_Y.WATER_NEAR);
-    const spawnRadius = 0.5 + Math.random() * 0.5; // Blob radius in world units
+    // Spawn position: near upstream edge (left bank)
+    const upstreamBand = 1.0; // World units from the left bank
 
     // Debug: Log spawn position occasionally
     if (Math.random() < 0.1) {
-      console.log("[FluidFoam] Spawning wave at", {
-        x: spawnCenterX.toFixed(2),
-        y: spawnCenterY.toFixed(2),
-        radius: spawnRadius.toFixed(2),
+      console.log("[FluidFoam] Spawning wave in band", {
+        xMin: WORLD_X.MIN.toFixed(2),
+        xMax: (WORLD_X.MIN + upstreamBand).toFixed(2),
       });
     }
 
@@ -170,12 +168,11 @@ export class FluidFoamCoordinator {
     for (let i = 0; i < this.particles.length && spawned < spawnCount; i++) {
       const particle = this.particles[i];
       if (!particle.active) {
-        // Random position within circular blob
-        const angle = Math.random() * Math.PI * 2;
-        const distance = Math.sqrt(Math.random()) * spawnRadius;
-
-        particle.x = spawnCenterX + Math.cos(angle) * distance;
-        particle.y = spawnCenterY + Math.sin(angle) * distance;
+        // Random position across upstream spawn band
+        particle.x = WORLD_X.MIN + Math.random() * upstreamBand;
+        particle.y =
+          WORLD_Y.WATER_NEAR +
+          Math.random() * (WORLD_Y.WATER_FAR - WORLD_Y.WATER_NEAR);
         particle.vx = this.flowSpeed * 0.1; // Small initial velocity
         particle.vy = (Math.random() - 0.5) * 0.05;
         particle.age = 0;
@@ -222,6 +219,17 @@ export class FluidFoamCoordinator {
    */
   setChoppiness(choppiness) {
     this.choppiness = choppiness;
+  }
+
+  /**
+   * Set boundary texture and flag solver to recompute.
+   * @param {FluidBoundaryTexture} boundaryTexture
+   */
+  setBoundaryTexture(boundaryTexture) {
+    this.boundaryTexture = boundaryTexture;
+    if (this.velocityField?.setBoundaryTexture) {
+      this.velocityField.setBoundaryTexture(boundaryTexture);
+    }
   }
 
   /**

@@ -7,17 +7,15 @@
  * Can be extended to GPU-based texture updates for better performance.
  */
 
-import { WORLD_X, WORLD_Y, WORLD_Z } from "../../mechanics/worldDimensions.js";
+import { WORLD_X, WORLD_Y } from "../../mechanics/worldDimensions.js";
 
 export class FluidParticleState {
   /**
    * @param {Object} config
    * @param {number} config.maxParticles - Maximum number of particles
-   * @param {Function} config.worldToScreen - Function to convert world coords to screen coords
    */
   constructor(config) {
     this.maxParticles = config.maxParticles;
-    this.worldToScreen = config.worldToScreen;
     this.collisionCount = 0; // Debug: Track collision events
     this.lastCollisionLog = 0; // Throttle collision logging
 
@@ -76,6 +74,11 @@ export class FluidParticleState {
   advectParticle(particle, deltaTime, velocityField, boundaryTexture = null) {
     if (!particle.active) return;
 
+    if (!Number.isFinite(particle.x) || !Number.isFinite(particle.y)) {
+      this._resetParticle(particle);
+      return;
+    }
+
     // Get velocity at particle position
     const velocity = this._sampleVelocity(
       particle.x,
@@ -87,16 +90,14 @@ export class FluidParticleState {
     const newX = particle.x + velocity.vx * deltaTime;
     const newY = particle.y + velocity.vy * deltaTime;
 
+    if (!Number.isFinite(newX) || !Number.isFinite(newY)) {
+      this._resetParticle(particle);
+      return;
+    }
+
     // Check for obstacle collision if boundary texture provided
     if (boundaryTexture) {
-      // Convert new world position to screen position for collision check
-      const screenPos = this.worldToScreen(newX, newY, WORLD_Z.WATER_SURFACE);
-
-      if (boundaryTexture.isObstacle(screenPos.x, screenPos.y)) {
-        // Bounce: reverse velocity and stay at current position
-        particle.vx = -velocity.vx * 0.5; // Dampen bounce
-        particle.vy = -velocity.vy * 0.5;
-
+      if (boundaryTexture.isObstacle(newX, newY)) {
         this.collisionCount++;
 
         // Log collisions (throttled)
@@ -106,7 +107,22 @@ export class FluidParticleState {
           this.lastCollisionLog = now;
         }
 
-        return; // Don't update position
+        const resolved = this._resolveObstacle(
+          newX,
+          newY,
+          velocityField,
+          boundaryTexture,
+        );
+
+        if (!resolved) {
+          return;
+        }
+
+        particle.x = resolved.x;
+        particle.y = resolved.y;
+      } else {
+        particle.x = newX;
+        particle.y = newY;
       }
     } else {
       // Debug: Log if no boundary texture is provided
@@ -114,11 +130,10 @@ export class FluidParticleState {
         console.log("[FluidParticle] advectParticle: No boundary texture!");
         this._loggedNoBoundary = true;
       }
-    }
 
-    // Update particle position
-    particle.x = newX;
-    particle.y = newY;
+      particle.x = newX;
+      particle.y = newY;
+    }
 
     // Apply horizontal wrapping (left bank to right bank)
     if (particle.x > this.worldBounds.maxX) {
@@ -137,6 +152,50 @@ export class FluidParticleState {
     }
   }
 
+  _resetParticle(particle) {
+    const spawnX = this.worldBounds.minX + Math.random() * 0.5;
+    const spawnY =
+      this.worldBounds.minY +
+      Math.random() * (this.worldBounds.maxY - this.worldBounds.minY);
+
+    particle.x = spawnX;
+    particle.y = spawnY;
+    particle.vx = 0;
+    particle.vy = 0;
+    particle.age = 0;
+  }
+
+  _resolveObstacle(worldX, worldY, velocityField, boundaryTexture) {
+    const stepX = velocityField?.width
+      ? (this.worldBounds.maxX - this.worldBounds.minX) / velocityField.width
+      : 0.05;
+    const stepY = velocityField?.height
+      ? (this.worldBounds.maxY - this.worldBounds.minY) / velocityField.height
+      : 0.05;
+
+    const offsets = [
+      [0, stepY],
+      [0, -stepY],
+      [stepX, 0],
+      [-stepX, 0],
+      [stepX, stepY],
+      [stepX, -stepY],
+      [-stepX, stepY],
+      [-stepX, -stepY],
+    ];
+
+    for (const [dx, dy] of offsets) {
+      const candidateX = worldX + dx;
+      const candidateY = worldY + dy;
+
+      if (!boundaryTexture.isObstacle(candidateX, candidateY)) {
+        return { x: candidateX, y: candidateY };
+      }
+    }
+
+    return null;
+  }
+
   /**
    * Sample velocity from velocity field at world position.
    * Uses bilinear interpolation for smooth velocity.
@@ -148,21 +207,14 @@ export class FluidParticleState {
    * @private
    */
   _sampleVelocity(worldX, worldY, velocityField) {
-    // For now, return static flow using current flow speed from velocity field
-    // Future: Sample from velocity texture with bilinear interpolation
+    if (velocityField?.sampleVelocity) {
+      return velocityField.sampleVelocity(worldX, worldY);
+    }
 
-    // Static rightward flow scaled by current flow speed
     return {
-      vx: velocityField ? velocityField.flowSpeed : 1.0, // World units per second
+      vx: velocityField ? velocityField.flowSpeed : 1.0,
       vy: 0.0,
     };
-
-    // Future GPU texture sampling implementation:
-    // const uv = velocityField.worldToUV(worldX, worldY);
-    // const pixel = sampleTextureBilinear(velocityField.getVelocityTexture(), uv);
-    // const vx = (pixel.r / 255.0) * 4.0 - 2.0; // Denormalize from [0,255] to [-2,2]
-    // const vy = (pixel.g / 255.0) * 4.0 - 2.0;
-    // return { vx, vy };
   }
 
   /**

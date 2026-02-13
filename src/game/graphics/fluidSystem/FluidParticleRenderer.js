@@ -4,7 +4,7 @@
  * Converts world-space particle positions to screen coordinates for rendering.
  */
 
-import { Container, Sprite, Texture, Graphics } from "pixi.js";
+import { Container, Sprite, Texture } from "pixi.js";
 import { WORLD_Z } from "../../mechanics/worldDimensions.js";
 
 export class FluidParticleRenderer {

@@ -1,19 +1,12 @@
 /**
  * FluidBoundaryTexture.js
- * Renders water object mask sprites to an off-screen texture for particle collision detection.
- * The boundary texture acts as a collision map where particles bounce off sprite masks.
- * Uses SCREEN SPACE coordinates matching the isometric projection used for particle rendering.
+ * Renders water object masks to an off-screen texture for particle collision detection.
+ * The boundary texture acts as a collision map where particles bounce off obstacles.
+ * Uses WORLD SPACE coordinates mapped to grid UVs (no screen-space physics).
  */
 
-import {
-  RenderTexture,
-  Graphics,
-  Container,
-  Sprite,
-  Mesh,
-  Geometry,
-} from "pixi.js";
-import { projectToScreen, screenToWorld } from "../../mechanics/projection.js";
+import { RenderTexture, Graphics, Container, Mesh, Geometry } from "pixi.js";
+import { projectToScreen } from "../../mechanics/projection.js";
 import { WORLD_X, WORLD_Y, WORLD_Z } from "../../mechanics/worldConstants.js";
 
 export class FluidBoundaryTexture {
@@ -34,7 +27,14 @@ export class FluidBoundaryTexture {
     this.viewport = config.viewport;
     this.debugContainer = config.debugContainer;
 
-    // Calculate actual screen bounds of water surface by projecting world bounds
+    this.worldBounds = {
+      minX: WORLD_X.MIN,
+      maxX: WORLD_X.MAX,
+      minY: WORLD_Y.WATER_NEAR,
+      maxY: WORLD_Y.WATER_FAR,
+    };
+
+    // Calculate screen bounds for debug visualization only
     this.screenBounds = this._calculateWaterSurfaceScreenBounds();
 
     // Create off-screen render texture for boundaries
@@ -161,39 +161,14 @@ export class FluidBoundaryTexture {
       "masks to texture...",
     );
 
-    // Debug: Draw circles at the four corners of the texture
-    const cornerRadius = 10;
-    const corners = [
-      { x: cornerRadius, y: cornerRadius, label: "TL" }, // Top-left
-      { x: this.width - cornerRadius, y: cornerRadius, label: "TR" }, // Top-right
-      { x: cornerRadius, y: this.height - cornerRadius, label: "BL" }, // Bottom-left
-      {
-        x: this.width - cornerRadius,
-        y: this.height - cornerRadius,
-        label: "BR",
-      }, // Bottom-right
-    ];
-
-    for (const corner of corners) {
-      const circle = new Graphics();
-      circle.circle(0, 0, cornerRadius);
-      circle.fill({ color: 0xff0000, alpha: 1.0 }); // Red corners
-      circle.x = corner.x;
-      circle.y = corner.y;
-      renderContainer.addChild(circle);
-      console.log(`  Corner ${corner.label}: Tex(${corner.x}, ${corner.y})`);
-    }
-
-    // Render obstacle masks using local surface coordinates stored on each sprite
+    // Render obstacle masks using world-space coordinates stored on each sprite
     for (const maskSprite of this.waterObjectMasksContainer.children) {
-      // Use the worldPosition property that was set when the sprite was created
-      // This contains LOCAL surface coordinates where (0,0) = center of water surface
-      const localPos = maskSprite.worldPosition;
+      const worldPos = maskSprite.worldPosition;
 
       if (
-        !localPos ||
-        !Number.isFinite(localPos.x) ||
-        !Number.isFinite(localPos.y)
+        !worldPos ||
+        !Number.isFinite(worldPos.x) ||
+        !Number.isFinite(worldPos.y)
       ) {
         console.warn(
           "[FluidBoundary] Invalid or missing worldPosition on mask sprite",
@@ -201,27 +176,20 @@ export class FluidBoundaryTexture {
         continue;
       }
 
-      // Convert local surface coordinates to UV texture coordinates
-      // Local: (0,0) = center of water surface
-      // UV: (0.5, 0.5) = center of texture
-      // Water surface dimensions in world space
-      const surfaceWidth = WORLD_X.MAX - WORLD_X.MIN; // 12 units
-      const surfaceDepth = WORLD_Y.WATER_FAR - WORLD_Y.WATER_NEAR; // 8 units
-
-      // Map from local surface coords (center = 0,0) to UV coords (center = 0.5,0.5)
-      const localU = 0.5 + localPos.x / surfaceWidth; // -6 to +6 → 0 to 1
-      const localV = 0.5 + localPos.y / surfaceDepth; // -4 to +4 → 0 to 1
-
-      const texX = localU * this.width;
-      const texY = localV * this.height;
+      // Map world space to grid UV for stamping
+      const uv = this.worldToUV(worldPos.x, worldPos.y);
+      const texX = uv.u * this.width;
+      const texY = uv.v * this.height;
 
       // Draw collision shape in world space
       // TODO: Get actual object size in world units - for now use a fixed radius
       const worldRadius = 0.5; // 0.5 world units radius
       const texRadiusX =
-        (worldRadius / (WORLD_X.MAX - WORLD_X.MIN)) * this.width;
+        (worldRadius / (this.worldBounds.maxX - this.worldBounds.minX)) *
+        this.width;
       const texRadiusY =
-        (worldRadius / (WORLD_Y.WATER_FAR - WORLD_Y.WATER_NEAR)) * this.height;
+        (worldRadius / (this.worldBounds.maxY - this.worldBounds.minY)) *
+        this.height;
       const texRadius = (texRadiusX + texRadiusY) / 2; // Average for circle
 
       const graphics = new Graphics();
@@ -231,7 +199,7 @@ export class FluidBoundaryTexture {
       graphics.y = texY;
 
       console.log(
-        `  Local(${localPos.x.toFixed(1)}, ${localPos.y.toFixed(1)}) → UV(${localU.toFixed(2)}, ${localV.toFixed(2)}) → Tex(${texX.toFixed(0)}, ${texY.toFixed(0)}) r=${texRadius.toFixed(0)}`,
+        `  World(${worldPos.x.toFixed(2)}, ${worldPos.y.toFixed(2)}) → UV(${uv.u.toFixed(2)}, ${uv.v.toFixed(2)}) → Tex(${texX.toFixed(0)}, ${texY.toFixed(0)}) r=${texRadius.toFixed(0)}`,
       );
 
       renderContainer.addChild(graphics);
@@ -408,45 +376,30 @@ export class FluidBoundaryTexture {
   }
 
   /**
-   * Convert screen coordinates to texture UV coordinates (0-1 range).
-   * Converts screen → world → local surface → UV.
-   * @param {number} screenX - Screen X coordinate
-   * @param {number} screenY - Screen Y coordinate
+   * Convert world coordinates to texture UV coordinates (0-1 range).
+   * @param {number} worldX - World X coordinate
+   * @param {number} worldY - World Y coordinate
    * @returns {{u: number, v: number}}
    */
-  screenToUV(screenX, screenY) {
-    // Convert screen position to world position at water surface Z
-    const worldPos = screenToWorld(
-      screenX,
-      screenY,
-      WORLD_Z.WATER_SURFACE,
-      this.viewport,
-    );
-
-    // Convert world position to local surface coordinates (relative to center)
-    const surfaceWidth = WORLD_X.MAX - WORLD_X.MIN; // 12 units
-    const surfaceDepth = WORLD_Y.WATER_FAR - WORLD_Y.WATER_NEAR; // 8 units
-    const surfaceCenterX = (WORLD_X.MIN + WORLD_X.MAX) / 2; // -2
-    const surfaceCenterY = (WORLD_Y.WATER_NEAR + WORLD_Y.WATER_FAR) / 2; // 4
-
-    const localX = worldPos.x - surfaceCenterX; // World → Local
-    const localY = worldPos.y - surfaceCenterY;
-
-    // Map from local surface coords (center = 0,0) to UV coords (center = 0.5,0.5)
-    const u = 0.5 + localX / surfaceWidth;
-    const v = 0.5 + localY / surfaceDepth;
+  worldToUV(worldX, worldY) {
+    const u =
+      (worldX - this.worldBounds.minX) /
+      (this.worldBounds.maxX - this.worldBounds.minX);
+    const v =
+      (worldY - this.worldBounds.minY) /
+      (this.worldBounds.maxY - this.worldBounds.minY);
 
     return { u: Math.max(0, Math.min(1, u)), v: Math.max(0, Math.min(1, v)) };
   }
 
   /**
-   * Sample boundary texture at screen position (CPU-based).
+   * Sample boundary texture at world position (CPU-based).
    * Returns true if position is inside an obstacle.
-   * @param {number} screenX - Screen X coordinate
-   * @param {number} screenY - Screen Y coordinate
+   * @param {number} worldX - World X coordinate
+   * @param {number} worldY - World Y coordinate
    * @returns {boolean} - True if obstacle, false if clear
    */
-  isObstacle(screenX, screenY) {
+  isObstacle(worldX, worldY) {
     if (!this.pixelData) {
       console.warn(
         "[FluidBoundary] No pixel data available for collision detection!",
@@ -454,8 +407,8 @@ export class FluidBoundaryTexture {
       return false;
     }
 
-    // Convert screen coords to texture pixel coordinates
-    const uv = this.screenToUV(screenX, screenY);
+    // Convert world coords to texture pixel coordinates
+    const uv = this.worldToUV(worldX, worldY);
     const px = Math.floor(uv.u * (this.width - 1));
     const py = Math.floor(uv.v * (this.height - 1));
 
@@ -464,8 +417,8 @@ export class FluidBoundaryTexture {
 
     if (index < 0 || index >= this.pixelData.length) {
       console.warn("[FluidBoundary] Index out of bounds:", {
-        screenX,
-        screenY,
+        worldX,
+        worldY,
         uv,
         px,
         py,
