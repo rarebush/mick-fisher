@@ -1,6 +1,6 @@
 import { renderProjectedRope } from "../animations/projectedRopeRenderer.js";
 import { updateRopePhysics } from "../sequences/dragSequence.js";
-import { createViewport } from "../mechanics/worldConstants.js";
+import { createViewport, worldToScreen } from "../mechanics/worldConstants.js";
 
 export function updateRopeTicker({
   app,
@@ -30,7 +30,7 @@ export function updateRopeTicker({
     console.warn(
       `[TICKER] Large deltaTime in rope ticker: ${deltaTime.toFixed(3)}s (${(
         now - lastRopeUpdateTime
-      ).toFixed(0)}ms)`
+      ).toFixed(0)}ms)`,
     );
   }
 
@@ -42,12 +42,12 @@ export function updateRopeTicker({
     deltaTime,
     dragPlayerX,
     dragPlayerY,
-    tension
+    tension,
   );
 
   if (ropeState && dragLine) {
     const viewport = createViewport(app.screen.width, app.screen.height);
-    renderProjectedRope(
+    const ropeRenderResult = renderProjectedRope(
       dragLine,
       viewport,
       ropeState.castOrigin,
@@ -56,8 +56,27 @@ export function updateRopeTicker({
         tension,
         lineUnderwater: dragLineUnderwater,
         lineDebug: dragLineDebug,
-      }
+      },
     );
+
+    const waterHitWorld = ropeRenderResult?.waterHitWorld ?? null;
+    const prevWaterHit = sessionStore?.getState?.().ropeWaterHitWorld;
+    if (dragLineDebug && waterHitWorld) {
+      const hitScreen = worldToScreen(waterHitWorld, viewport);
+      dragLineDebug
+        .circle(hitScreen.x, hitScreen.y, 3)
+        .fill({ color: 0x22ff88, alpha: 0.8 });
+    }
+    if (sessionStore?.getState?.().setRopeWaterHitWorld) {
+      sessionStore.getState().setRopeWaterHitWorld(waterHitWorld);
+    }
+    if (waterHitWorld && prevWaterHit && typeof window !== "undefined") {
+      const dx = waterHitWorld.x - prevWaterHit.x;
+      const dy = waterHitWorld.y - prevWaterHit.y;
+      const speed = Math.hypot(dx, dy) / Math.max(deltaTime, 0.0001);
+      const pixiApp = window.getPixiApp ? window.getPixiApp() : null;
+      pixiApp?.handleRopeWaterSplat?.(waterHitWorld.x, waterHitWorld.y, speed);
+    }
   }
 
   return { lastRopeUpdateTime: nextRopeUpdateTime };

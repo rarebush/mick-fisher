@@ -232,6 +232,7 @@ export async function setupEnvironmentLayers(
   }
 
   const walkwayTiles = new PIXI.Container();
+  walkwayTiles.roundPixels = true;
   const walkwayTexture = defaultSpritesheet?.textures?.frame3 ?? null;
   if (walkwayTexture?.source) {
     walkwayTexture.source.scaleMode = "nearest";

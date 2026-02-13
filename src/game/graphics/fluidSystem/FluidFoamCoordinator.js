@@ -1,13 +1,17 @@
 /**
  * FluidFoamCoordinator.js
  * Main coordinator for the particle-based fluid foam system.
- * Manages wave spawning, particle lifecycle, and orchestrates the velocity field and particle simulation.
+ * Manages wave spawning, particle lifecycle, and particle simulation.
  *
  * References design doc: Game Mechanics - Horizontal Drag Phase.md (foam behavior)
  * Replaces static Voronoi foam with dynamic particle simulation.
  */
 
 import { WORLD_X, WORLD_Y, WORLD_Z } from "../../mechanics/worldDimensions.js";
+import {
+  CURRENT_SHIFT_ZONES,
+  CURRENT_SHIFT_ZONE_TYPES,
+} from "../../data/currentShiftZones.js";
 
 export class FluidFoamCoordinator {
   /**
@@ -30,6 +34,12 @@ export class FluidFoamCoordinator {
       waveInterval: config.waveInterval || 1.0, // seconds
       particlesPerWave: config.particlesPerWave || 200,
       maxAge: config.maxAge || 16.0, // seconds before fade complete
+      lifespanRiverLengths: Number.isFinite(config.lifespanRiverLengths)
+        ? config.lifespanRiverLengths
+        : null,
+      lifespanMultiplier: Number.isFinite(config.lifespanMultiplier)
+        ? config.lifespanMultiplier
+        : 1.0,
       spawnBufferX: Number.isFinite(config.spawnBufferX)
         ? config.spawnBufferX
         : 0,
@@ -45,6 +55,11 @@ export class FluidFoamCoordinator {
       spawnNoiseDebugStep: Number.isFinite(config.spawnNoiseDebugStep)
         ? config.spawnNoiseDebugStep
         : 0.0625,
+      shiftZoneParticleScale: Number.isFinite(config.shiftZoneParticleScale)
+        ? config.shiftZoneParticleScale
+        : 1.0,
+      spawnInMainArea: Boolean(config.spawnInMainArea),
+      disableDynamicMaxAge: Boolean(config.disableDynamicMaxAge),
       baseFlowSpeed: config.baseFlowSpeed || 1.0,
       ...config,
     };
@@ -62,24 +77,24 @@ export class FluidFoamCoordinator {
     this.choppiness = 1.0; // 0-2+ range, affects spawn rate
 
     // Sub-systems (initialized externally)
-    this.velocityField = null; // FluidVelocityField instance
     this.particleState = null; // FluidParticleState instance
-    this.renderer = null; // FluidParticleRenderer instance
+    this.renderer = null; // Foam renderer instance
     this.boundaryTexture = null; // FluidBoundaryTexture instance (optional)
     this.spawnNoiseDebug = null;
     this.spawnNoiseRange = null;
     this.spawnNoiseOffset = { x: 0, y: 0 };
+    this.shiftZones = Array.isArray(config.shiftZones)
+      ? config.shiftZones
+      : CURRENT_SHIFT_ZONES;
   }
 
   /**
    * Initialize the coordinator with sub-systems.
-   * @param {FluidVelocityField} velocityField
    * @param {FluidParticleState} particleState
-   * @param {FluidParticleRenderer} renderer
+  * @param {Object} renderer
    * @param {FluidBoundaryTexture} boundaryTexture - Optional collision boundaries
    */
-  initialize(velocityField, particleState, renderer, boundaryTexture = null) {
-    this.velocityField = velocityField;
+  initialize(particleState, renderer, boundaryTexture = null) {
     this.particleState = particleState;
     this.renderer = renderer;
     this.boundaryTexture = boundaryTexture;
@@ -132,27 +147,143 @@ export class FluidFoamCoordinator {
         this.config.waveInterval * (0.8 + Math.random() * 0.4);
     }
 
-    // Update particle ages and mark inactive
-    this._updateParticleAges(deltaTime);
+    const maxAge = this._getDynamicMaxAge();
 
-    // Update velocity field (if it has internal dynamics)
-    if (this.velocityField) {
-      this.velocityField.update(deltaTime, this.flowSpeed);
-    }
+    // Update particle ages and mark inactive
+    this._updateParticleAges(deltaTime, maxAge);
+
+    this._applyShiftZones(deltaTime);
 
     // Update particle positions via advection
     if (this.particleState) {
-      this.particleState.update(
-        deltaTime,
-        this.velocityField,
-        this.particles,
-        this.boundaryTexture,
-      );
+      this.particleState.update(deltaTime, this.particles, this.boundaryTexture);
     }
 
     // Update renderer
     if (this.renderer) {
-      this.renderer.update(this.particles, this.activeParticleCount);
+      this.renderer.maxAge = maxAge;
+      this.renderer.update(this.particles);
+    }
+  }
+
+  setShiftZones(zones) {
+    this.shiftZones = Array.isArray(zones) ? zones : [];
+  }
+
+  _applyShiftZones(deltaTime) {
+    const zones = Array.isArray(this.shiftZones) ? this.shiftZones : [];
+    if (zones.length === 0) {
+      return;
+    }
+
+    this._applyShiftZonesToParticles(zones, deltaTime);
+  }
+
+  _applyShiftZonesToParticles(zones, deltaTime) {
+    for (let i = 0; i < zones.length; i++) {
+      const zone = zones[i];
+      if (!zone?.position) continue;
+
+      const typeConfig = CURRENT_SHIFT_ZONE_TYPES?.[zone.type?.toUpperCase()];
+      const defaults = typeConfig?.defaults || {};
+      const radiusWorld = Number.isFinite(zone.radiusWorld)
+        ? zone.radiusWorld
+        : Number.isFinite(defaults.radiusWorld)
+          ? defaults.radiusWorld
+          : 0.6;
+      const strength = Number.isFinite(zone.strength)
+        ? zone.strength
+        : Number.isFinite(defaults.strength)
+          ? defaults.strength
+          : 0.2;
+      const falloff = Number.isFinite(zone.falloff)
+        ? zone.falloff
+        : Number.isFinite(defaults.falloff)
+          ? defaults.falloff
+          : 2.0;
+
+      const radiusSq = Math.max(0.0001, radiusWorld * radiusWorld);
+      for (let p = 0; p < this.particles.length; p++) {
+        const particle = this.particles[p];
+        if (!particle.active) continue;
+
+        const dx = particle.x - zone.position.x;
+        const dy = particle.y - zone.position.y;
+        const distSq = dx * dx + dy * dy;
+        if (distSq > radiusSq) continue;
+
+        const dist = Math.max(0.0001, Math.sqrt(distSq));
+        const falloffScale = Math.exp(-Math.pow(dist / radiusWorld, falloff));
+        const scaledStrength =
+          strength *
+          falloffScale *
+          deltaTime *
+          this.config.shiftZoneParticleScale;
+
+        if (zone.type === "whirlpool") {
+          const pullStrength = Number.isFinite(zone.pullStrength)
+            ? zone.pullStrength
+            : Number.isFinite(defaults.pullStrength)
+              ? defaults.pullStrength
+              : 0.3;
+          const tangentialStrength = Number.isFinite(zone.tangentialStrength)
+            ? zone.tangentialStrength
+            : Number.isFinite(defaults.tangentialStrength)
+              ? defaults.tangentialStrength
+              : 0.5;
+          const nx = dx / dist;
+          const ny = dy / dist;
+          const tanX = -ny;
+          const tanY = nx;
+          particle.vx +=
+            (-nx * pullStrength + tanX * tangentialStrength) * scaledStrength;
+          particle.vy +=
+            (-ny * pullStrength + tanY * tangentialStrength) * scaledStrength;
+          continue;
+        }
+
+        if (zone.type === "repel") {
+          const nx = dx / dist;
+          const ny = dy / dist;
+          particle.vx += nx * scaledStrength;
+          particle.vy += ny * scaledStrength;
+          continue;
+        }
+
+        if (zone.type === "rapid") {
+          const flowDir = zone.flowDir || defaults.flowDir || { x: 1, y: 0 };
+          const flowLen = Math.hypot(flowDir.x, flowDir.y) || 1;
+          const fx = flowDir.x / flowLen;
+          const fy = flowDir.y / flowLen;
+          const lateralStrength = Number.isFinite(zone.lateralStrength)
+            ? zone.lateralStrength
+            : Number.isFinite(defaults.lateralStrength)
+              ? defaults.lateralStrength
+              : 0.15;
+          const lateralFrequency = Number.isFinite(zone.lateralFrequency)
+            ? zone.lateralFrequency
+            : Number.isFinite(defaults.lateralFrequency)
+              ? defaults.lateralFrequency
+              : 1.0;
+          const phase = (this._flowPhase || 0) * lateralFrequency;
+          const wobble = Math.sin(phase + dist * 1.4) * lateralStrength;
+          const sideX = -fy;
+          const sideY = fx;
+          const exitBoost = Number.isFinite(zone.exitBoost)
+            ? zone.exitBoost
+            : Number.isFinite(defaults.exitBoost)
+              ? defaults.exitBoost
+              : 0.0;
+          const exitFactor = dist / radiusWorld;
+
+          particle.vx +=
+            (fx * (1 + exitBoost * exitFactor) + sideX * wobble) *
+            scaledStrength;
+          particle.vy +=
+            (fy * (1 + exitBoost * exitFactor) + sideY * wobble) *
+            scaledStrength;
+        }
+      }
     }
   }
 
@@ -167,9 +298,14 @@ export class FluidFoamCoordinator {
 
     if (spawnCount <= 0) return;
 
-    // Spawn position: within offscreen upstream buffer (left of the bank)
-    const upstreamBand = Math.max(0.5, this.config.spawnBufferX || 0.5);
-    const spawnMinX = WORLD_X.MIN - upstreamBand;
+    // Spawn position: configurable main-area vs upstream buffer (debug/testing)
+    const spawnInMainArea = Boolean(this.config.spawnInMainArea);
+    const upstreamBand = spawnInMainArea
+      ? Math.max(0.5, WORLD_X.WIDTH)
+      : Math.max(0.5, this.config.spawnBufferX || 0.5);
+    const spawnMinX = spawnInMainArea
+      ? WORLD_X.MIN
+      : WORLD_X.MIN - upstreamBand;
 
     this._updateSpawnNoiseOffset();
     this._updateSpawnNoiseRange(spawnMinX, upstreamBand);
@@ -202,8 +338,8 @@ export class FluidFoamCoordinator {
 
       particle.x = candidate.x;
       particle.y = candidate.y;
-      particle.vx = this.flowSpeed * 0.1; // Small initial velocity
-      particle.vy = (Math.random() - 0.5) * 0.05;
+      particle.vx = 0;
+      particle.vy = 0;
       particle.age = 0;
       particle.active = true;
       particle.scale = 0.3 + Math.random() * 0.5; // Smaller size variation (0.3-0.8)
@@ -260,6 +396,10 @@ export class FluidFoamCoordinator {
     const y =
       WORLD_Y.WATER_NEAR +
       Math.random() * (WORLD_Y.WATER_FAR - WORLD_Y.WATER_NEAR);
+
+    if (this.config.spawnInMainArea) {
+      return { x, y };
+    }
 
     const clusterValue = this._clusterValue(x, y, spawnMinX, upstreamBand);
 
@@ -406,18 +546,202 @@ export class FluidFoamCoordinator {
    * @param {number} deltaTime - Time elapsed in seconds
    * @private
    */
-  _updateParticleAges(deltaTime) {
+  _updateParticleAges(deltaTime, maxAge) {
+    const effectiveMaxAge = Number.isFinite(maxAge)
+      ? maxAge
+      : this.config.maxAge;
     for (let i = 0; i < this.particles.length; i++) {
       const particle = this.particles[i];
       if (particle.active) {
         particle.age += deltaTime;
 
         // Deactivate particles that exceed max age
-        if (particle.age >= this.config.maxAge) {
+        if (particle.age >= effectiveMaxAge) {
           particle.active = false;
           this.activeParticleCount--;
         }
       }
+    }
+  }
+
+  _getDynamicMaxAge() {
+    if (this.config.disableDynamicMaxAge) {
+      return this.config.maxAge;
+    }
+
+    const spawnExtension = this.config.spawnInMainArea
+      ? 0
+      : this.config.spawnBufferX;
+    const length = WORLD_X.WIDTH + spawnExtension;
+    const driftSpeed = this.particleState?.useParticleVelocity
+      ? Math.hypot(
+          this.particleState.driftVelocityX || 0,
+          this.particleState.driftVelocityY || 0,
+        )
+      : 0;
+    const baseSpeed = this.flowSpeed;
+    const speed = this.particleState?.useParticleVelocity
+      ? driftSpeed
+      : baseSpeed;
+    const riverLengths = Number.isFinite(this.config.lifespanRiverLengths)
+      ? this.config.lifespanRiverLengths
+      : this.config.lifespanMultiplier;
+
+    if (!Number.isFinite(length) || !Number.isFinite(speed) || speed <= 0) {
+      return this.config.maxAge;
+    }
+
+    return (length / speed) * riverLengths;
+  }
+
+  applyInputSplat(worldX, worldY, deltaWorldX, deltaWorldY, options = {}) {
+    this._applySplatToParticles(
+      worldX,
+      worldY,
+      deltaWorldX,
+      deltaWorldY,
+      options,
+    );
+  }
+
+  applyLandingSplat(worldX, worldY, options = {}) {
+    this._applyRadialImpulseToParticles(worldX, worldY, options, true);
+  }
+
+  applyDragRepel(worldX, worldY, options = {}) {
+    this._applyRadialImpulseToParticles(worldX, worldY, options, false);
+  }
+
+  applyRopeDeflect(worldX, worldY, dirX, dirY, options = {}) {
+    this._applyDirectionalShearToParticles(
+      worldX,
+      worldY,
+      dirX,
+      dirY,
+      options,
+    );
+  }
+
+  _applyRadialImpulseToParticles(worldX, worldY, options = {}, applyDamping) {
+    const radiusWorld = Number.isFinite(options.radiusWorld)
+      ? options.radiusWorld
+      : Number.isFinite(this.config.landingSplatRadius)
+        ? this.config.landingSplatRadius
+        : 0.9;
+    const strength = Number.isFinite(options.strength)
+      ? options.strength
+      : Number.isFinite(this.config.landingSplatStrength)
+        ? this.config.landingSplatStrength
+        : 6.0;
+
+    const radiusSq = Math.max(0.0001, radiusWorld * radiusWorld);
+
+    for (let i = 0; i < this.particles.length; i++) {
+      const particle = this.particles[i];
+      if (!particle.active) continue;
+
+      let dx = particle.x - worldX;
+      let dy = particle.y - worldY;
+      const distSq = dx * dx + dy * dy;
+      if (distSq > radiusSq) continue;
+
+      if (distSq < 0.000001) {
+        const angle = Math.random() * Math.PI * 2;
+        dx = Math.cos(angle);
+        dy = Math.sin(angle);
+      }
+
+      const dist = Math.max(0.0001, Math.sqrt(distSq));
+      const falloff = Math.exp(-distSq / radiusSq);
+      const impulse = strength * falloff;
+      const impulseX = (dx / dist) * impulse;
+      const impulseY = (dy / dist) * impulse;
+      particle.vx += impulseX;
+      particle.vy += impulseY;
+      if (applyDamping) {
+        particle.splashDamping = Math.max(
+          Number.isFinite(particle.splashDamping) ? particle.splashDamping : 0,
+          0.6,
+        );
+      }
+    }
+  }
+
+  _applyDirectionalShearToParticles(
+    worldX,
+    worldY,
+    dirX,
+    dirY,
+    options = {},
+  ) {
+    const radiusWorld = Number.isFinite(options.radiusWorld)
+      ? options.radiusWorld
+      : 0.25;
+    const strength = Number.isFinite(options.strength) ? options.strength : 0.02;
+
+    const dirLen = Math.hypot(dirX, dirY);
+    if (!Number.isFinite(dirLen) || dirLen < 0.0001) {
+      return;
+    }
+
+    const dirNx = dirX / dirLen;
+    const dirNy = dirY / dirLen;
+    const tanX = -dirNy;
+    const tanY = dirNx;
+
+    const radiusSq = Math.max(0.0001, radiusWorld * radiusWorld);
+
+    for (let i = 0; i < this.particles.length; i++) {
+      const particle = this.particles[i];
+      if (!particle.active) continue;
+
+      const dx = particle.x - worldX;
+      const dy = particle.y - worldY;
+      const distSq = dx * dx + dy * dy;
+      if (distSq > radiusSq) continue;
+
+      const side = Math.sign(dx * dirNy - dy * dirNx) || 1;
+      const falloff = Math.exp(-distSq / radiusSq);
+      const impulse = strength * falloff * side;
+      particle.vx += tanX * impulse;
+      particle.vy += tanY * impulse;
+    }
+  }
+
+  _applySplatToParticles(
+    worldX,
+    worldY,
+    deltaWorldX,
+    deltaWorldY,
+    options = {},
+  ) {
+    const radiusWorld = Number.isFinite(options.radiusWorld)
+      ? options.radiusWorld
+      : Number.isFinite(this.config.splatDirectRadius)
+        ? this.config.splatDirectRadius
+        : 0.7;
+    const strength = Number.isFinite(options.strength)
+      ? options.strength
+      : Number.isFinite(this.config.splatDirectStrength)
+        ? this.config.splatDirectStrength
+        : 8.0;
+
+    const radiusSq = Math.max(0.0001, radiusWorld * radiusWorld);
+    const impulseX = deltaWorldX * strength;
+    const impulseY = deltaWorldY * strength;
+
+    for (let i = 0; i < this.particles.length; i++) {
+      const particle = this.particles[i];
+      if (!particle.active) continue;
+
+      const dx = particle.x - worldX;
+      const dy = particle.y - worldY;
+      const distSq = dx * dx + dy * dy;
+      if (distSq > radiusSq) continue;
+
+      const falloff = Math.exp(-distSq / radiusSq);
+      particle.vx += impulseX * falloff;
+      particle.vy += impulseY * falloff;
     }
   }
 
@@ -443,9 +767,6 @@ export class FluidFoamCoordinator {
    */
   setBoundaryTexture(boundaryTexture) {
     this.boundaryTexture = boundaryTexture;
-    if (this.velocityField?.setBoundaryTexture) {
-      this.velocityField.setBoundaryTexture(boundaryTexture);
-    }
   }
 
   /**
@@ -454,11 +775,6 @@ export class FluidFoamCoordinator {
   destroy() {
     this.particles = [];
     this.activeParticleCount = 0;
-
-    if (this.velocityField) {
-      this.velocityField.destroy();
-      this.velocityField = null;
-    }
 
     if (this.particleState) {
       this.particleState.destroy();

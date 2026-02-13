@@ -263,10 +263,28 @@ export async function updateDragMechanics(
     return { lastDragUpdateTime: null, dragStartTime: null };
   }
 
+  const prevTargetPos = physicsState.target
+    ? { x: physicsState.target.position.x, y: physicsState.target.position.y }
+    : null;
+
   const dragResult = updateDragPhysics(deltaTime, isDragging, physicsState);
   sessionStore.getState().setPhysicsState(dragResult.state);
   sessionStore.getState().setRopeTension(dragResult.state.tension);
   getItemWorldPosition(app, sessionStore);
+
+  if (prevTargetPos && dragResult.state.target) {
+    const dx = dragResult.state.target.position.x - prevTargetPos.x;
+    const dy = dragResult.state.target.position.y - prevTargetPos.y;
+    const speed = magnitude({ x: dx, y: dy }) / Math.max(deltaTime, 0.0001);
+    if (speed > 0.01 && typeof window !== "undefined" && window.getPixiApp) {
+      const pixiApp = window.getPixiApp();
+      pixiApp?.handleMagnetDragSplat(
+        dragResult.state.target.position.x,
+        dragResult.state.target.position.y,
+        speed,
+      );
+    }
+  }
 
   const prevZone = getTensionZone(physicsState.tension);
   const nextZone = getTensionZone(dragResult.state.tension);

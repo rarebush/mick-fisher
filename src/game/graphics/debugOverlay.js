@@ -26,6 +26,8 @@ export class DebugOverlay {
     this.container = new PIXI.Container();
     this.container.zIndex = 10000; // Always on top
     this.visible = false;
+    this.container.eventMode = "none";
+    this.container.interactiveChildren = false;
 
     // Debug panel graphics
     this.panel = null;
@@ -37,6 +39,8 @@ export class DebugOverlay {
     this.engagedItemMarkers.sortableChildren = true;
     this.engagedItemMarkers.zIndex = 9998; // Below panel but above game
     this.engagedItemMarkers.visible = false; // Hidden by default
+    this.engagedItemMarkers.eventMode = "none";
+    this.engagedItemMarkers.interactiveChildren = false;
     this.app.stage.addChild(this.engagedItemMarkers);
 
     this.setupPanel();

@@ -29,6 +29,8 @@ export function createWallLayers(context, textures) {
   const { viewport, projectionMetrics, tileScreenSize } = context;
   const riverWallTiles = new PIXI.Container();
   const submergedWallTiles = new PIXI.Container();
+  riverWallTiles.roundPixels = true;
+  submergedWallTiles.roundPixels = true;
 
   if (!textures.bottom?.source || !textures.top?.source) {
     return { riverWallTiles, submergedWallTiles };

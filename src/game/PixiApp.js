@@ -123,7 +123,7 @@ export class PixiApp {
         antialias: false, // Disable antialiasing for pixel art
         resolution: initialRenderResolutionScale,
         autoDensity: false,
-        roundPixels: true, // Round coordinates to whole pixels
+        roundPixels: false, // Allow sub-pixel motion (test for foam judder)
       });
 
       console.log(
@@ -289,6 +289,7 @@ export class PixiApp {
       this.debugOverlay,
       {
         onCast: this.handleCast.bind(this),
+        onFluidSplat: this.handleFluidSplat.bind(this),
       },
     );
 
@@ -333,6 +334,63 @@ export class PixiApp {
       this.dragPlayerX = result.playerX;
       this.dragPlayerY = result.playerY;
     }
+  }
+
+  handleFluidSplat(worldX, worldY, deltaWorldX, deltaWorldY) {
+    const fluidFoamCoordinator = this.environmentLayers?.fluidFoamCoordinator;
+    if (!fluidFoamCoordinator) {
+      return;
+    }
+
+    fluidFoamCoordinator.applyInputSplat(
+      worldX,
+      worldY,
+      deltaWorldX,
+      deltaWorldY,
+      {
+        radiusWorld: 0.7,
+        strength: 8.0,
+        maxForce: 0.6,
+      },
+    );
+  }
+
+  handleMagnetLandingSplat(worldX, worldY) {
+    const fluidFoamCoordinator = this.environmentLayers?.fluidFoamCoordinator;
+    if (!fluidFoamCoordinator) {
+      return;
+    }
+
+    fluidFoamCoordinator.applyLandingSplat(worldX, worldY, {
+      radiusWorld: 1.2,
+      strength: 6.0,
+    });
+  }
+
+  handleMagnetDragSplat(worldX, worldY, speed) {
+    const fluidFoamCoordinator = this.environmentLayers?.fluidFoamCoordinator;
+    if (!fluidFoamCoordinator) {
+      return;
+    }
+
+    const scaledStrength = Math.min(Math.max(speed * 0.12, 0.15), 1.2);
+    fluidFoamCoordinator.applyDragRepel(worldX, worldY, {
+      radiusWorld: 0.55,
+      strength: scaledStrength,
+    });
+  }
+
+  handleRopeWaterSplat(worldX, worldY, speed) {
+    const fluidFoamCoordinator = this.environmentLayers?.fluidFoamCoordinator;
+    if (!fluidFoamCoordinator) {
+      return;
+    }
+
+    const scaledStrength = Math.min(Math.max(speed * 0.03, 0.05), 0.4);
+    fluidFoamCoordinator.applyDragRepel(worldX, worldY, {
+      radiusWorld: 0.4,
+      strength: scaledStrength,
+    });
   }
 
   setupDebugOverlay() {

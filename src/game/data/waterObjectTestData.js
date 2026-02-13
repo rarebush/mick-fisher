@@ -14,4 +14,5 @@ export const WATER_OBJECT_TEST_LOGS = [
   },
   { id: "test-log-2", position: { x: 0, y: 2, z: WORLD_Z.WATER_SURFACE } },
   { id: "test-log-3", position: { x: 2, y: 3, z: WORLD_Z.WATER_SURFACE } },
+  { id: "test-log-4", position: { x: -2, y: -3, z: WORLD_Z.WATER_SURFACE } },
 ];

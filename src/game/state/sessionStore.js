@@ -78,6 +78,7 @@ const useSessionStore = create((set, get) => ({
   phase: "idle", // Current phase: 'idle', 'cast', 'drag', 'lift', 'waiting'
   phaseProgress: 0, // Phase completion (0 to 1)
   castPosition: null, // Cast landing position (set before drag starts, for rope rendering)
+  ropeWaterHitWorld: null, // World-space rope/water intersection
   castInputMode: "click", // click | direction_power | donut
   castAimState: { ...DEFAULT_CAST_AIM_STATE },
   donutAimState: { ...DEFAULT_DONUT_AIM_STATE },
@@ -182,6 +183,10 @@ const useSessionStore = create((set, get) => ({
 
   setRopeTension: (tension) => {
     set({ ropeTension: Math.max(0, tension) });
+  },
+
+  setRopeWaterHitWorld: (worldPoint) => {
+    set({ ropeWaterHitWorld: worldPoint });
   },
 
   updateDragProgress: (
@@ -355,8 +360,7 @@ const useSessionStore = create((set, get) => ({
 
   setPhase: (phase) => set({ phase }),
 
-  setPhaseProgress: (progress) =>
-    set({ phaseProgress: clamp(progress, 0, 1) }),
+  setPhaseProgress: (progress) => set({ phaseProgress: clamp(progress, 0, 1) }),
 
   setCastPosition: (x, y) =>
     set({

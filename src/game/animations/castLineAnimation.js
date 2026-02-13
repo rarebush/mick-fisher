@@ -32,7 +32,8 @@ export function animateCastLine(
   targetScreenY,
   gameStore,
   sessionStore,
-  layerContainers = null
+  layerContainers = null,
+  onWaterHit = null,
 ) {
   return new Promise((resolve) => {
     if (!app) {
@@ -60,17 +61,17 @@ export function animateCastLine(
 
     console.log(
       `[CAST] Viewport: ${viewport.pixelsPerUnit.toFixed(
-        1
-      )} px/unit, offset: ${viewport.screenYOffset.toFixed(1)}`
+        1,
+      )} px/unit, offset: ${viewport.screenYOffset.toFixed(1)}`,
     );
     console.log(
       `[CAST] World bounds: X [${viewport.worldXMin.toFixed(
-        2
+        2,
       )}, ${viewport.worldXMax.toFixed(2)}] (${viewport.worldXWidth.toFixed(
-        2
+        2,
       )} units), Y [${viewport.worldYMin}, ${viewport.worldYMax}], Z [${
         viewport.worldZMin
-      }, ${viewport.worldZMax}]`
+      }, ${viewport.worldZMax}]`,
     );
 
     // ===========================================
@@ -90,17 +91,17 @@ export function animateCastLine(
       targetScreenX,
       targetScreenY,
       WORLD_Z.WATER_SURFACE,
-      viewport
+      viewport,
     );
 
     console.log(
       `[CAST] Click at screen (${targetScreenX.toFixed(
-        0
+        0,
       )}, ${targetScreenY.toFixed(
-        0
+        0,
       )}) -> water world (${waterSurfaceWorld.x.toFixed(
-        2
-      )}, ${waterSurfaceWorld.y.toFixed(2)}, ${waterSurfaceWorld.z})`
+        2,
+      )}, ${waterSurfaceWorld.y.toFixed(2)}, ${waterSurfaceWorld.z})`,
     );
 
     // ===========================================
@@ -125,10 +126,10 @@ export function animateCastLine(
 
     console.log(
       `[CAST DEBUG] Avatar screen: ${avatarScreen.y.toFixed(
-        0
+        0,
       )}px | Water hit screen: ${waterHitScreen.y.toFixed(
-        0
-      )}px | Target: ${targetScreen.y.toFixed(0)}px`
+        0,
+      )}px | Target: ${targetScreen.y.toFixed(0)}px`,
     );
 
     // ===========================================
@@ -142,8 +143,8 @@ export function animateCastLine(
 
     console.log(
       `[CAST] Distance: ${distance3D.toFixed(
-        2
-      )} units | Horizontal: ${horizontalDistance.toFixed(2)} units`
+        2,
+      )} units | Horizontal: ${horizontalDistance.toFixed(2)} units`,
     );
 
     if (sessionStore) {
@@ -165,7 +166,7 @@ export function animateCastLine(
     const lineUnderwater = new PIXI.Graphics();
     underwaterContainer.addChild(lineUnderwater);
     const lineDebug = new PIXI.Graphics();
-    lineDebug.visible = false;
+    lineDebug.visible = true;
     debugContainer.addChild(lineDebug);
 
     // Create magnet sprite
@@ -268,7 +269,7 @@ export function animateCastLine(
         magnetStore.updateMagnetPosition(
           magnetWorld.x,
           magnetWorld.y,
-          magnetWorld.z
+          magnetWorld.z,
         );
 
         renderProjectedRope(line, viewport, ropeAnchorWorld, magnetWorld, {
@@ -305,9 +306,12 @@ Z: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
           // Magnet hit water surface
           console.log(
             `[CAST] Magnet hit water at world (${magnetWorld.x.toFixed(
-              2
-            )}, ${magnetWorld.y.toFixed(2)}, ${magnetWorld.z.toFixed(2)})`
+              2,
+            )}, ${magnetWorld.y.toFixed(2)}, ${magnetWorld.z.toFixed(2)})`,
           );
+          if (typeof onWaterHit === "function") {
+            onWaterHit(magnetWorld.x, magnetWorld.y, WORLD_Z.WATER_SURFACE);
+          }
           phase = "sinking";
           phaseStartTime = currentTime;
           magnetWorld.z = WORLD_Z.WATER_SURFACE;
@@ -337,7 +341,7 @@ Z: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
         magnetStore.updateMagnetPosition(
           magnetWorld.x,
           magnetWorld.y,
-          magnetWorld.z
+          magnetWorld.z,
         );
 
         // Calculate progress for tension
@@ -383,8 +387,8 @@ Z: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
         if (magnetWorld.z <= WORLD_Z.RIVERBED) {
           console.log(
             `[CAST] Magnet reached riverbed at world (${magnetWorld.x.toFixed(
-              2
-            )}, ${magnetWorld.y.toFixed(2)}, ${magnetWorld.z.toFixed(2)})`
+              2,
+            )}, ${magnetWorld.y.toFixed(2)}, ${magnetWorld.z.toFixed(2)})`,
           );
           phase = "settling";
           phaseStartTime = currentTime;
@@ -393,7 +397,7 @@ Z: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
           magnetStore.updateMagnetPosition(
             magnetWorld.x,
             magnetWorld.y,
-            magnetWorld.z
+            magnetWorld.z,
           );
         }
       }
@@ -445,7 +449,7 @@ Z: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
           // debug overlay removed
 
           console.log(
-            `[CAST] Animation complete, tension: ${currentTension.toFixed(1)}`
+            `[CAST] Animation complete, tension: ${currentTension.toFixed(1)}`,
           );
 
           // Store the rope anchor screen position for drag/reel visuals

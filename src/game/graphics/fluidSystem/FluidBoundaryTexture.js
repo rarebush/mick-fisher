@@ -12,7 +12,7 @@ import { WORLD_X, WORLD_Y, WORLD_Z } from "../../mechanics/worldConstants.js";
 export class FluidBoundaryTexture {
   /**
    * @param {Object} config
-   * @param {number} config.width - Texture width in pixels (matches velocity field resolution)
+  * @param {number} config.width - Texture width in pixels (matches foam grid resolution)
    * @param {number} config.height - Texture height in pixels
    * @param {import("pixi.js").Renderer} config.renderer - PixiJS renderer
    * @param {import("pixi.js").Container} [config.waterObjectMasksContainer] - Container with mask sprites

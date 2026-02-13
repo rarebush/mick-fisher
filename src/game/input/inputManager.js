@@ -31,7 +31,7 @@ export class InputManager {
     sessionStore,
     locationStore,
     debugOverlay,
-    callbacks
+    callbacks,
   ) {
     this.app = app;
     this.gameStore = gameStore;
@@ -39,21 +39,27 @@ export class InputManager {
     this.locationStore = locationStore;
     this.debugOverlay = debugOverlay;
     this.onCast = callbacks?.onCast;
+    this.onFluidSplat = callbacks?.onFluidSplat;
 
     // Track input state - hold detection for drag
     this.isPointerDown = false; // Physical pointer state
     this.isHoldingForDrag = false; // Logical drag hold state
     this.isCasting = false;
     this.activePointerId = null; // Track which pointer is active
+    this.rightPointerId = null;
+    this.isRightPointerDown = false;
+    this.lastRightWorld = null;
 
     // Bind event handlers
     this.handlePointerDown = this.handlePointerDown.bind(this);
     this.handlePointerUp = this.handlePointerUp.bind(this);
     this.handlePointerUpOutside = this.handlePointerUpOutside.bind(this);
     this.handlePointerCancel = this.handlePointerCancel.bind(this);
+    this.handlePointerMove = this.handlePointerMove.bind(this);
     this.handleKeyDown = this.handleKeyDown.bind(this);
     this.handleKeyUp = this.handleKeyUp.bind(this);
     this.handleWindowBlur = this.handleWindowBlur.bind(this);
+    this.handleContextMenu = this.handleContextMenu.bind(this);
   }
 
   /**
@@ -70,6 +76,11 @@ export class InputManager {
     this.app.stage.on("pointerup", this.handlePointerUp);
     this.app.stage.on("pointerupoutside", this.handlePointerUpOutside);
     this.app.stage.on("pointercancel", this.handlePointerCancel);
+    this.app.stage.on("pointermove", this.handlePointerMove);
+
+    if (this.app.canvas) {
+      this.app.canvas.addEventListener("contextmenu", this.handleContextMenu);
+    }
 
     // Keyboard events
     window.addEventListener("keydown", this.handleKeyDown);
@@ -78,6 +89,14 @@ export class InputManager {
   }
 
   handlePointerDown(event) {
+    if (this._isRightButton(event)) {
+      this.rightPointerId = event.pointerId;
+      this.isRightPointerDown = true;
+      const { x, y } = event.global;
+      this.lastRightWorld = this._screenToWorldWater(x, y);
+      return;
+    }
+
     // Ignore if we're already tracking a pointer
     if (
       this.activePointerId !== null &&
@@ -145,6 +164,15 @@ export class InputManager {
   handlePointerUp(event) {
     // Only handle if this is our tracked pointer
     if (this.activePointerId !== event.pointerId) {
+      if (this.rightPointerId !== event.pointerId) {
+        return;
+      }
+    }
+
+    if (this.rightPointerId === event.pointerId) {
+      this.isRightPointerDown = false;
+      this.rightPointerId = null;
+      this.lastRightWorld = null;
       return;
     }
 
@@ -158,6 +186,15 @@ export class InputManager {
 
   handlePointerUpOutside(event) {
     if (this.activePointerId !== event.pointerId) {
+      if (this.rightPointerId !== event.pointerId) {
+        return;
+      }
+    }
+
+    if (this.rightPointerId === event.pointerId) {
+      this.isRightPointerDown = false;
+      this.rightPointerId = null;
+      this.lastRightWorld = null;
       return;
     }
 
@@ -171,11 +208,56 @@ export class InputManager {
 
   handlePointerCancel(event) {
     if (this.activePointerId !== event.pointerId) {
-      return;
+      if (this.rightPointerId !== event.pointerId) {
+        return;
+      }
     }
 
     // Force cleanup on cancel
     this.resetInputState();
+  }
+
+  handlePointerMove(event) {
+    if (!this.isRightPointerDown || this.rightPointerId !== event.pointerId) {
+      return;
+    }
+
+    const { x, y } = event.global;
+    const currentWorld = this._screenToWorldWater(x, y);
+    if (!currentWorld || !this.lastRightWorld) {
+      this.lastRightWorld = currentWorld;
+      return;
+    }
+
+    const deltaWorldX = currentWorld.x - this.lastRightWorld.x;
+    const deltaWorldY = currentWorld.y - this.lastRightWorld.y;
+    const deltaMag = magnitude({ x: deltaWorldX, y: deltaWorldY });
+    if (deltaMag > 0.00005 && this.onFluidSplat) {
+      const maxDelta = 0.75;
+      let dx = deltaWorldX;
+      let dy = deltaWorldY;
+      if (deltaMag > maxDelta) {
+        const dir = normalize({ x: deltaWorldX, y: deltaWorldY });
+        dx = dir.x * maxDelta;
+        dy = dir.y * maxDelta;
+      }
+
+      this.onFluidSplat(currentWorld.x, currentWorld.y, dx, dy);
+    }
+
+    this.lastRightWorld = currentWorld;
+  }
+
+  handleContextMenu(event) {
+    event.preventDefault();
+  }
+
+  _screenToWorldWater(screenX, screenY) {
+    const viewport = createViewport(
+      this.app.screen.width,
+      this.app.screen.height,
+    );
+    return screenToWorld(screenX, screenY, WORLD_Z.WATER_SURFACE, viewport);
   }
 
   handleKeyDown(event) {
@@ -200,8 +282,8 @@ export class InputManager {
         currentMode === "click"
           ? "direction_power"
           : currentMode === "direction_power"
-          ? "donut"
-          : "click";
+            ? "donut"
+            : "click";
       this.sessionStore?.getState().setCastInputMode(nextMode);
       this.sessionStore?.getState().resetCastAim();
       this.sessionStore?.getState().resetDonutAim();
@@ -264,10 +346,20 @@ export class InputManager {
     this.isHoldingForDrag = false;
     this.isCasting = false;
     this.activePointerId = null;
+    this.isRightPointerDown = false;
+    this.lastRightWorld = null;
 
     if (this.sessionStore) {
       this.sessionStore.setState({ isDragging: false });
     }
+  }
+
+  _isRightButton(event) {
+    if (!event) return false;
+    if (event.button === 2 || event.buttons === 2) return true;
+    const nativeEvent = event.nativeEvent || event.originalEvent;
+    if (nativeEvent?.button === 2 || nativeEvent?.buttons === 2) return true;
+    return false;
   }
 
   handleDragMouseDown() {
@@ -310,7 +402,7 @@ export class InputManager {
 
       const viewport = createViewport(
         this.app.screen.width,
-        this.app.screen.height
+        this.app.screen.height,
       );
       const equipmentId = this.gameStore?.getState().selectedCastingEquipmentId;
       const maxRangeMeters = getCastingEquipmentMaxRange(equipmentId);
@@ -318,11 +410,11 @@ export class InputManager {
         aimState.angle,
         aimState.power,
         viewport,
-        maxRangeMeters
+        maxRangeMeters,
       );
       const quadrant = this.getCastQuadrantIfAccessible(
         targetScreen.x,
-        targetScreen.y
+        targetScreen.y,
       );
       if (quadrant === null) {
         sessionState.resetCastAim();
@@ -364,7 +456,7 @@ export class InputManager {
         equipment.minAccuracyRadius,
         equipment.maxAccuracyRadius,
         equipment.aspectRatioX,
-        equipment.aspectRatioY
+        equipment.aspectRatioY,
       );
       return;
     }
@@ -406,20 +498,20 @@ export class InputManager {
       const minRadius = donutAimState.minRadius;
       const maxRadius = Math.max(
         donutAimState.currentRadius,
-        donutAimState.minRadius
+        donutAimState.minRadius,
       );
       const aspectRatioX = donutAimState.aspectRatioX ?? 1;
       const aspectRatioY = donutAimState.aspectRatioY ?? 1;
       const viewport = createViewport(
         this.app.screen.width,
-        this.app.screen.height
+        this.app.screen.height,
       );
       const avatarWorld = getAvatarWorldPosition();
       const targetWorld = screenToWorld(
         target.x,
         target.y,
         WORLD_Z.WATER_SURFACE,
-        viewport
+        viewport,
       );
       const delta = {
         x: targetWorld.x - avatarWorld.x,
@@ -436,7 +528,7 @@ export class InputManager {
         const angle = Math.random() * Math.PI * 2;
         const radius = Math.sqrt(
           Math.random() * (maxRadiusWorld ** 2 - minRadiusWorld ** 2) +
-            minRadiusWorld ** 2
+            minRadiusWorld ** 2,
         );
         const localX = radius * Math.cos(angle) * aspectRatioX;
         const localY = radius * Math.sin(angle) * aspectRatioY;
@@ -525,6 +617,14 @@ export class InputManager {
       this.app.stage.off("pointerup", this.handlePointerUp);
       this.app.stage.off("pointerupoutside", this.handlePointerUpOutside);
       this.app.stage.off("pointercancel", this.handlePointerCancel);
+      this.app.stage.off("pointermove", this.handlePointerMove);
+    }
+
+    if (this.app?.canvas) {
+      this.app.canvas.removeEventListener(
+        "contextmenu",
+        this.handleContextMenu,
+      );
     }
 
     window.removeEventListener("keydown", this.handleKeyDown);
@@ -537,5 +637,6 @@ export class InputManager {
     this.locationStore = null;
     this.debugOverlay = null;
     this.onCast = null;
+    this.onFluidSplat = null;
   }
 }

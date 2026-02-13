@@ -94,6 +94,7 @@ export class SpriteManager {
     if (!this.itemSprite && item) {
       this.itemSprite = createPlaceholderSprite(item.category);
       this.itemSprite.scale.set(2); // Make it bigger for visibility
+      this.itemSprite.roundPixels = true;
       if (this.isFishCategory(item.category)) {
         this.applyFishPivot(this.itemSprite);
       } else {
@@ -109,6 +110,7 @@ export class SpriteManager {
     if (!this.magnetSprite) {
       this.magnetSprite = createMagnetSprite();
       this.magnetSprite.scale.set(2);
+      this.magnetSprite.roundPixels = true;
       this.magnetSprite.pivot.set(
         this.magnetSprite.width / 2,
         this.magnetSprite.height / 2,

@@ -263,7 +263,7 @@ export function renderProjectedRope(
   options = {},
 ) {
   if (!line || line.destroyed || !viewport || !castOrigin || !magnetWorld) {
-    return;
+    return null;
   }
 
   line.clear();
@@ -288,6 +288,8 @@ export function renderProjectedRope(
   );
   renderProjectedRopePoints(projectedPoints, line, viewport, projectedConfig);
 
+  const waterHitWorld = getWaterSurfaceIntersection(projectedPoints);
+
   if (options.lineDebug) {
     drawProjectedRopeDebug(
       options.lineDebug,
@@ -298,4 +300,34 @@ export function renderProjectedRope(
       projectedConfig,
     );
   }
+
+  return { waterHitWorld, points: projectedPoints };
+}
+
+function getWaterSurfaceIntersection(points) {
+  if (!Array.isArray(points) || points.length < 2) return null;
+  const waterZ = WORLD_Z.WATER_SURFACE;
+
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const a = points[i];
+    const b = points[i + 1];
+    const da = a.z - waterZ;
+    const db = b.z - waterZ;
+
+    if (da === 0) {
+      return { x: a.x, y: a.y, z: waterZ };
+    }
+    if (da * db > 0) {
+      continue;
+    }
+
+    const t = da === db ? 0 : (waterZ - a.z) / (b.z - a.z);
+    return {
+      x: lerp(a.x, b.x, t),
+      y: lerp(a.y, b.y, t),
+      z: waterZ,
+    };
+  }
+
+  return null;
 }

@@ -122,16 +122,14 @@ export function createReflectionLayers(context, textures) {
     noiseBasisY,
   } = context;
   const reflectionContainer = new PIXI.Container();
+  reflectionContainer.roundPixels = true;
 
   if (textures.bottom?.source && textures.top?.source) {
     // Pre-create reflected textures (one per wall tier)
     const reflectedMiddleTexture = textures.middle?.source
       ? createReflectedTexture(textures.middle, ISO_RATIO)
       : null;
-    const reflectedTopTexture = createReflectedTexture(
-      textures.top,
-      ISO_RATIO,
-    );
+    const reflectedTopTexture = createReflectedTexture(textures.top, ISO_RATIO);
 
     const addReflectionTile = (reflectedTex, worldX, worldY, worldZ) => {
       const screen = projectToScreen(worldX, worldY, worldZ, viewport);
