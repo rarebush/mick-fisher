@@ -253,55 +253,6 @@ export class FluidFoamCoordinator {
         graphics.circle(screenPos.x, screenPos.y, 2).fill({ color, alpha });
       }
     }
-
-    if (this.spawnNoiseDebug?.logPng) {
-      this._logSpawnNoiseImage(spawnMinX, upstreamBand);
-    }
-  }
-
-  _logSpawnNoiseImage(spawnMinX, upstreamBand) {
-    if (typeof document === "undefined") {
-      return;
-    }
-
-    const width = Math.max(32, this.spawnNoiseDebug?.pngWidth || 256);
-    const height = Math.max(32, this.spawnNoiseDebug?.pngHeight || 128);
-    const canvas = document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext("2d");
-    const imageData = ctx.createImageData(width, height);
-
-    const thresholdValue = this._getSpawnThresholdValue();
-
-    for (let py = 0; py < height; py++) {
-      for (let px = 0; px < width; px++) {
-        const u = px / (width - 1);
-        const v = py / (height - 1);
-        const x = spawnMinX + u * upstreamBand;
-        const y =
-          WORLD_Y.WATER_NEAR + v * (WORLD_Y.WATER_FAR - WORLD_Y.WATER_NEAR);
-        const clusterValue = this._clusterValue(x, y, spawnMinX, upstreamBand);
-        const isSpawn = clusterValue >= thresholdValue;
-        const color = isSpawn ? 0 : 255;
-        const index = (py * width + px) * 4;
-        imageData.data[index] = color;
-        imageData.data[index + 1] = color;
-        imageData.data[index + 2] = color;
-        imageData.data[index + 3] = 255;
-      }
-    }
-
-    ctx.putImageData(imageData, 0, 0);
-    if (this.spawnNoiseDebug?.onMaskReady) {
-      this.spawnNoiseDebug.onMaskReady({
-        canvas,
-        spawnMinX,
-        upstreamBand,
-      });
-    }
-    const dataUrl = canvas.toDataURL("image/png");
-    void dataUrl;
   }
 
   _pickSpawnCandidate(spawnMinX, upstreamBand) {

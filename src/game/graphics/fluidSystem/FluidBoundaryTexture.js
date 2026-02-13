@@ -15,7 +15,8 @@ export class FluidBoundaryTexture {
    * @param {number} config.width - Texture width in pixels (matches velocity field resolution)
    * @param {number} config.height - Texture height in pixels
    * @param {import("pixi.js").Renderer} config.renderer - PixiJS renderer
-   * @param {import("pixi.js").Container} config.waterObjectMasksContainer - Container with mask sprites
+   * @param {import("pixi.js").Container} [config.waterObjectMasksContainer] - Container with mask sprites
+   * @param {Array<{x:number,y:number}>} [config.maskWorldPositions] - World-space mask positions
    * @param {Object} config.viewport - Viewport for world-to-screen projection
    * @param {import("pixi.js").Container} config.debugContainer - Optional container for debug visualization
    */
@@ -23,7 +24,10 @@ export class FluidBoundaryTexture {
     this.width = config.width;
     this.height = config.height;
     this.renderer = config.renderer;
-    this.waterObjectMasksContainer = config.waterObjectMasksContainer;
+    this.waterObjectMasksContainer = config.waterObjectMasksContainer || null;
+    this.maskWorldPositions = Array.isArray(config.maskWorldPositions)
+      ? config.maskWorldPositions
+      : null;
     this.viewport = config.viewport;
     this.debugContainer = config.debugContainer;
 
@@ -126,10 +130,14 @@ export class FluidBoundaryTexture {
    * @private
    */
   async _renderBoundaries() {
-    if (
-      !this.waterObjectMasksContainer ||
-      this.waterObjectMasksContainer.children.length === 0
-    ) {
+    const hasMaskPositions =
+      Array.isArray(this.maskWorldPositions) &&
+      this.maskWorldPositions.length > 0;
+    const hasMaskSprites =
+      this.waterObjectMasksContainer &&
+      this.waterObjectMasksContainer.children.length > 0;
+
+    if (!hasMaskPositions && !hasMaskSprites) {
       // Create empty white texture (no obstacles)
       const graphics = new Graphics();
       graphics.rect(0, 0, this.width, this.height);
@@ -155,16 +163,14 @@ export class FluidBoundaryTexture {
     // Create a temporary container to render masks in texture UV space
     const renderContainer = new Container();
 
-    console.log(
-      "[FluidBoundary] Rendering",
-      this.waterObjectMasksContainer.children.length,
-      "masks to texture...",
-    );
+    const maskPositions = hasMaskPositions
+      ? this.maskWorldPositions
+      : this.waterObjectMasksContainer.children.map(
+          (maskSprite) => maskSprite.worldPosition,
+        );
 
-    // Render obstacle masks using world-space coordinates stored on each sprite
-    for (const maskSprite of this.waterObjectMasksContainer.children) {
-      const worldPos = maskSprite.worldPosition;
-
+    // Render obstacle masks using world-space coordinates
+    for (const worldPos of maskPositions) {
       if (
         !worldPos ||
         !Number.isFinite(worldPos.x) ||
@@ -183,7 +189,7 @@ export class FluidBoundaryTexture {
 
       // Draw collision shape in world space
       // TODO: Get actual object size in world units - for now use a fixed radius
-      const worldRadius = 0.5; // 0.5 world units radius
+      const worldRadius = 0.2; // Reduced radius (half diameter)
       const texRadiusX =
         (worldRadius / (this.worldBounds.maxX - this.worldBounds.minX)) *
         this.width;
@@ -213,8 +219,6 @@ export class FluidBoundaryTexture {
 
     // Ensure GPU completes the render before extracting pixels
     this.renderer.gl.flush();
-
-    console.log("[FluidBoundary] Rendered container to boundary texture");
 
     renderContainer.destroy({ children: true });
 
