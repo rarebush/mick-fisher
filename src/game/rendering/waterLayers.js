@@ -33,13 +33,13 @@ import { createCausticsShader } from "../graphics/waterSystem/causticsShader.js"
 import { FluidFoamCoordinator } from "../graphics/fluidSystem/FluidFoamCoordinator.js";
 import { FluidParticleState } from "../graphics/fluidSystem/FluidParticleState.js";
 import { FluidFoamBlobRenderer } from "../graphics/fluidSystem/FluidFoamBlobRenderer.js";
-import { FluidBoundaryTexture } from "../graphics/fluidSystem/FluidBoundaryTexture.js";
 import { FluidFoamDebugOverlay } from "../graphics/fluidSystem/FluidFoamDebugOverlay.js";
 import { CURRENT_SHIFT_ZONES } from "../data/currentShiftZones.js";
 import {
   WORLD_X,
   WORLD_Y,
   WORLD_Z,
+  getProjectionMetrics,
   projectToScreen,
 } from "../mechanics/worldConstants.js";
 import {
@@ -278,6 +278,10 @@ function buildFoamSystem({
   screenHeight,
   debugContainer,
 }) {
+  const projectionMetrics = getProjectionMetrics(viewport);
+  const isoScaleY =
+    projectionMetrics.screenYPerWorldUnit /
+    projectionMetrics.screenXPerWorldUnit;
   const foamTiles = new PIXI.Container();
   foamTiles.roundPixels = false;
   let fluidFoamCoordinator = null;
@@ -293,14 +297,17 @@ function buildFoamSystem({
     grid: { width: foamGridWidth, height: foamGridHeight },
     coordinator: {
       maxParticles: 10000,
-      waveInterval: 1.0,
-      particlesPerWave: 200,
+      waveInterval: 3.5,
+      particlesPerWave: 120,
       maxAge: 16.0,
-      lifespanRiverLengths: 1.0,
+      lifespanRiverLengths: 1.2,
       spawnBufferX: WORLD_X.SPAWN_BUFFER,
+      spawnNoiseScale: 2.3,
+      spawnNoiseThreshold: 0.985,
       shiftZoneParticleScale: 60.0,
       spawnInMainArea: false,
       disableDynamicMaxAge: false,
+      cullByAge: true,
       baseFlowSpeed: 0.0,
       splatDirectRadius: 0.7,
       splatDirectStrength: 8.0,
@@ -313,11 +320,13 @@ function buildFoamSystem({
       velocityDamping: 0.9,
       driftVelocityX: 0.25,
       driftVelocityY: 0.0,
+      killOutOfBounds: true,
     },
     renderer: {
       maxParticles: 10000,
       maxAge: 8.0,
-      densityScale: 1.0,
+      densityScale: 0.8,
+      densityAlpha: 0.55,
     },
     boundary: {
       width: boundaryGridWidth,
@@ -343,6 +352,7 @@ function buildFoamSystem({
       parentContainer: fluidFoamParticleContainer,
       screenSize: { width: screenWidth, height: screenHeight },
       worldToScreen: (x, y, z) => projectToScreen(x, y, z, viewport),
+      isoScaleY,
     });
 
     const boundaryTexture = null;
@@ -366,6 +376,15 @@ function buildFoamSystem({
       },
     );
     fluidFoamDebugOverlay.setShiftZones(CURRENT_SHIFT_ZONES);
+
+    const spawnNoiseGraphics = new PIXI.Graphics();
+    spawnNoiseGraphics.zIndex = 9995;
+    overlayContainer.addChild(spawnNoiseGraphics);
+    fluidFoamCoordinator.setSpawnNoiseDebug({
+      graphics: spawnNoiseGraphics,
+      worldToScreen: (x, y, z) => projectToScreen(x, y, z, viewport),
+      z: WORLD_Z.WATER_SURFACE,
+    });
 
     const foamBoundsMinX = WORLD_X.SPAWN_MIN;
     const foamBoundsMaxX = WORLD_X.MAX;
@@ -425,7 +444,6 @@ function buildFoamSystem({
     fluidFoamCoordinator,
     fluidFoamDebugOverlay,
     foamConfig,
-    enableBoundaryCollisions: true,
   };
 }
 
@@ -491,19 +509,12 @@ function buildEdgeFoam({ viewport, noiseBasisX, noiseBasisY }) {
   return { edgeFoamTiles, edgeFoamShader };
 }
 
-async function buildWaterObjects({
-  viewport,
-  renderer,
-  debugContainer,
-  foamConfig,
-  fluidFoamCoordinator,
-  enableBoundaryCollisions,
-}) {
+async function buildWaterObjects({ viewport }) {
   const waterObjectsBelow = new PIXI.Container();
   const waterObjectsAbove = new PIXI.Container();
   waterObjectsBelow.roundPixels = true;
   waterObjectsAbove.roundPixels = true;
-  const maskWorldPositions = [];
+  const objectShiftZones = [];
   let objectSpritesheet = null;
 
   try {
@@ -555,29 +566,24 @@ async function buildWaterObjects({
       aboveSprite.y = screen.y + trimOffsetY;
       waterObjectsAbove.addChild(aboveSprite);
 
-      maskWorldPositions.push({ x: worldX, y: worldY });
-    }
-
-    if (
-      enableBoundaryCollisions &&
-      fluidFoamCoordinator &&
-      renderer &&
-      maskWorldPositions.length > 0
-    ) {
-      const boundaryTexture = new FluidBoundaryTexture({
-        width: foamConfig.boundary.width,
-        height: foamConfig.boundary.height,
-        renderer: renderer,
-        maskWorldPositions: maskWorldPositions,
-        viewport: viewport,
-        debugContainer: debugContainer,
-      });
-
-      fluidFoamCoordinator.setBoundaryTexture(boundaryTexture);
+      if (log.footprint?.shape && log.footprint?.size) {
+        objectShiftZones.push({
+          id: `${log.id}-footprint-repel`,
+          type: "repel",
+          position: { x: worldX, y: worldY, z: WORLD_Z.WATER_SURFACE },
+          isObjectRepel: true,
+          solidInset: 0.05,
+          shape: {
+            type: log.footprint.shape,
+            size: log.footprint.size,
+            rotation: log.footprint.rotation,
+          },
+        });
+      }
     }
   }
 
-  return { waterObjectsBelow, waterObjectsAbove };
+  return { waterObjectsBelow, waterObjectsAbove, objectShiftZones };
 }
 
 function assembleWaterGroup({
@@ -618,9 +624,9 @@ function assembleWaterGroup({
   const waterGroup = new PIXI.Container();
   waterGroup.addChild(
     displacedLayers,
+    sparkleTiles,
     foamTiles,
     edgeFoamTiles,
-    sparkleTiles,
     waterObjectsAbove,
   );
 
@@ -702,13 +708,7 @@ export async function createWaterLayers(
     screenHeight,
     debugContainer,
   });
-  const {
-    foamTiles,
-    fluidFoamCoordinator,
-    fluidFoamDebugOverlay,
-    foamConfig,
-    enableBoundaryCollisions,
-  } = foamResult;
+  const { foamTiles, fluidFoamCoordinator, fluidFoamDebugOverlay } = foamResult;
 
   const { edgeFoamTiles, edgeFoamShader } = buildEdgeFoam({
     viewport,
@@ -716,14 +716,21 @@ export async function createWaterLayers(
     noiseBasisY,
   });
 
-  const { waterObjectsBelow, waterObjectsAbove } = await buildWaterObjects({
-    viewport,
-    renderer,
-    debugContainer,
-    foamConfig,
-    fluidFoamCoordinator,
-    enableBoundaryCollisions,
-  });
+  const { waterObjectsBelow, waterObjectsAbove, objectShiftZones } =
+    await buildWaterObjects({
+      viewport,
+    });
+
+  if (fluidFoamCoordinator) {
+    const combinedShiftZones = [
+      ...CURRENT_SHIFT_ZONES,
+      ...(objectShiftZones || []),
+    ];
+    fluidFoamCoordinator.setShiftZones(combinedShiftZones);
+    if (fluidFoamDebugOverlay) {
+      fluidFoamDebugOverlay.setShiftZones(combinedShiftZones);
+    }
+  }
 
   const { waterGroup, displacementSprite, displacementFilter } =
     assembleWaterGroup({

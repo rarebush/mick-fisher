@@ -121,18 +121,61 @@ Container Visible: ${foamVisible}`;
         zone.position.y,
         this.z,
       );
-      const edge = this.worldToScreen(
-        zone.position.x + radiusWorld,
-        zone.position.y,
-        this.z,
-      );
-      const radiusPx = Math.max(
-        2,
-        Math.hypot(edge.x - center.x, edge.y - center.y),
-      );
+      const points = [];
+      const shape = zone.shape;
+      if (shape?.type) {
+        const size = shape.size || {};
+        const rotation = Number.isFinite(shape.rotation) ? shape.rotation : 0;
+        const cosR = Math.cos(rotation);
+        const sinR = Math.sin(rotation);
+        const sizeX = Number.isFinite(size.x) ? size.x : radiusWorld * 2;
+        const sizeY = Number.isFinite(size.y) ? size.y : radiusWorld * 2;
+        const halfX = Math.max(0.0001, sizeX / 2);
+        const halfY = Math.max(0.0001, sizeY / 2);
+
+        if (shape.type === "circle" || shape.type === "ellipse") {
+          const steps = 32;
+          for (let step = 0; step <= steps; step += 1) {
+            const angle = (step / steps) * Math.PI * 2;
+            const localX = Math.cos(angle) * halfX;
+            const localY = Math.sin(angle) * halfY;
+            const worldX = zone.position.x + localX * cosR - localY * sinR;
+            const worldY = zone.position.y + localX * sinR + localY * cosR;
+            const screen = this.worldToScreen(worldX, worldY, this.z);
+            points.push(screen.x, screen.y);
+          }
+        } else if (shape.type === "rect" || shape.type === "square") {
+          const corners = [
+            { x: -halfX, y: -halfY },
+            { x: halfX, y: -halfY },
+            { x: halfX, y: halfY },
+            { x: -halfX, y: halfY },
+            { x: -halfX, y: -halfY },
+          ];
+          for (const corner of corners) {
+            const worldX = zone.position.x + corner.x * cosR - corner.y * sinR;
+            const worldY = zone.position.y + corner.x * sinR + corner.y * cosR;
+            const screen = this.worldToScreen(worldX, worldY, this.z);
+            points.push(screen.x, screen.y);
+          }
+        }
+      }
+
+      if (points.length === 0) {
+        const steps = 32;
+        for (let step = 0; step <= steps; step += 1) {
+          const angle = (step / steps) * Math.PI * 2;
+          const screen = this.worldToScreen(
+            zone.position.x + Math.cos(angle) * radiusWorld,
+            zone.position.y + Math.sin(angle) * radiusWorld,
+            this.z,
+          );
+          points.push(screen.x, screen.y);
+        }
+      }
 
       this.shiftZoneGraphics
-        .circle(center.x, center.y, radiusPx)
+        .poly(points)
         .stroke({ width: 1, color, alpha: 0.7 });
       this.shiftZoneGraphics
         .circle(center.x, center.y, 2)

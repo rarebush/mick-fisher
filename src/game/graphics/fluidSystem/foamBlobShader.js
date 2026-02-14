@@ -40,26 +40,37 @@ uniform float uThresholdLow;
 uniform float uThresholdHigh;
 uniform float uAlphaLow;
 uniform float uAlphaHigh;
-uniform float uBandCount;
+uniform float uStepThreshold1;
+uniform float uStepThreshold2;
+uniform float uDensityPower;
 uniform float uAlphaScale;
 uniform float uBlurStrength;
 uniform vec3 uCoreColor;
+uniform vec3 uMidColor;
 uniform vec3 uEdgeColor;
 
 void main() {
   float c = texture(uTexture, vTextureCoord).r;
+  vec2 texel2 = uTexelSize * 2.0;
   float n = texture(uTexture, vTextureCoord + vec2(0.0, uTexelSize.y)).r;
   float s = texture(uTexture, vTextureCoord - vec2(0.0, uTexelSize.y)).r;
   float e = texture(uTexture, vTextureCoord + vec2(uTexelSize.x, 0.0)).r;
   float w = texture(uTexture, vTextureCoord - vec2(uTexelSize.x, 0.0)).r;
-  float blur = (c + n + s + e + w) * 0.2;
+  float n2 = texture(uTexture, vTextureCoord + vec2(0.0, texel2.y)).r;
+  float s2 = texture(uTexture, vTextureCoord - vec2(0.0, texel2.y)).r;
+  float e2 = texture(uTexture, vTextureCoord + vec2(texel2.x, 0.0)).r;
+  float w2 = texture(uTexture, vTextureCoord - vec2(texel2.x, 0.0)).r;
+  float blur = (c + n + s + e + w + n2 + s2 + e2 + w2) * 0.11111111;
   float d = mix(c, blur, uBlurStrength);
 
-  float blob = smoothstep(uThresholdLow, uThresholdHigh, d);
-  float bands = floor(blob * uBandCount + 0.0001) / uBandCount;
+  float density = smoothstep(uThresholdLow, uThresholdHigh, d);
+  density = pow(density, uDensityPower);
   float alpha = smoothstep(uAlphaLow, uAlphaHigh, d) * uAlphaScale;
 
-  vec3 color = mix(uEdgeColor, uCoreColor, bands);
+  float step1 = step(uStepThreshold1, density);
+  float step2 = step(uStepThreshold2, density);
+  vec3 color = mix(uEdgeColor, uMidColor, step1);
+  color = mix(color, uCoreColor, step2);
   finalColor = vec4(color * alpha, alpha);
 }
 `;
@@ -71,11 +82,17 @@ export function createFoamBlobFilter(options = {}) {
     uThresholdHigh: { value: options.thresholdHigh ?? 0.28, type: "f32" },
     uAlphaLow: { value: options.alphaLow ?? 0.05, type: "f32" },
     uAlphaHigh: { value: options.alphaHigh ?? 0.22, type: "f32" },
-    uBandCount: { value: options.bandCount ?? 4.0, type: "f32" },
+    uStepThreshold1: { value: options.stepThreshold1 ?? 0.45, type: "f32" },
+    uStepThreshold2: { value: options.stepThreshold2 ?? 0.7, type: "f32" },
+    uDensityPower: { value: options.densityPower ?? 1.6, type: "f32" },
     uAlphaScale: { value: options.alphaScale ?? 0.9, type: "f32" },
     uBlurStrength: { value: options.blurStrength ?? 0.6, type: "f32" },
     uCoreColor: {
       value: options.coreColor ?? [1.0, 1.0, 1.0],
+      type: "vec3<f32>",
+    },
+    uMidColor: {
+      value: options.midColor ?? [0.92, 0.94, 0.92],
       type: "vec3<f32>",
     },
     uEdgeColor: {

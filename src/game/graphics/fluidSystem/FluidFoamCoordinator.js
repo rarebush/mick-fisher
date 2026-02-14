@@ -68,6 +68,7 @@ export class FluidFoamCoordinator {
       shiftZoneParticleScale: Number.isFinite(config.shiftZoneParticleScale)
         ? config.shiftZoneParticleScale
         : 1.0,
+      cullByAge: config.cullByAge !== false,
       spawnInMainArea: Boolean(config.spawnInMainArea),
       disableDynamicMaxAge: Boolean(config.disableDynamicMaxAge),
       baseFlowSpeed: config.baseFlowSpeed || 1.0,
@@ -84,7 +85,7 @@ export class FluidFoamCoordinator {
 
     // Flow parameters (connected to game state)
     this.flowSpeed = this.config.baseFlowSpeed;
-    this.choppiness = 1.0; // 0-2+ range, affects spawn rate
+    this.choppiness = 1.0; // 0-2+ range, affects spawn density + noise thresholds
 
     // Sub-systems (initialized externally)
     this.particleState = null; // FluidParticleState instance
@@ -108,6 +109,12 @@ export class FluidFoamCoordinator {
     this.particleState = particleState;
     this.renderer = renderer;
     this.boundaryTexture = boundaryTexture;
+    this._baseDriftVelocityX = Number.isFinite(particleState?.driftVelocityX)
+      ? particleState.driftVelocityX
+      : 0;
+    this._baseDriftVelocityY = Number.isFinite(particleState?.driftVelocityY)
+      ? particleState.driftVelocityY
+      : 0;
 
     if (boundaryTexture) {
       this.setBoundaryTexture(boundaryTexture);
@@ -148,9 +155,10 @@ export class FluidFoamCoordinator {
     // Update wave spawning timer
     this.timeSinceLastWave += deltaTime;
 
-    // Spawn waves at intervals (faster when choppier)
+    // Spawn waves at intervals (faster when flow speed is higher)
+    const speedFactor = Math.max(0, this.flowSpeed);
     const adjustedInterval =
-      this.nextWaveInterval / (0.5 + this.choppiness * 0.5);
+      speedFactor > 0.0001 ? this.nextWaveInterval / speedFactor : Infinity;
     if (this.timeSinceLastWave >= adjustedInterval) {
       this._spawnWave();
       this.timeSinceLastWave = 0;
@@ -160,6 +168,7 @@ export class FluidFoamCoordinator {
     }
 
     const maxAge = this._getDynamicMaxAge();
+    this._rescaleParticleAges(maxAge);
 
     // Update particle ages and mark inactive
     this._updateParticleAges(deltaTime, maxAge);
@@ -174,6 +183,7 @@ export class FluidFoamCoordinator {
         this.boundaryTexture,
       );
     }
+    this._cullOutOfBounds();
 
     // Update renderer
     if (this.renderer) {
@@ -210,9 +220,28 @@ export class FluidFoamCoordinator {
    * @private
    */
   _spawnWave() {
+    const choppiness = Number.isFinite(this.choppiness) ? this.choppiness : 1;
+    const choppyT = Math.max(0, Math.min(1, choppiness / 2));
+    const spawnNoiseScale = this.config.spawnNoiseScale * (1 - 0.35 * choppyT);
+    const spawnNoiseThreshold = Math.max(
+      0.5,
+      this.config.spawnNoiseThreshold - 0.12 * choppyT,
+    );
+    const particlesPerWave = Math.max(
+      1,
+      Math.round(this.config.particlesPerWave * (1 + 0.4 * choppyT)),
+    );
+    const spawnConfig = {
+      ...this.config,
+      spawnNoiseScale,
+      spawnNoiseThreshold,
+      particlesPerWave,
+    };
+    this._spawnNoiseConfig = spawnConfig;
+
     // Calculate how many particles we can spawn
     const availableSlots = this.config.maxParticles - this.activeParticleCount;
-    const spawnCount = Math.min(this.config.particlesPerWave, availableSlots);
+    const spawnCount = Math.min(spawnConfig.particlesPerWave, availableSlots);
 
     if (spawnCount <= 0) return;
 
@@ -229,7 +258,7 @@ export class FluidFoamCoordinator {
     this.spawnNoiseRange = updateSpawnNoiseRange({
       spawnMinX,
       upstreamBand,
-      config: this.config,
+      config: spawnConfig,
       spawnNoiseOffset: this.spawnNoiseOffset,
     });
     if (this.spawnNoiseDebug) {
@@ -255,7 +284,7 @@ export class FluidFoamCoordinator {
       const candidate = pickSpawnCandidate({
         spawnMinX,
         upstreamBand,
-        config: this.config,
+        config: spawnConfig,
         spawnNoiseOffset: this.spawnNoiseOffset,
         spawnNoiseRange: this.spawnNoiseRange,
       });
@@ -290,6 +319,8 @@ export class FluidFoamCoordinator {
       return;
     }
 
+    const noiseConfig = this._spawnNoiseConfig || this.config;
+
     const graphics = this.spawnNoiseDebug.graphics;
     const worldToScreen = this.spawnNoiseDebug.worldToScreen;
     const z =
@@ -303,10 +334,10 @@ export class FluidFoamCoordinator {
     const maxX = spawnMinX + upstreamBand;
     const minY = WORLD_Y.WATER_NEAR;
     const maxY = WORLD_Y.WATER_FAR;
-    const step = Math.max(0.05, this.config.spawnNoiseDebugStep);
+    const step = Math.max(0.05, noiseConfig.spawnNoiseDebugStep);
     const thresholdValue = getSpawnThresholdValue({
       spawnNoiseRange: this.spawnNoiseRange,
-      spawnNoiseThreshold: this.config.spawnNoiseThreshold,
+      spawnNoiseThreshold: noiseConfig.spawnNoiseThreshold,
     });
 
     for (let y = minY; y <= maxY; y += step) {
@@ -316,7 +347,7 @@ export class FluidFoamCoordinator {
           y,
           spawnMinX,
           upstreamBand,
-          config: this.config,
+          config: noiseConfig,
           spawnNoiseOffset: this.spawnNoiseOffset,
         });
         const isSpawn = cluster >= thresholdValue;
@@ -344,11 +375,35 @@ export class FluidFoamCoordinator {
       if (particle.active) {
         particle.age += deltaTime;
 
-        // Deactivate particles that exceed max age
-        if (particle.age >= effectiveMaxAge) {
+        if (this.config.cullByAge && particle.age >= effectiveMaxAge) {
           particle.active = false;
           this.activeParticleCount--;
         }
+      }
+    }
+  }
+
+  _cullOutOfBounds() {
+    if (!this.particleState?.killOutOfBounds) {
+      return;
+    }
+
+    const bounds = this.particleState.worldBounds;
+    if (!bounds) {
+      return;
+    }
+
+    for (let i = 0; i < this.particles.length; i++) {
+      const particle = this.particles[i];
+      if (!particle.active) continue;
+      if (
+        particle.x < bounds.minX ||
+        particle.x > bounds.maxX ||
+        particle.y < bounds.minY ||
+        particle.y > bounds.maxY
+      ) {
+        particle.active = false;
+        this.activeParticleCount--;
       }
     }
   }
@@ -381,6 +436,36 @@ export class FluidFoamCoordinator {
     }
 
     return (length / speed) * riverLengths;
+  }
+
+  _rescaleParticleAges(maxAge) {
+    if (!Number.isFinite(maxAge)) {
+      return;
+    }
+
+    if (!Number.isFinite(this._lastMaxAge)) {
+      this._lastMaxAge = maxAge;
+      return;
+    }
+
+    const prevMaxAge = this._lastMaxAge;
+    if (Math.abs(prevMaxAge - maxAge) < 0.0001) {
+      return;
+    }
+
+    const scale = maxAge / prevMaxAge;
+    if (!Number.isFinite(scale) || scale <= 0) {
+      this._lastMaxAge = maxAge;
+      return;
+    }
+
+    for (let i = 0; i < this.particles.length; i++) {
+      const particle = this.particles[i];
+      if (!particle.active) continue;
+      particle.age *= scale;
+    }
+
+    this._lastMaxAge = maxAge;
   }
 
   applyInputSplat(worldX, worldY, deltaWorldX, deltaWorldY, options = {}) {
@@ -434,6 +519,16 @@ export class FluidFoamCoordinator {
    */
   setFlowSpeed(speed) {
     this.flowSpeed = speed;
+    if (this.particleState) {
+      const baseX = Number.isFinite(this._baseDriftVelocityX)
+        ? this._baseDriftVelocityX
+        : 0;
+      const baseY = Number.isFinite(this._baseDriftVelocityY)
+        ? this._baseDriftVelocityY
+        : 0;
+      this.particleState.driftVelocityX = baseX * this.flowSpeed;
+      this.particleState.driftVelocityY = baseY * this.flowSpeed;
+    }
   }
 
   /**

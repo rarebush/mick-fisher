@@ -31,6 +31,7 @@ export class FluidParticleState {
     this.driftVelocityY = Number.isFinite(config.driftVelocityY)
       ? config.driftVelocityY
       : 0.0;
+    this.killOutOfBounds = Boolean(config.killOutOfBounds);
     this.collisionCount = 0; // Debug: Track collision events
     this.lastCollisionLog = 0; // Throttle collision logging
 
@@ -192,20 +193,24 @@ export class FluidParticleState {
         }
       }
     }
-    // Apply horizontal wrapping (left bank to right bank)
-    if (particle.x > this.worldBounds.maxX) {
-      particle.x = this.worldBounds.minX + (particle.x - this.worldBounds.maxX);
-    } else if (particle.x < this.worldBounds.minX) {
-      particle.x = this.worldBounds.maxX - (this.worldBounds.minX - particle.x);
-    }
+    if (!this.killOutOfBounds) {
+      // Apply horizontal wrapping (left bank to right bank)
+      if (particle.x > this.worldBounds.maxX) {
+        particle.x =
+          this.worldBounds.minX + (particle.x - this.worldBounds.maxX);
+      } else if (particle.x < this.worldBounds.minX) {
+        particle.x =
+          this.worldBounds.maxX - (this.worldBounds.minX - particle.x);
+      }
 
-    // Clamp vertical position (no wrapping in Y)
-    if (particle.y < this.worldBounds.minY) {
-      particle.y = this.worldBounds.minY;
-      particle.vy = Math.abs(particle.vy); // Bounce
-    } else if (particle.y > this.worldBounds.maxY) {
-      particle.y = this.worldBounds.maxY;
-      particle.vy = -Math.abs(particle.vy); // Bounce
+      // Clamp vertical position (no wrapping in Y)
+      if (particle.y < this.worldBounds.minY) {
+        particle.y = this.worldBounds.minY;
+        particle.vy = Math.abs(particle.vy); // Bounce
+      } else if (particle.y > this.worldBounds.maxY) {
+        particle.y = this.worldBounds.maxY;
+        particle.vy = -Math.abs(particle.vy); // Bounce
+      }
     }
   }
 

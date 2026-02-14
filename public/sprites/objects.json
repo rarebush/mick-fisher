@@ -1,25 +1,25 @@
 { "frames": {
    "default (WaterBelow).aseprite": {
-    "frame": { "x": 0, "y": 0, "w": 37, "h": 50 },
+    "frame": { "x": 0, "y": 0, "w": 64, "h": 64 },
     "rotated": false,
     "trimmed": true,
-    "spriteSourceSize": { "x": 165, "y": 184, "w": 37, "h": 50 },
+    "spriteSourceSize": { "x": 160, "y": 192, "w": 64, "h": 64 },
     "sourceSize": { "w": 768, "h": 384 },
     "duration": 100
    },
    "default (WaterMasks).aseprite": {
-    "frame": { "x": 0, "y": 50, "w": 37, "h": 50 },
+    "frame": { "x": 0, "y": 64, "w": 64, "h": 64 },
     "rotated": false,
     "trimmed": true,
-    "spriteSourceSize": { "x": 165, "y": 184, "w": 37, "h": 50 },
+    "spriteSourceSize": { "x": 160, "y": 192, "w": 64, "h": 64 },
     "sourceSize": { "w": 768, "h": 384 },
     "duration": 100
    },
    "default (WaterAbove).aseprite": {
-    "frame": { "x": 0, "y": 100, "w": 37, "h": 50 },
+    "frame": { "x": 0, "y": 128, "w": 64, "h": 64 },
     "rotated": false,
     "trimmed": true,
-    "spriteSourceSize": { "x": 165, "y": 184, "w": 37, "h": 50 },
+    "spriteSourceSize": { "x": 160, "y": 192, "w": 64, "h": 64 },
     "sourceSize": { "w": 768, "h": 384 },
     "duration": 100
    }
@@ -29,7 +29,7 @@
   "version": "1.3.16.1-x64",
   "image": "objects.png",
   "format": "RGBA8888",
-  "size": { "w": 37, "h": 150 },
+  "size": { "w": 64, "h": 192 },
   "scale": "1",
   "frameTags": [
   ],

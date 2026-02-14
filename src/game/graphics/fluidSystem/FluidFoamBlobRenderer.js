@@ -12,6 +12,7 @@ export class FluidFoamBlobRenderer {
    * @param {Function} config.worldToScreen
    * @param {number} [config.maxAge]
    * @param {number} [config.densityScale]
+   * @param {number} [config.isoScaleY]
    */
   constructor(config) {
     this.maxParticles = config.maxParticles;
@@ -22,6 +23,10 @@ export class FluidFoamBlobRenderer {
     this.densityScale = Number.isFinite(config.densityScale)
       ? config.densityScale
       : 1.0;
+    this.isoScaleY = Number.isFinite(config.isoScaleY) ? config.isoScaleY : 1.0;
+    this.densityAlpha = Number.isFinite(config.densityAlpha)
+      ? config.densityAlpha
+      : 0.6;
 
     this.screenSize = {
       width: config.screenSize?.width ?? 0,
@@ -40,6 +45,7 @@ export class FluidFoamBlobRenderer {
     this.densityContainer.label = "FoamDensitySprites";
     this.densityContainer.blendMode = "add";
     this.densityContainer.roundPixels = false;
+    this.densityContainer.alpha = this.densityAlpha;
 
     this.particleTexture = this._createDensityParticleTexture();
     this.particleSprites = [];
@@ -52,21 +58,29 @@ export class FluidFoamBlobRenderer {
     this.displaySprite.blendMode = "normal";
     this.displaySprite.roundPixels = false;
     const foamBlobFilter = createFoamBlobFilter({
-      thresholdLow: 0.05,
-      thresholdHigh: 0.2,
-      alphaLow: 0.03,
-      alphaHigh: 0.18,
-      bandCount: 4.0,
-      alphaScale: 1.0,
-      blurStrength: 0.6,
-      coreColor: [1.0, 1.0, 1.0],
-      edgeColor: [0.84, 0.92, 1.0],
+      thresholdLow: 0.04,
+      thresholdHigh: 0.35,
+      alphaLow: 0.04,
+      alphaHigh: 0.24,
+      stepThreshold1: 0.65,
+      stepThreshold2: 0.94,
+      densityPower: 2.1,
+      alphaScale: 0.85,
+      blurStrength: 0.2,
+      coreColor: [0.922, 0.922, 0.922],
+      midColor: [0.886, 0.886, 0.886],
+      edgeColor: [0.753, 0.753, 0.753],
       texelSize: [
         1 / Math.max(1, this.densityTexture.width),
         1 / Math.max(1, this.densityTexture.height),
       ],
     });
     this.displaySprite.filters = [foamBlobFilter];
+    if (typeof window !== "undefined") {
+      window.foamBlobFilter = foamBlobFilter;
+      window.foamBlobUniforms =
+        foamBlobFilter.resources.foamBlobUniforms.uniforms;
+    }
 
     if (this.parentContainer) {
       this.parentContainer.addChild(this.displaySprite);
@@ -74,8 +88,8 @@ export class FluidFoamBlobRenderer {
   }
 
   _createDensityParticleTexture() {
-    const size = 13;
-    const radius = 6;
+    const size = 15;
+    const radius = 7;
 
     const canvas = document.createElement("canvas");
     canvas.width = size;
@@ -90,8 +104,8 @@ export class FluidFoamBlobRenderer {
       size / 2,
       radius,
     );
-    gradient.addColorStop(0, "rgba(255, 255, 255, 1.0)");
-    gradient.addColorStop(0.7, "rgba(255, 255, 255, 0.85)");
+    gradient.addColorStop(0, "rgba(255, 255, 255, 0.6)");
+    gradient.addColorStop(0.7, "rgba(255, 255, 255, 0.35)");
     gradient.addColorStop(1, "rgba(255, 255, 255, 0)");
 
     ctx.fillStyle = gradient;
@@ -132,7 +146,10 @@ export class FluidFoamBlobRenderer {
 
         sprite.x = screenPos.x * this.densityScale;
         sprite.y = screenPos.y * this.densityScale;
-        sprite.scale.set(particle.scale * 0.9);
+        sprite.scale.set(
+          particle.scale * 0.7,
+          particle.scale * 0.7 * this.isoScaleY,
+        );
 
         const ageRatio = particle.age / this.maxAge;
         sprite.alpha = Math.max(0, 1.0 - ageRatio);
