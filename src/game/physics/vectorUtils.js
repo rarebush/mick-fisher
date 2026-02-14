@@ -31,3 +31,8 @@ export function dotProduct(a, b) {
 export function clamp(value, min, max) {
   return Math.min(max, Math.max(min, value));
 }
+
+export function speedFromDelta(dx, dy, deltaTime, minDeltaTime = 0.0001) {
+  const safeDelta = Math.max(minDeltaTime, deltaTime || 0);
+  return Math.hypot(dx, dy) / safeDelta;
+}

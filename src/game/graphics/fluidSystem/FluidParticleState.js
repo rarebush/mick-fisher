@@ -3,8 +3,8 @@
  * Manages particle position and velocity state.
  * Handles particle advection using particle velocity + drift.
  *
- * Initially uses CPU-based particle updates.
- * Can be extended to GPU-based texture updates for better performance.
+ * Uses CPU-based particle updates.
+ * Can be extended to texture-backed updates if needed.
  */
 
 import { WORLD_X, WORLD_Y } from "../../mechanics/worldDimensions.js";
@@ -44,7 +44,7 @@ export class FluidParticleState {
   }
 
   /**
-  * Update particle positions via advection using particle velocity + drift.
+   * Update particle positions via advection using particle velocity + drift.
    *
    * @param {number} deltaTime - Time elapsed in seconds
    * @param {Array<Object>} particles - Array of particles to update
@@ -62,7 +62,7 @@ export class FluidParticleState {
   }
 
   /**
-  * Advect a single particle using simple Euler integration.
+   * Advect a single particle using simple Euler integration.
    *
    * @param {Object} particle - Particle to update
    * @param {number} deltaTime - Time elapsed in seconds
@@ -127,8 +127,8 @@ export class FluidParticleState {
           const slideDamping = 0.5;
           const dampedSlideVx = cappedSlideVx * slideDamping;
           const dampedSlideVy = cappedSlideVy * slideDamping;
-          const slideX = particle.x + dampedSlideVx * deltaTime;
-          const slideY = particle.y + dampedSlideVy * deltaTime;
+          const slideX = particle.x + dampedSlideVx * safeDeltaTime;
+          const slideY = particle.y + dampedSlideVy * safeDeltaTime;
 
           if (
             Number.isFinite(slideX) &&
@@ -279,7 +279,6 @@ export class FluidParticleState {
    * Cleanup resources.
    */
   destroy() {
-    // No resources to cleanup yet
-    // Future: Destroy GPU textures if using texture-based particle state
+    // No resources to cleanup yet.
   }
 }

@@ -218,13 +218,6 @@ export async function setupEnvironmentLayers(
   container.addChild(riverWallTiles);
   container.addChild(waterResult.waterGroup);
 
-  // Add particle container on top of everything
-  if (waterResult.fluidFoamParticleContainer) {
-    container.addChild(waterResult.fluidFoamParticleContainer);
-  } else {
-    console.error("[SceneSetup] fluidFoamParticleContainer is NULL/undefined!");
-  }
-
   // Add debug dots container on top of everything for visibility
   if (waterResult.debugDotsContainer) {
     container.addChild(waterResult.debugDotsContainer);
@@ -290,7 +283,6 @@ export async function setupEnvironmentLayers(
     underwaterTintFilter: waterResult.underwaterTintFilter,
     waterSurfaceShader: waterResult.waterSurfaceShader,
     sparkleShader: waterResult.sparkleShader,
-    foamShader: waterResult.foamShader,
     edgeFoamShader: waterResult.edgeFoamShader,
     fluidFoamCoordinator: waterResult.fluidFoamCoordinator,
     fluidFoamDebugOverlay: waterResult.fluidFoamDebugOverlay,

@@ -21,7 +21,7 @@ import {
   createFishTarget,
   HEAT_CONSTANTS,
 } from "../physics/physicsSystem.js";
-import { magnitude } from "../physics/vectorUtils.js";
+import { magnitude, speedFromDelta } from "../physics/vectorUtils.js";
 import { rollFishSize } from "../data/fishDatabase.js";
 import { getFishTableForLocation } from "../data/locationDatabase.js";
 import { emitAudioEvent } from "../audio/audioEvents.js";
@@ -275,7 +275,7 @@ export async function updateDragMechanics(
   if (prevTargetPos && dragResult.state.target) {
     const dx = dragResult.state.target.position.x - prevTargetPos.x;
     const dy = dragResult.state.target.position.y - prevTargetPos.y;
-    const speed = magnitude({ x: dx, y: dy }) / Math.max(deltaTime, 0.0001);
+    const speed = speedFromDelta(dx, dy, deltaTime);
     if (speed > 0.01 && typeof window !== "undefined" && window.getPixiApp) {
       const pixiApp = window.getPixiApp();
       pixiApp?.handleMagnetDragSplat(

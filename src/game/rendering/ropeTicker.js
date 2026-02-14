@@ -1,6 +1,7 @@
 import { renderProjectedRope } from "../animations/projectedRopeRenderer.js";
 import { updateRopePhysics } from "../sequences/dragSequence.js";
 import { createViewport, worldToScreen } from "../mechanics/worldConstants.js";
+import { speedFromDelta } from "../physics/vectorUtils.js";
 
 export function updateRopeTicker({
   app,
@@ -73,7 +74,7 @@ export function updateRopeTicker({
     if (waterHitWorld && prevWaterHit && typeof window !== "undefined") {
       const dx = waterHitWorld.x - prevWaterHit.x;
       const dy = waterHitWorld.y - prevWaterHit.y;
-      const speed = Math.hypot(dx, dy) / Math.max(deltaTime, 0.0001);
+      const speed = speedFromDelta(dx, dy, deltaTime);
       const pixiApp = window.getPixiApp ? window.getPixiApp() : null;
       pixiApp?.handleRopeWaterSplat?.(waterHitWorld.x, waterHitWorld.y, speed);
     }

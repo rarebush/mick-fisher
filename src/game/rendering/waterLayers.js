@@ -1,6 +1,6 @@
 /**
  * Water Layers
- * Riverbed tiles (with caustics), water surface tiles (with depth shader),
+ * Riverbed tiles (with caustics), single water surface (with depth shader),
  * sparkle overlay, and water group assembly with displacement filter.
  *
  * Underwater tint: tiles below the water surface (riverbed + submerged walls)
@@ -28,7 +28,6 @@ import { ColorMatrixFilter, DisplacementFilter } from "pixi.js";
 import { loadSpriteSheet } from "../graphics/spriteLoader.js";
 import { createWaterSurfaceShader } from "../graphics/waterSystem/waterSurfaceShader.js";
 import { createSparkleShader } from "../graphics/waterSystem/sparkleShader.js";
-// import { createFoamShader } from "../graphics/waterSystem/foamShader.js";
 import { createEdgeFoamShader } from "../graphics/waterSystem/edgeFoamShader.js";
 import { createCausticsShader } from "../graphics/waterSystem/causticsShader.js";
 import { FluidFoamCoordinator } from "../graphics/fluidSystem/FluidFoamCoordinator.js";
@@ -43,7 +42,11 @@ import {
   WORLD_Z,
   projectToScreen,
 } from "../mechanics/worldConstants.js";
-import { computeDepthCoeffs, generateNoiseTexture } from "./sceneHelpers.js";
+import {
+  computeDepthCoeffs,
+  generateNoiseTexture,
+  placeTileGrid,
+} from "./sceneHelpers.js";
 import { WATER_OBJECT_TEST_LOGS } from "../data/waterObjectTestData.js";
 
 /**
@@ -89,52 +92,6 @@ export function applyUnderwaterTint(filter, color, scale = 3) {
   ];
 }
 
-/**
- * Place a grid of iso tiles into a container.
- *
- * @param {Object} params
- * @param {PIXI.Container} params.container - Target container
- * @param {PIXI.Texture} params.areaTexture - Default tile texture
- * @param {PIXI.Texture|null} params.edgeTexture - Edge tile texture (used for first row)
- * @param {PIXI.Container|null} params.edgeContainer - Separate container for edge tiles (if any)
- * @param {{ x: number, y: number }} params.tileScale - Scale factors
- * @param {number} params.startX
- * @param {number} params.endX
- * @param {number} params.startY
- * @param {number} params.endY
- * @param {number} params.z - World Z plane
- * @param {Object} params.viewport
- */
-function placeTileGrid({
-  container,
-  areaTexture,
-  edgeTexture,
-  edgeContainer,
-  tileScale,
-  startX,
-  endX,
-  startY,
-  endY,
-  z,
-  viewport,
-}) {
-  for (let y = startY; y < endY; y += 1) {
-    const useEdge = y === startY && edgeTexture?.source;
-    const tileTexture = useEdge ? edgeTexture : areaTexture;
-    const target = useEdge && edgeContainer ? edgeContainer : container;
-
-    for (let x = startX; x < endX; x += 1) {
-      const screen = projectToScreen(x + 0.5, y + 0.5, z, viewport);
-      const tile = new PIXI.Sprite(tileTexture);
-      tile.anchor.set(0.5, 0.5);
-      tile.scale.set(tileScale.x, tileScale.y);
-      tile.x = screen.x;
-      tile.y = screen.y;
-      target.addChild(tile);
-    }
-  }
-}
-
 function getWaterSurfaceCorners(viewport) {
   return [
     projectToScreen(
@@ -174,11 +131,6 @@ function createWaterSurfacePolygon(viewport, color, alpha) {
   polygon.closePath();
   polygon.fill({ color, alpha });
   return polygon;
-}
-
-function addWaterSurfaceFill(container, viewport) {
-  const fill = createWaterSurfacePolygon(viewport, 0x000000, 0);
-  container.addChildAt(fill, 0);
 }
 
 function applyWaterSurfaceMask(container, parent, viewport) {
@@ -302,127 +254,41 @@ export async function createWaterLayers(
   riverbedTiles.filters = [underwaterTintFilter, causticsFilter];
   submergedWallTiles.filters = [underwaterTintFilter];
 
-  // --- Water surface tiles ---
+  // --- Water surface (single polygon) ---
   const waterSurfaceTiles = new PIXI.Container();
-  const waterSurfaceAreaTiles = new PIXI.Container();
-  const waterSurfaceEdgeTiles = new PIXI.Container();
   waterSurfaceTiles.roundPixels = true;
-  waterSurfaceAreaTiles.roundPixels = true;
-  waterSurfaceEdgeTiles.roundPixels = true;
-  waterSurfaceTiles.addChild(waterSurfaceAreaTiles, waterSurfaceEdgeTiles);
-
-  let waterSpritesheet = null;
-  try {
-    waterSpritesheet = await loadSpriteSheet(
-      "/sprites/water.png",
-      "/sprites/water.json",
-    );
-  } catch (error) {
-    console.warn("[WATER] Failed to load /sprites/water.json", error);
-  }
-
-  const waterAreaTexture = waterSpritesheet?.textures?.frame1 ?? null;
-  const waterEdgeTexture = waterAreaTexture;
-
-  let waterSurfaceShader = null;
-  const hasWaterTiles = Boolean(waterAreaTexture?.source);
-
-  console.log("[WaterLayers] hasWaterTiles:", hasWaterTiles, {
-    waterAreaTexture: Boolean(waterAreaTexture),
-    source: Boolean(waterAreaTexture?.source),
+  const waterSurfaceDepthCoeffs = computeDepthCoeffs(
+    WORLD_Z.WATER_SURFACE,
+    viewport,
+  );
+  const waterSurfaceShader = createWaterSurfaceShader({
+    waterColorNear,
+    waterColorFar,
+    waterAlpha: 0.7,
+    depthCoeffs: waterSurfaceDepthCoeffs,
+    noiseScale: 0.015,
+    noiseStrength: 0.15,
+    depthBands: 6,
   });
+  waterSurfaceTiles.filters = [waterSurfaceShader];
+  waterSurfaceTiles.addChild(createWaterSurfacePolygon(viewport, 0x000000, 0));
 
-  if (hasWaterTiles) {
-    waterAreaTexture.source.scaleMode = "nearest";
-    if (waterEdgeTexture?.source) {
-      waterEdgeTexture.source.scaleMode = "nearest";
-    }
-
-    const tileScale = {
-      x: tileScreenSize.width / waterAreaTexture.width,
-      y: tileScreenSize.height / waterAreaTexture.height,
-    };
-
-    const waterSurfaceDepthCoeffs = computeDepthCoeffs(
-      WORLD_Z.WATER_SURFACE,
-      viewport,
-    );
-
-    waterSurfaceShader = createWaterSurfaceShader({
-      waterColorNear,
-      waterColorFar,
-      waterAlpha: 0.7,
-      depthCoeffs: waterSurfaceDepthCoeffs,
-      noiseScale: 0.015,
-      noiseStrength: 0.15,
-      depthBands: 6,
-    });
-    // Apply to parent so both area and edge tiles get the water tint.
-    waterSurfaceTiles.filters = [waterSurfaceShader];
-
-    const waterStartX = Math.floor(WORLD_X.MIN);
-    const waterEndX = Math.ceil(WORLD_X.MAX);
-    const waterStartY = Math.floor(WORLD_Y.WATER_NEAR);
-    const waterEndY = Math.ceil(WORLD_Y.WATER_FAR);
-
-    placeTileGrid({
-      container: waterSurfaceAreaTiles,
-      areaTexture: waterAreaTexture,
-      edgeTexture: waterEdgeTexture,
-      edgeContainer: waterSurfaceEdgeTiles,
-      tileScale,
-      startX: waterStartX,
-      endX: waterEndX,
-      startY: waterStartY,
-      endY: waterEndY,
-      z: WORLD_Z.WATER_SURFACE,
-      viewport,
-    });
-
-    addWaterSurfaceFill(waterSurfaceTiles, viewport);
-  }
-
-  // --- Sparkle overlay ---
+  // --- Sparkle overlay (single polygon) ---
   const sparkleTiles = new PIXI.Container();
-  let sparkleShader = null;
-
-  if (hasWaterTiles) {
-    const tileScale = {
-      x: tileScreenSize.width / waterAreaTexture.width,
-      y: tileScreenSize.height / waterAreaTexture.height,
-    };
-
-    sparkleShader = createSparkleShader({
-      flowDir: [flowDirX, flowDirY],
-      noiseBasisX,
-      noiseBasisY,
-    });
-    sparkleTiles.filters = [sparkleShader];
-
-    placeTileGrid({
-      container: sparkleTiles,
-      areaTexture: waterAreaTexture,
-      edgeTexture: waterEdgeTexture,
-      edgeContainer: null,
-      tileScale,
-      startX: Math.floor(WORLD_X.MIN),
-      endX: Math.ceil(WORLD_X.MAX),
-      startY: Math.floor(WORLD_Y.WATER_NEAR),
-      endY: Math.ceil(WORLD_Y.WATER_FAR),
-      z: WORLD_Z.WATER_SURFACE,
-      viewport,
-    });
-
-    addWaterSurfaceFill(sparkleTiles, viewport);
-  }
+  const sparkleShader = createSparkleShader({
+    flowDir: [flowDirX, flowDirY],
+    noiseBasisX,
+    noiseBasisY,
+  });
+  sparkleTiles.filters = [sparkleShader];
+  sparkleTiles.addChild(createWaterSurfacePolygon(viewport, 0x000000, 0));
 
   // --- Foam overlay ---
   const foamTiles = new PIXI.Container();
   foamTiles.roundPixels = false;
-  let foamShader = null;
   let fluidFoamCoordinator = null;
   let fluidFoamDebugOverlay = null;
-  let fluidFoamParticleContainer = null; // Separate top-level container for particles (debugging)
+  let fluidFoamParticleContainer = null; // Foam blob container inside foamTiles
   const foamGridHeight = 120;
   const foamGridWidth = Math.round(
     (WORLD_X.SPAWN_WIDTH / WORLD_Y.WATER_DEPTH) * foamGridHeight,
@@ -430,6 +296,41 @@ export async function createWaterLayers(
   const foamGridDensity = foamGridHeight / WORLD_Y.WATER_DEPTH;
   const boundaryGridWidth = Math.round(WORLD_X.WIDTH * foamGridDensity);
   const boundaryGridHeight = Math.round(WORLD_Y.WATER_DEPTH * foamGridDensity);
+  const foamConfig = {
+    grid: { width: foamGridWidth, height: foamGridHeight },
+    coordinator: {
+      maxParticles: 10000,
+      waveInterval: 1.0,
+      particlesPerWave: 200,
+      maxAge: 16.0,
+      lifespanRiverLengths: 1.0,
+      spawnBufferX: WORLD_X.SPAWN_BUFFER,
+      shiftZoneParticleScale: 60.0,
+      spawnInMainArea: false,
+      disableDynamicMaxAge: false,
+      baseFlowSpeed: 0.0,
+      splatDirectRadius: 0.7,
+      splatDirectStrength: 8.0,
+    },
+    particles: {
+      maxParticles: 10000,
+      spawnBufferX: WORLD_X.SPAWN_BUFFER,
+      spawnInMainArea: false,
+      useParticleVelocity: true,
+      velocityDamping: 0.9,
+      driftVelocityX: 0.25,
+      driftVelocityY: 0.0,
+    },
+    renderer: {
+      maxParticles: 10000,
+      maxAge: 8.0,
+      densityScale: 1.0,
+    },
+    boundary: {
+      width: boundaryGridWidth,
+      height: boundaryGridHeight,
+    },
+  };
 
   // Edge foam (localized to the river wall line at Y=0)
   const edgeFoamTiles = new PIXI.Container();
@@ -447,41 +348,19 @@ export async function createWaterLayers(
 
     // Initialize fluid foam coordinator with sub-systems
     fluidFoamCoordinator = new FluidFoamCoordinator({
-      gridWidth: foamGridWidth,
-      gridHeight: foamGridHeight,
-      maxParticles: 10000,
-      waveInterval: 1.0,
-      particlesPerWave: 200,
-      maxAge: 16.0,
-      lifespanRiverLengths: 1.0,
-      spawnBufferX: WORLD_X.SPAWN_BUFFER,
-      shiftZoneParticleScale: 60.0,
-      spawnInMainArea: false,
-      disableDynamicMaxAge: false,
-      baseFlowSpeed: 0.0,
-      splatDirectToParticles: true,
-      splatDirectRadius: 0.7,
-      splatDirectStrength: 8.0,
+      gridWidth: foamConfig.grid.width,
+      gridHeight: foamConfig.grid.height,
+      ...foamConfig.coordinator,
     });
 
     // Create particle state manager
-    const particleState = new FluidParticleState({
-      maxParticles: 10000,
-      spawnBufferX: WORLD_X.SPAWN_BUFFER,
-      spawnInMainArea: false,
-      useParticleVelocity: true,
-      velocityDamping: 0.9,
-      driftVelocityX: 0.25,
-      driftVelocityY: 0.0,
-    });
+    const particleState = new FluidParticleState(foamConfig.particles);
     const particleRenderer = new FluidFoamBlobRenderer({
-      maxParticles: 10000,
+      ...foamConfig.renderer,
       renderer: renderer,
       parentContainer: fluidFoamParticleContainer,
       screenSize: { width: screenWidth, height: screenHeight },
       worldToScreen: (x, y, z) => projectToScreen(x, y, z, viewport),
-      maxAge: 8.0,
-      densityScale: 1.0,
     });
 
     // Create boundary texture for obstacle collision (will be populated later with waterObjectsAbove)
@@ -558,127 +437,66 @@ export async function createWaterLayers(
       .stroke({ width: 2, color: 0x00ffff, alpha: 0.8 });
     foamBoundsOutline.zIndex = 9998;
     overlayContainer.addChild(foamBoundsOutline);
-
-    // Note: Static foam shader disabled in favor of particle-based foam
-    // foamShader = createFoamShader({
-    //   flowDir: [flowDirX, flowDirY],
-    //   noiseBasisX,
-    //   noiseBasisY,
-    // });
-    // foamTiles.filters = [foamShader];
   } else {
     console.warn(
       "[FluidFoam] Renderer not available, skipping fluid foam creation",
     );
   }
 
-  // Note: Static foam tiles disabled in favor of particle-based fluid foam
-  // if (hasWaterTiles) {
-  //   const tileScale = {
-  //     x: tileScreenSize.width / waterAreaTexture.width,
-  //     y: tileScreenSize.height / waterAreaTexture.height,
-  //   };
-  //
-  //   foamShader = createFoamShader({
-  //     flowDir: [flowDirX, flowDirY],
-  //     noiseBasisX,
-  //     noiseBasisY,
-  //   });
-  //   foamTiles.filters = [foamShader];
-  //
-  //   placeTileGrid({
-  //     container: foamTiles,
-  //     areaTexture: waterAreaTexture,
-  //     edgeTexture: waterEdgeTexture,
-  //     edgeContainer: null,
-  //     tileScale,
-  //     startX: Math.floor(WORLD_X.MIN),
-  //     endX: Math.ceil(WORLD_X.MAX),
-  //     startY: Math.floor(WORLD_Y.WATER_NEAR),
-  //     endY: Math.ceil(WORLD_Y.WATER_FAR),
-  //     z: WORLD_Z.WATER_SURFACE,
-  //     viewport,
-  //   });
-  //
-  //   addWaterSurfaceFill(foamTiles, viewport);
-  // }
+  const edgeStart = projectToScreen(
+    WORLD_X.MIN,
+    WORLD_Y.WATER_NEAR,
+    WORLD_Z.WATER_SURFACE,
+    viewport,
+  );
+  const edgeEnd = projectToScreen(
+    WORLD_X.MAX,
+    WORLD_Y.WATER_NEAR,
+    WORLD_Z.WATER_SURFACE,
+    viewport,
+  );
+  const edgeDir = {
+    x: edgeEnd.x - edgeStart.x,
+    y: edgeEnd.y - edgeStart.y,
+  };
+  const edgeLen = Math.hypot(edgeDir.x, edgeDir.y) || 1;
+  const edgeTangent = {
+    x: edgeDir.x / edgeLen,
+    y: edgeDir.y / edgeLen,
+  };
+  let edgeNormal = {
+    x: -edgeTangent.y,
+    y: edgeTangent.x,
+  };
 
-  if (hasWaterTiles) {
-    const tileScale = {
-      x: tileScreenSize.width / waterAreaTexture.width,
-      y: tileScreenSize.height / waterAreaTexture.height,
+  const waterProbe = projectToScreen(
+    WORLD_X.CENTER,
+    WORLD_Y.WATER_NEAR + 1,
+    WORLD_Z.WATER_SURFACE,
+    viewport,
+  );
+  const probeVec = {
+    x: waterProbe.x - edgeStart.x,
+    y: waterProbe.y - edgeStart.y,
+  };
+  if (edgeNormal.x * probeVec.x + edgeNormal.y * probeVec.y < 0) {
+    edgeNormal = {
+      x: -edgeNormal.x,
+      y: -edgeNormal.y,
     };
-
-    const edgeStart = projectToScreen(
-      WORLD_X.MIN,
-      WORLD_Y.WATER_NEAR,
-      WORLD_Z.WATER_SURFACE,
-      viewport,
-    );
-    const edgeEnd = projectToScreen(
-      WORLD_X.MAX,
-      WORLD_Y.WATER_NEAR,
-      WORLD_Z.WATER_SURFACE,
-      viewport,
-    );
-    const edgeDir = {
-      x: edgeEnd.x - edgeStart.x,
-      y: edgeEnd.y - edgeStart.y,
-    };
-    const edgeLen = Math.hypot(edgeDir.x, edgeDir.y) || 1;
-    const edgeTangent = {
-      x: edgeDir.x / edgeLen,
-      y: edgeDir.y / edgeLen,
-    };
-    let edgeNormal = {
-      x: -edgeTangent.y,
-      y: edgeTangent.x,
-    };
-
-    const waterProbe = projectToScreen(
-      WORLD_X.CENTER,
-      WORLD_Y.WATER_NEAR + 1,
-      WORLD_Z.WATER_SURFACE,
-      viewport,
-    );
-    const probeVec = {
-      x: waterProbe.x - edgeStart.x,
-      y: waterProbe.y - edgeStart.y,
-    };
-    if (edgeNormal.x * probeVec.x + edgeNormal.y * probeVec.y < 0) {
-      edgeNormal = {
-        x: -edgeNormal.x,
-        y: -edgeNormal.y,
-      };
-    }
-
-    edgeFoamShader = createEdgeFoamShader({
-      noiseBasisX,
-      noiseBasisY,
-      edgeLinePoint: [edgeStart.x, edgeStart.y],
-      edgeLineNormal: [edgeNormal.x, edgeNormal.y],
-      baseWidthPx: 3.5,
-      chopWidthPx: 2.0,
-      varWidthPx: 3.5,
-    });
-    edgeFoamTiles.filters = [edgeFoamShader];
-
-    placeTileGrid({
-      container: edgeFoamTiles,
-      areaTexture: waterAreaTexture,
-      edgeTexture: waterEdgeTexture,
-      edgeContainer: null,
-      tileScale,
-      startX: Math.floor(WORLD_X.MIN),
-      endX: Math.ceil(WORLD_X.MAX),
-      startY: Math.floor(WORLD_Y.WATER_NEAR),
-      endY: Math.ceil(WORLD_Y.WATER_FAR),
-      z: WORLD_Z.WATER_SURFACE,
-      viewport,
-    });
-
-    addWaterSurfaceFill(edgeFoamTiles, viewport);
   }
+
+  edgeFoamShader = createEdgeFoamShader({
+    noiseBasisX,
+    noiseBasisY,
+    edgeLinePoint: [edgeStart.x, edgeStart.y],
+    edgeLineNormal: [edgeNormal.x, edgeNormal.y],
+    baseWidthPx: 3.5,
+    chopWidthPx: 2.0,
+    varWidthPx: 3.5,
+  });
+  edgeFoamTiles.filters = [edgeFoamShader];
+  edgeFoamTiles.addChild(createWaterSurfacePolygon(viewport, 0x000000, 0));
 
   // --- Water objects (test logs) ---
   const waterObjectsBelow = new PIXI.Container();
@@ -719,12 +537,6 @@ export async function createWaterLayers(
 
       const screen = projectToScreen(worldX, worldY, log.position.z, viewport);
 
-      console.log(`[WaterObjects SPRITE] ${log.id}:`, {
-        local: `(${log.position.x}, ${log.position.y})`,
-        world: `(${worldX.toFixed(2)}, ${worldY.toFixed(2)})`,
-        screen: `(${screen.x.toFixed(1)}, ${screen.y.toFixed(1)})`,
-      });
-
       const belowSprite = new PIXI.Sprite(objectBelowTexture);
       belowSprite.anchor.set(0.5, 0.5);
 
@@ -752,12 +564,6 @@ export async function createWaterLayers(
       waterObjectsAbove.addChild(aboveSprite);
 
       maskWorldPositions.push({ x: worldX, y: worldY });
-
-      console.log(`[WaterObjects] ${log.id}:`, {
-        local: `(${log.position.x}, ${log.position.y})`,
-        world: `(${worldX.toFixed(1)}, ${worldY.toFixed(1)})`,
-        screen: `(${screen.x.toFixed(1)}, ${screen.y.toFixed(1)})`,
-      });
     }
 
     // Create boundary texture for collision detection after all mask sprites are added
@@ -770,8 +576,8 @@ export async function createWaterLayers(
       // Match texture aspect ratio to water surface world bounds
       // Water surface: 12 units wide (X: -8 to 4), 8 units deep (Y: 0 to 8) = 1.5:1 ratio
       const boundaryTexture = new FluidBoundaryTexture({
-        width: boundaryGridWidth,
-        height: boundaryGridHeight,
+        width: foamConfig.boundary.width,
+        height: foamConfig.boundary.height,
         renderer: renderer,
         maskWorldPositions: maskWorldPositions,
         viewport: viewport,
@@ -832,20 +638,11 @@ export async function createWaterLayers(
     waterObjectsAbove,
   );
 
-  // Always apply mask to foam and sparkles (even if water tiles are shader-driven)
-  if (hasWaterTiles) {
-    applyWaterSurfaceMask(waterSurfaceTiles, displacedLayers, viewport);
-  }
+  // Always apply mask to surface effects so filters do not spill outside the diamond.
+  applyWaterSurfaceMask(waterSurfaceTiles, displacedLayers, viewport);
   applyWaterSurfaceMask(foamTiles, waterGroup, viewport);
   applyWaterSurfaceMask(edgeFoamTiles, waterGroup, viewport);
   applyWaterSurfaceMask(sparkleTiles, waterGroup, viewport);
-
-  console.log(
-    "[WaterLayers] Applied water surface masks. foamTiles mask:",
-    foamTiles.mask ? "YES" : "NO",
-  );
-
-  console.log("[WaterLayers] Returning water layers with fluid foam system");
 
   return {
     waterGroup,
@@ -857,10 +654,8 @@ export async function createWaterLayers(
     waterSurfaceShader,
     fluidFoamDebugOverlay,
     sparkleShader,
-    foamShader,
     edgeFoamShader,
     fluidFoamCoordinator,
-    fluidFoamParticleContainer, // Return the top-level particle container
     displacementSprite,
     displacementFilter,
   };

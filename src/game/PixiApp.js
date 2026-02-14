@@ -87,6 +87,13 @@ export class PixiApp {
     this._displacementTime = 0;
     this._reflectionTime = 0;
     this._smoothCloudCover = 0.5;
+
+    this._foamSplatPresets = {
+      input: { radiusWorld: 0.7, strength: 8.0, maxForce: 0.6 },
+      landing: { radiusWorld: 1.2, strength: 6.0 },
+      magnetDrag: { radiusWorld: 0.55, scale: 0.12, min: 0.15, max: 1.2 },
+      rope: { radiusWorld: 0.4, scale: 0.03, min: 0.05, max: 0.4 },
+    };
   }
 
   async initialize() {
@@ -337,60 +344,62 @@ export class PixiApp {
   }
 
   handleFluidSplat(worldX, worldY, deltaWorldX, deltaWorldY) {
-    const fluidFoamCoordinator = this.environmentLayers?.fluidFoamCoordinator;
-    if (!fluidFoamCoordinator) {
-      return;
-    }
-
-    fluidFoamCoordinator.applyInputSplat(
-      worldX,
-      worldY,
-      deltaWorldX,
-      deltaWorldY,
-      {
-        radiusWorld: 0.7,
-        strength: 8.0,
-        maxForce: 0.6,
-      },
-    );
+    this._withFoamCoordinator((fluidFoamCoordinator) => {
+      const preset = this._foamSplatPresets.input;
+      fluidFoamCoordinator.applyInputSplat(
+        worldX,
+        worldY,
+        deltaWorldX,
+        deltaWorldY,
+        preset,
+      );
+    });
   }
 
   handleMagnetLandingSplat(worldX, worldY) {
-    const fluidFoamCoordinator = this.environmentLayers?.fluidFoamCoordinator;
-    if (!fluidFoamCoordinator) {
-      return;
-    }
-
-    fluidFoamCoordinator.applyLandingSplat(worldX, worldY, {
-      radiusWorld: 1.2,
-      strength: 6.0,
+    this._withFoamCoordinator((fluidFoamCoordinator) => {
+      const preset = this._foamSplatPresets.landing;
+      fluidFoamCoordinator.applyLandingSplat(worldX, worldY, preset);
     });
   }
 
   handleMagnetDragSplat(worldX, worldY, speed) {
-    const fluidFoamCoordinator = this.environmentLayers?.fluidFoamCoordinator;
-    if (!fluidFoamCoordinator) {
-      return;
-    }
-
-    const scaledStrength = Math.min(Math.max(speed * 0.12, 0.15), 1.2);
-    fluidFoamCoordinator.applyDragRepel(worldX, worldY, {
-      radiusWorld: 0.55,
-      strength: scaledStrength,
+    this._withFoamCoordinator((fluidFoamCoordinator) => {
+      const preset = this._foamSplatPresets.magnetDrag;
+      const scaledStrength = clamp(
+        speed * preset.scale,
+        preset.min,
+        preset.max,
+      );
+      fluidFoamCoordinator.applyDragRepel(worldX, worldY, {
+        radiusWorld: preset.radiusWorld,
+        strength: scaledStrength,
+      });
     });
   }
 
   handleRopeWaterSplat(worldX, worldY, speed) {
+    this._withFoamCoordinator((fluidFoamCoordinator) => {
+      const preset = this._foamSplatPresets.rope;
+      const scaledStrength = clamp(
+        speed * preset.scale,
+        preset.min,
+        preset.max,
+      );
+      fluidFoamCoordinator.applyDragRepel(worldX, worldY, {
+        radiusWorld: preset.radiusWorld,
+        strength: scaledStrength,
+      });
+    });
+  }
+
+  _withFoamCoordinator(callback) {
     const fluidFoamCoordinator = this.environmentLayers?.fluidFoamCoordinator;
-    if (!fluidFoamCoordinator) {
+    if (!fluidFoamCoordinator || typeof callback !== "function") {
       return;
     }
 
-    const scaledStrength = Math.min(Math.max(speed * 0.03, 0.05), 0.4);
-    fluidFoamCoordinator.applyDragRepel(worldX, worldY, {
-      radiusWorld: 0.4,
-      strength: scaledStrength,
-    });
+    callback(fluidFoamCoordinator);
   }
 
   setupDebugOverlay() {
@@ -632,17 +641,6 @@ export class PixiApp {
       const su = sparkleShader.resources.sparkleUniforms.uniforms;
       su.uFlowPhase = flowPhase;
       su.uChoppiness = choppiness;
-    }
-
-    // Animate foam overlay (stretched Voronoi, between reflections and sparkles).
-    // Use flowStepSpeed (snapshotted at 24 FPS) so stretch and scroll step in
-    // lockstep — avoids cells morphing at 60 FPS while position jumps at 24 FPS.
-    const foamShader = this.environmentLayers.foamShader;
-    if (foamShader) {
-      const fu = foamShader.resources.foamUniforms.uniforms;
-      fu.uFlowPhase = flowPhase;
-      fu.uChoppiness = choppiness;
-      fu.uCurrentSpeed = flowStepSpeed;
     }
 
     // Update fluid foam coordinator (particle-based foam)

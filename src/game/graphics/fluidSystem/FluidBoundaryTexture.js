@@ -12,7 +12,7 @@ import { WORLD_X, WORLD_Y, WORLD_Z } from "../../mechanics/worldConstants.js";
 export class FluidBoundaryTexture {
   /**
    * @param {Object} config
-  * @param {number} config.width - Texture width in pixels (matches foam grid resolution)
+   * @param {number} config.width - Texture width in pixels (matches foam grid resolution)
    * @param {number} config.height - Texture height in pixels
    * @param {import("pixi.js").Renderer} config.renderer - PixiJS renderer
    * @param {import("pixi.js").Container} [config.waterObjectMasksContainer] - Container with mask sprites
@@ -97,14 +97,6 @@ export class FluidBoundaryTexture {
     const maxX = Math.max(...corners.map((c) => c.x));
     const minY = Math.min(...corners.map((c) => c.y));
     const maxY = Math.max(...corners.map((c) => c.y));
-
-    // Debug: Show where local center (0,0) maps to in UV space
-    console.log(
-      "[FluidBoundary] Local surface (0,0) maps to UV(0.5, 0.5) | bounds: " +
-        (maxX - minX).toFixed(0) +
-        "x" +
-        (maxY - minY).toFixed(0),
-    );
 
     return {
       minX,
@@ -204,10 +196,6 @@ export class FluidBoundaryTexture {
       graphics.x = texX;
       graphics.y = texY;
 
-      console.log(
-        `  World(${worldPos.x.toFixed(2)}, ${worldPos.y.toFixed(2)}) → UV(${uv.u.toFixed(2)}, ${uv.v.toFixed(2)}) → Tex(${texX.toFixed(0)}, ${texY.toFixed(0)}) r=${texRadius.toFixed(0)}`,
-      );
-
       renderContainer.addChild(graphics);
     }
 
@@ -224,17 +212,6 @@ export class FluidBoundaryTexture {
 
     // Extract pixel data for CPU collision detection
     await this._extractPixelData();
-
-    // Debug: Save boundary texture as image for inspection
-    try {
-      const debugCanvas = await this.renderer.extract.canvas({
-        target: this.boundaryTexture,
-      });
-      const debugUrl = debugCanvas.toDataURL();
-      console.log("[FluidBoundary] Texture preview:", debugUrl);
-    } catch (e) {
-      console.warn("[FluidBoundary] Could not generate debug image:", e);
-    }
 
     // Create debug sprite to show boundary texture on screen
     this._createDebugSprite();
@@ -339,8 +316,6 @@ export class FluidBoundaryTexture {
     this.debugSprite.alpha = 1.0;
 
     this.debugContainer.addChild(this.debugSprite);
-
-    console.log("[FluidBoundary] Debug mesh created with corners:", corners);
   }
 
   /**
@@ -358,21 +333,6 @@ export class FluidBoundaryTexture {
       const ctx = canvas.getContext("2d");
       const imageData = ctx.getImageData(0, 0, this.width, this.height);
       this.pixelData = imageData.data; // Uint8ClampedArray
-
-      // Debug: Sample center pixel to verify it's not all white
-      const centerX = Math.floor(this.width / 2);
-      const centerY = Math.floor(this.height / 2);
-      const centerIdx = (centerY * this.width + centerX) * 4;
-      const centerPixel = {
-        r: this.pixelData[centerIdx],
-        g: this.pixelData[centerIdx + 1],
-        b: this.pixelData[centerIdx + 2],
-        a: this.pixelData[centerIdx + 3],
-      };
-      console.log(
-        "[FluidBoundary] Pixel data extracted. Center pixel:",
-        centerPixel,
-      );
     } catch (error) {
       console.error("[FluidBoundary] Failed to extract pixel data:", error);
       this.pixelData = new Uint8ClampedArray(this.width * this.height * 4); // Empty fallback
@@ -452,7 +412,7 @@ export class FluidBoundaryTexture {
   }
 
   /**
-   * Get the boundary texture for GPU-based collision detection.
+   * Get the boundary texture for optional render/debug use.
    * @returns {RenderTexture}
    */
   getTexture() {

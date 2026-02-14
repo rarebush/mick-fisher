@@ -62,6 +62,8 @@ export class FluidFoamDebugOverlay {
     const nextWave = this.coordinator.nextWaveInterval.toFixed(2);
     const collisionCount = this.coordinator.particleState?.collisionCount ?? 0;
     const hasCollision = this.coordinator.boundaryTexture ? "YES" : "NO";
+    const foamVisible =
+      this.coordinator.renderer?.displaySprite?.visible ?? "unknown";
 
     this.debugText.text = `[FLUID FOAM DEBUG]
 Active Particles: ${activeCount} / ${maxCount} (${percentage}%)
@@ -70,7 +72,7 @@ Choppiness: ${choppiness}
 Time Since Last Wave: ${timeSinceWave}s / ${nextWave}s
 Collision System: ${hasCollision}
 Total Collisions: ${collisionCount}
-Container Visible: ${this.coordinator.renderer?.particleContainer?.visible ?? "unknown"}`;
+Container Visible: ${foamVisible}`;
 
     this._drawShiftZones();
   }
@@ -91,6 +93,14 @@ Container Visible: ${this.coordinator.renderer?.particleContainer?.visible ?? "u
 
     const zones = Array.isArray(this.shiftZones) ? this.shiftZones : [];
     this.shiftZoneGraphics.clear();
+
+    if (this.shiftZoneLabels) {
+      for (const label of this.shiftZoneLabels.values()) {
+        if (label) {
+          label.visible = false;
+        }
+      }
+    }
 
     const typeColors = {
       whirlpool: 0x3ad0ff,

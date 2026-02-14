@@ -91,7 +91,7 @@ export class FluidFoamCoordinator {
   /**
    * Initialize the coordinator with sub-systems.
    * @param {FluidParticleState} particleState
-  * @param {Object} renderer
+   * @param {Object} renderer
    * @param {FluidBoundaryTexture} boundaryTexture - Optional collision boundaries
    */
   initialize(particleState, renderer, boundaryTexture = null) {
@@ -133,6 +133,8 @@ export class FluidFoamCoordinator {
    * @param {number} deltaTime - Time elapsed since last frame in seconds
    */
   update(deltaTime) {
+    this._flowPhase = (this._flowPhase || 0) + deltaTime * this.flowSpeed;
+
     // Update wave spawning timer
     this.timeSinceLastWave += deltaTime;
 
@@ -154,9 +156,13 @@ export class FluidFoamCoordinator {
 
     this._applyShiftZones(deltaTime);
 
-    // Update particle positions via advection
+    // Update particle positions using particle velocity + drift
     if (this.particleState) {
-      this.particleState.update(deltaTime, this.particles, this.boundaryTexture);
+      this.particleState.update(
+        deltaTime,
+        this.particles,
+        this.boundaryTexture,
+      );
     }
 
     // Update renderer
@@ -184,23 +190,22 @@ export class FluidFoamCoordinator {
       const zone = zones[i];
       if (!zone?.position) continue;
 
-      const typeConfig = CURRENT_SHIFT_ZONE_TYPES?.[zone.type?.toUpperCase()];
-      const defaults = typeConfig?.defaults || {};
-      const radiusWorld = Number.isFinite(zone.radiusWorld)
-        ? zone.radiusWorld
-        : Number.isFinite(defaults.radiusWorld)
-          ? defaults.radiusWorld
-          : 0.6;
-      const strength = Number.isFinite(zone.strength)
-        ? zone.strength
-        : Number.isFinite(defaults.strength)
-          ? defaults.strength
-          : 0.2;
-      const falloff = Number.isFinite(zone.falloff)
-        ? zone.falloff
-        : Number.isFinite(defaults.falloff)
-          ? defaults.falloff
-          : 2.0;
+      const defaults = this._getShiftZoneDefaults(zone);
+      const radiusWorld = this._getShiftZoneNumber(
+        zone.radiusWorld,
+        defaults.radiusWorld,
+        0.6,
+      );
+      const strength = this._getShiftZoneNumber(
+        zone.strength,
+        defaults.strength,
+        0.2,
+      );
+      const falloff = this._getShiftZoneNumber(
+        zone.falloff,
+        defaults.falloff,
+        2.0,
+      );
 
       const radiusSq = Math.max(0.0001, radiusWorld * radiusWorld);
       for (let p = 0; p < this.particles.length; p++) {
@@ -221,16 +226,16 @@ export class FluidFoamCoordinator {
           this.config.shiftZoneParticleScale;
 
         if (zone.type === "whirlpool") {
-          const pullStrength = Number.isFinite(zone.pullStrength)
-            ? zone.pullStrength
-            : Number.isFinite(defaults.pullStrength)
-              ? defaults.pullStrength
-              : 0.3;
-          const tangentialStrength = Number.isFinite(zone.tangentialStrength)
-            ? zone.tangentialStrength
-            : Number.isFinite(defaults.tangentialStrength)
-              ? defaults.tangentialStrength
-              : 0.5;
+          const pullStrength = this._getShiftZoneNumber(
+            zone.pullStrength,
+            defaults.pullStrength,
+            0.3,
+          );
+          const tangentialStrength = this._getShiftZoneNumber(
+            zone.tangentialStrength,
+            defaults.tangentialStrength,
+            0.5,
+          );
           const nx = dx / dist;
           const ny = dy / dist;
           const tanX = -ny;
@@ -255,25 +260,25 @@ export class FluidFoamCoordinator {
           const flowLen = Math.hypot(flowDir.x, flowDir.y) || 1;
           const fx = flowDir.x / flowLen;
           const fy = flowDir.y / flowLen;
-          const lateralStrength = Number.isFinite(zone.lateralStrength)
-            ? zone.lateralStrength
-            : Number.isFinite(defaults.lateralStrength)
-              ? defaults.lateralStrength
-              : 0.15;
-          const lateralFrequency = Number.isFinite(zone.lateralFrequency)
-            ? zone.lateralFrequency
-            : Number.isFinite(defaults.lateralFrequency)
-              ? defaults.lateralFrequency
-              : 1.0;
+          const lateralStrength = this._getShiftZoneNumber(
+            zone.lateralStrength,
+            defaults.lateralStrength,
+            0.15,
+          );
+          const lateralFrequency = this._getShiftZoneNumber(
+            zone.lateralFrequency,
+            defaults.lateralFrequency,
+            1.0,
+          );
           const phase = (this._flowPhase || 0) * lateralFrequency;
           const wobble = Math.sin(phase + dist * 1.4) * lateralStrength;
           const sideX = -fy;
           const sideY = fx;
-          const exitBoost = Number.isFinite(zone.exitBoost)
-            ? zone.exitBoost
-            : Number.isFinite(defaults.exitBoost)
-              ? defaults.exitBoost
-              : 0.0;
+          const exitBoost = this._getShiftZoneNumber(
+            zone.exitBoost,
+            defaults.exitBoost,
+            0.0,
+          );
           const exitFactor = dist / radiusWorld;
 
           particle.vx +=
@@ -285,6 +290,17 @@ export class FluidFoamCoordinator {
         }
       }
     }
+  }
+
+  _getShiftZoneDefaults(zone) {
+    const typeConfig = CURRENT_SHIFT_ZONE_TYPES?.[zone.type?.toUpperCase()];
+    return typeConfig?.defaults || {};
+  }
+
+  _getShiftZoneNumber(value, fallback, defaultValue) {
+    if (Number.isFinite(value)) return value;
+    if (Number.isFinite(fallback)) return fallback;
+    return defaultValue;
   }
 
   /**
@@ -613,13 +629,7 @@ export class FluidFoamCoordinator {
   }
 
   applyRopeDeflect(worldX, worldY, dirX, dirY, options = {}) {
-    this._applyDirectionalShearToParticles(
-      worldX,
-      worldY,
-      dirX,
-      dirY,
-      options,
-    );
+    this._applyDirectionalShearToParticles(worldX, worldY, dirX, dirY, options);
   }
 
   _applyRadialImpulseToParticles(worldX, worldY, options = {}, applyDamping) {
@@ -667,17 +677,13 @@ export class FluidFoamCoordinator {
     }
   }
 
-  _applyDirectionalShearToParticles(
-    worldX,
-    worldY,
-    dirX,
-    dirY,
-    options = {},
-  ) {
+  _applyDirectionalShearToParticles(worldX, worldY, dirX, dirY, options = {}) {
     const radiusWorld = Number.isFinite(options.radiusWorld)
       ? options.radiusWorld
       : 0.25;
-    const strength = Number.isFinite(options.strength) ? options.strength : 0.02;
+    const strength = Number.isFinite(options.strength)
+      ? options.strength
+      : 0.02;
 
     const dirLen = Math.hypot(dirX, dirY);
     if (!Number.isFinite(dirLen) || dirLen < 0.0001) {
@@ -725,10 +731,23 @@ export class FluidFoamCoordinator {
       : Number.isFinite(this.config.splatDirectStrength)
         ? this.config.splatDirectStrength
         : 8.0;
+    const maxForce = Number.isFinite(options.maxForce)
+      ? options.maxForce
+      : Number.isFinite(this.config.splatDirectMaxForce)
+        ? this.config.splatDirectMaxForce
+        : null;
 
     const radiusSq = Math.max(0.0001, radiusWorld * radiusWorld);
-    const impulseX = deltaWorldX * strength;
-    const impulseY = deltaWorldY * strength;
+    let impulseX = deltaWorldX * strength;
+    let impulseY = deltaWorldY * strength;
+    if (Number.isFinite(maxForce)) {
+      const mag = Math.hypot(impulseX, impulseY);
+      if (mag > maxForce && mag > 0) {
+        const scale = maxForce / mag;
+        impulseX *= scale;
+        impulseY *= scale;
+      }
+    }
 
     for (let i = 0; i < this.particles.length; i++) {
       const particle = this.particles[i];
@@ -762,7 +781,7 @@ export class FluidFoamCoordinator {
   }
 
   /**
-   * Set boundary texture and flag solver to recompute.
+   * Set boundary texture for particle collision checks.
    * @param {FluidBoundaryTexture} boundaryTexture
    */
   setBoundaryTexture(boundaryTexture) {

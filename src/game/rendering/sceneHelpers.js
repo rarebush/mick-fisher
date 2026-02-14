@@ -66,6 +66,45 @@ export function generateNoiseTexture(size = 128) {
 }
 
 /**
+ * Place a tiled grid in world space.
+ * Uses edgeTexture for the front edge row when edgeContainer is provided.
+ */
+export function placeTileGrid({
+  container,
+  areaTexture,
+  edgeTexture,
+  edgeContainer,
+  tileScale,
+  startX,
+  endX,
+  startY,
+  endY,
+  z,
+  viewport,
+}) {
+  if (!container || !areaTexture) return;
+
+  const edgeTarget = edgeContainer || container;
+  const useEdge = Boolean(edgeTexture && edgeContainer);
+
+  for (let y = startY; y < endY; y += 1) {
+    const isEdgeRow = useEdge && y === startY;
+    const texture = isEdgeRow ? edgeTexture : areaTexture;
+    const target = isEdgeRow ? edgeTarget : container;
+
+    for (let x = startX; x < endX; x += 1) {
+      const screen = projectToScreen(x + 0.5, y + 0.5, z, viewport);
+      const tile = new PIXI.Sprite(texture);
+      tile.anchor.set(0.5, 0.5);
+      tile.scale.set(tileScale.x, tileScale.y);
+      tile.x = screen.x;
+      tile.y = screen.y;
+      target.addChild(tile);
+    }
+  }
+}
+
+/**
  * Draw a wireframe box in isometric projection.
  *
  * @param {PIXI.Graphics} graphics - Target graphics object
