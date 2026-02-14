@@ -8,24 +8,30 @@
  */
 
 import * as PIXI from "pixi.js";
-import { DebugOverlay } from "./graphics/debugOverlay.js";
 import useLocationStore from "./state/locationStore.js";
-
-// Import new modules
-import { setupEnvironmentLayers } from "./rendering/sceneSetup.js";
-import { getProjectionMetrics } from "./mechanics/worldConstants.js";
-import { SpriteManager } from "./rendering/spriteManager.js";
-import { clamp } from "./physics/vectorUtils.js";
-import { InputManager } from "./input/inputManager.js";
 import {
-  executeCastSequence,
-  handleDragFailure,
-} from "./sequences/castSequence.js";
-import { getItemWorldPosition } from "./sequences/dragSequence.js";
-import { updateCastAimOverlay } from "./rendering/castAimRenderer.js";
-import { updateSpriteTicker } from "./rendering/spriteTicker.js";
-import { updateRopeTicker } from "./rendering/ropeTicker.js";
-import { updateDragTicker } from "./sequences/dragTicker.js";
+  destroy as destroyPixiApp,
+  resize as resizePixiApp,
+  setRenderResolutionScale,
+  setupDebugOverlay,
+  setupManualFailureListener,
+  setupSceneInternal,
+} from "./app/pixiAppLifecycle.js";
+import {
+  handleCast,
+  handleFluidSplat,
+  handleMagnetDragSplat,
+  handleMagnetLandingSplat,
+  handleRopeWaterSplat,
+  setupInteraction,
+} from "./app/pixiAppInteractions.js";
+import {
+  tickerUpdateCastAim,
+  tickerUpdateCaustics,
+  tickerUpdateDragMechanics,
+  tickerUpdateRope,
+  tickerUpdateSprites,
+} from "./app/pixiAppTickers.js";
 
 export class PixiApp {
   constructor(
@@ -178,588 +184,80 @@ export class PixiApp {
   }
 
   async setupSceneInternal() {
-    if (!this.app || this.isDestroyed) return;
-
-    // Setup tickers for continuous updates
-    this.app.ticker.add(this.tickerUpdateSprites, this);
-    this.app.ticker.add(this.tickerUpdateDragMechanics, this);
-    this.app.ticker.add(this.tickerUpdateRope, this);
-    this.app.ticker.add(this.tickerUpdateCastAim, this);
-    this.app.ticker.add(this.tickerUpdateCaustics, this);
-
-    // Create scene container to offset for 3D perspective
-    // This prevents negative Y coordinates from rendering off-screen
-    this.sceneContainer = new PIXI.Container();
-    this.sceneContainer.y = 0; // No offset needed - layers fill screen
-    this.app.stage.addChild(this.sceneContainer);
-
-    // Setup 3D environment layers (pier, wall, water, riverbed)
-    this.environmentLayers = await setupEnvironmentLayers(
-      this.sceneContainer,
-      this.app.screen.width,
-      this.app.screen.height,
-      this.app.renderer,
-    );
-
-    this.spriteLayers = {
-      underwater: new PIXI.Container(),
-      aboveWater: new PIXI.Container(),
-      debug: new PIXI.Container(),
-    };
-    const waterIndex = this.sceneContainer.getChildIndex(
-      this.environmentLayers.waterVolume,
-    );
-    this.sceneContainer.addChildAt(this.spriteLayers.underwater, waterIndex);
-    const walkwayIndex = this.sceneContainer.getChildIndex(
-      this.environmentLayers.walkwayVolume,
-    );
-    this.sceneContainer.addChildAt(this.spriteLayers.aboveWater, walkwayIndex);
-    this.sceneContainer.addChild(this.spriteLayers.debug);
-
-    // Initialize managers
-    this.spriteManager = new SpriteManager(this.app, this.spriteLayers);
-
-    const initialRenderResolutionScale =
-      this.gameStore?.getState()?.renderResolutionScale ?? 1;
-    this.setRenderResolutionScale(initialRenderResolutionScale);
-    if (this.gameStore && !this.gameStoreUnsubscribe) {
-      // Sync initial values from store
-      const storeState = this.gameStore.getState();
-      if (this.environmentLayers) {
-        this.environmentLayers.currentSpeed = storeState.currentSpeed ?? 1;
-        this.environmentLayers.choppiness = storeState.choppiness ?? 1;
-        this.environmentLayers.cloudCover = storeState.cloudCover ?? 0.5;
-      }
-
-      this.gameStoreUnsubscribe = this.gameStore.subscribe(
-        (state, prevState) => {
-          if (state.renderResolutionScale !== prevState.renderResolutionScale) {
-            this.setRenderResolutionScale(state.renderResolutionScale);
-          }
-          if (state.currentSpeed !== prevState.currentSpeed) {
-            if (this.environmentLayers) {
-              this.environmentLayers.currentSpeed = state.currentSpeed;
-            }
-          }
-          if (state.choppiness !== prevState.choppiness) {
-            if (this.environmentLayers) {
-              this.environmentLayers.choppiness = state.choppiness;
-            }
-          }
-          if (state.cloudCover !== prevState.cloudCover) {
-            if (this.environmentLayers) {
-              this.environmentLayers.cloudCover = state.cloudCover;
-            }
-          }
-        },
-      );
-    }
-
-    // No need to apply Y offset - layers are positioned to fill screen
-    console.log(`[SCENE] Environment layers created, filling full screen`);
-
-    // Setup water background and store references
-    // Note: Disabled in favor of environment layers with static water
-    // You can re-enable this for animated water tiles if desired
-    /*
-    const { waterSpritesheet, waterTiles } = await setupWaterBackground(
-      this.app,
-    );
-    this.waterSpritesheet = waterSpritesheet;
-    this.waterTiles = waterTiles || [];
-    */
-
-    // Debug wireframes (disabled)
-    // drawQuadrantGrid(this.app);
-    // drawWorldBoundsWireframe(this.app);
-
-    // Overlay for cast aim UI
-    this.castAimOverlay = new PIXI.Graphics();
-    this.castAimOverlay.zIndex = 10000;
-    this.app.stage.addChild(this.castAimOverlay);
-
-    this.castAimMask = new PIXI.Graphics();
-    this.castAimMask.zIndex = 9999;
-    this.app.stage.addChild(this.castAimMask);
-    this.castAimOverlay.mask = this.castAimMask;
+    return setupSceneInternal(this);
   }
 
   setupInteraction() {
-    if (!this.app || this.isDestroyed) return;
-
-    // Initialize input manager
-    this.inputManager = new InputManager(
-      this.app,
-      this.gameStore,
-      this.sessionStore,
-      this.locationStore,
-      this.debugOverlay,
-      {
-        onCast: this.handleCast.bind(this),
-        onFluidSplat: this.handleFluidSplat.bind(this),
-      },
-    );
-
-    // Setup event listeners
-    this.inputManager.setupInteraction();
+    return setupInteraction(this);
   }
 
   setRenderResolutionScale(scale) {
-    if (!this.app || this.isDestroyed) return;
-    const nextScale = Number.isFinite(scale) ? clamp(scale, 1, 4) : 1;
-    if (this.app.renderer.resolution === nextScale) return;
-
-    try {
-      this.app.renderer.resolution = nextScale;
-      this.app.renderer.resize(this.width, this.height);
-      if (this.debugOverlay) {
-        this.debugOverlay.resize(this.width, this.height);
-      }
-    } catch (err) {
-      console.warn("Error updating render resolution:", err);
-    }
+    return setRenderResolutionScale(this, scale);
   }
 
   // Cast callback invoked by InputManager
   async handleCast(x, y, quadrant) {
-    const result = await executeCastSequence(
-      this.app,
-      this.gameStore,
-      this.sessionStore,
-      this.locationStore,
-      this.debugOverlay,
-      x,
-      y,
-      quadrant,
-      () => getItemWorldPosition(this.app, this.sessionStore),
-      this, // Pass PixiApp instance for immediate rope storage
-    );
-
-    if (result) {
-      this.dragBubbleInterval = result.dragBubbleInterval;
-      this.dragLine = result.line;
-      this.dragPlayerX = result.playerX;
-      this.dragPlayerY = result.playerY;
-    }
+    return handleCast(this, x, y, quadrant);
   }
 
   handleFluidSplat(worldX, worldY, deltaWorldX, deltaWorldY) {
-    this._withFoamCoordinator((fluidFoamCoordinator) => {
-      const preset = this._foamSplatPresets.input;
-      fluidFoamCoordinator.applyInputSplat(
-        worldX,
-        worldY,
-        deltaWorldX,
-        deltaWorldY,
-        preset,
-      );
-    });
+    return handleFluidSplat(this, worldX, worldY, deltaWorldX, deltaWorldY);
   }
 
   handleMagnetLandingSplat(worldX, worldY) {
-    this._withFoamCoordinator((fluidFoamCoordinator) => {
-      const preset = this._foamSplatPresets.landing;
-      fluidFoamCoordinator.applyLandingSplat(worldX, worldY, preset);
-    });
+    return handleMagnetLandingSplat(this, worldX, worldY);
   }
 
   handleMagnetDragSplat(worldX, worldY, speed) {
-    this._withFoamCoordinator((fluidFoamCoordinator) => {
-      const preset = this._foamSplatPresets.magnetDrag;
-      const scaledStrength = clamp(
-        speed * preset.scale,
-        preset.min,
-        preset.max,
-      );
-      fluidFoamCoordinator.applyDragRepel(worldX, worldY, {
-        radiusWorld: preset.radiusWorld,
-        strength: scaledStrength,
-      });
-    });
+    return handleMagnetDragSplat(this, worldX, worldY, speed);
   }
 
   handleRopeWaterSplat(worldX, worldY, speed) {
-    this._withFoamCoordinator((fluidFoamCoordinator) => {
-      const preset = this._foamSplatPresets.rope;
-      const scaledStrength = clamp(
-        speed * preset.scale,
-        preset.min,
-        preset.max,
-      );
-      fluidFoamCoordinator.applyDragRepel(worldX, worldY, {
-        radiusWorld: preset.radiusWorld,
-        strength: scaledStrength,
-      });
-    });
+    return handleRopeWaterSplat(this, worldX, worldY, speed);
   }
 
   _withFoamCoordinator(callback) {
-    const fluidFoamCoordinator = this.environmentLayers?.fluidFoamCoordinator;
-    if (!fluidFoamCoordinator || typeof callback !== "function") {
-      return;
-    }
-
-    callback(fluidFoamCoordinator);
+    return this.environmentLayers?.fluidFoamCoordinator &&
+      typeof callback === "function"
+      ? callback(this.environmentLayers.fluidFoamCoordinator)
+      : undefined;
   }
 
   setupDebugOverlay() {
-    if (!this.app || this.isDestroyed) return;
-
-    this.debugOverlay = new DebugOverlay(
-      this.app,
-      this.width,
-      this.height,
-      this.locationStore,
-    );
-
-    // Subscribe to location store changes to update engaged items display
-    this.locationStoreUnsubscribe = this.locationStore.subscribe(
-      (state) => state.engagedItems,
-      () => {
-        console.log(
-          "[DEBUG] Location store subscription fired - updating markers",
-        );
-        if (this.debugOverlay && this.gameStore) {
-          const currentLocation =
-            this.gameStore.getState().currentLocation || "picturesque-river";
-          this.debugOverlay.updateEngagedItems(currentLocation);
-        }
-      },
-    );
-
-    console.log("Debug overlay initialized. Press 'D' to toggle.");
+    return setupDebugOverlay(this);
   }
 
   setupManualFailureListener() {
-    // Handle manual "Give Up" button
-    this.handleManualFailure = async () => {
-      const gamePhase = this.gameStore?.getState().gamePhase;
-      const physicsState = this.sessionStore?.getState().physicsState;
-
-      // Only allow during active dragging
-      if (gamePhase === "dragging" && physicsState?.active) {
-        console.log("[MANUAL FAILURE] Player gave up");
-        this.inputManager?.resetInputState();
-
-        // Immediately deactivate drag and set reeling phase to stop ticker physics
-        this.sessionStore.getState().deactivateDrag();
-        this.sessionStore.getState().setPhase("reeling");
-
-        // Trigger failure at current distance (with rope reel-in animation)
-        const currentTarget = physicsState?.target?.position;
-        if (this.dragLineUnderwater && this.dragLineUnderwater.parent) {
-          this.dragLineUnderwater.parent.removeChild(this.dragLineUnderwater);
-          this.dragLineUnderwater.destroy();
-        }
-        this.dragLineUnderwater = null;
-        if (this.dragLineDebug && this.dragLineDebug.parent) {
-          this.dragLineDebug.parent.removeChild(this.dragLineDebug);
-          this.dragLineDebug.destroy();
-        }
-        this.dragLineDebug = null;
-
-        await handleDragFailure(
-          this.app,
-          this.gameStore,
-          this.sessionStore,
-          this.locationStore,
-          this.debugOverlay,
-          currentTarget,
-          this.inputManager
-            ? this.inputManager.getQuadrantFromPosition.bind(this.inputManager)
-            : null,
-          null, // No 2D rope
-          this.dragLine,
-          this.dragPlayerX,
-          this.dragPlayerY,
-        );
-
-        // Complete drag session AFTER reel-in animation
-        this.sessionStore.getState().completeDrag();
-
-        // Clear line reference after reel-in
-        this.dragLine = null;
-        if (this.dragLineDebug && this.dragLineDebug.parent) {
-          this.dragLineDebug.parent.removeChild(this.dragLineDebug);
-          this.dragLineDebug.destroy();
-        }
-        this.dragLineDebug = null;
-
-        // Store failure reason - manual yank = tension overload
-        this.gameStore.setState((state) => ({
-          currentCast: {
-            ...state.currentCast,
-            failureReason: "tension-overload",
-          },
-        }));
-
-        // Complete cast as failure
-        this.gameStore.getState().completeCast(false);
-
-        // Return to idle after brief delay
-        setTimeout(() => {
-          if (this.app && !this.isDestroyed) {
-            this.gameStore.getState().setGamePhase("idle");
-          }
-        }, 1000);
-      }
-    };
-
-    window.addEventListener("manualDragFailure", this.handleManualFailure);
+    return setupManualFailureListener(this);
   }
 
   // Ticker method for sprite updates
   tickerUpdateSprites() {
-    updateSpriteTicker({
-      spriteManager: this.spriteManager,
-      sessionStore: this.sessionStore,
-      gameStore: this.gameStore,
-      app: this.app,
-    });
+    return tickerUpdateSprites(this);
   }
 
   // Ticker method for drag mechanics updates
   async tickerUpdateDragMechanics() {
-    const result = await updateDragTicker({
-      app: this.app,
-      gameStore: this.gameStore,
-      sessionStore: this.sessionStore,
-      inventoryStore: this.inventoryStore,
-      locationStore: this.locationStore,
-      debugOverlay: this.debugOverlay,
-      lastDragUpdateTime: this.lastDragUpdateTime,
-      dragStartTime: this.dragStartTime,
-      inputManager: this.inputManager,
-      dragLine: this.dragLine,
-      dragPlayerX: this.dragPlayerX,
-      dragPlayerY: this.dragPlayerY,
-      dragLineUnderwater: this.dragLineUnderwater,
-      dragLineDebug: this.dragLineDebug,
-    });
-
-    this.lastDragUpdateTime = result.lastDragUpdateTime;
-    this.dragStartTime = result.dragStartTime;
-    this.dragLine = result.dragLine;
-    this.dragLineUnderwater = result.dragLineUnderwater;
-    this.dragLineDebug = result.dragLineDebug;
+    return tickerUpdateDragMechanics(this);
   }
 
   // Ticker method for rope rendering during drag
   tickerUpdateRope() {
-    const result = updateRopeTicker({
-      app: this.app,
-      sessionStore: this.sessionStore,
-      dragLine: this.dragLine,
-      dragLineUnderwater: this.dragLineUnderwater,
-      dragLineDebug: this.dragLineDebug,
-      dragPlayerX: this.dragPlayerX,
-      dragPlayerY: this.dragPlayerY,
-      lastRopeUpdateTime: this.lastRopeUpdateTime,
-    });
-    this.lastRopeUpdateTime = result.lastRopeUpdateTime;
+    return tickerUpdateRope(this);
   }
 
   // Ticker method for cast aim oscillators and preview
   tickerUpdateCastAim() {
-    if (!this.app || this.isDestroyed || !this.castAimOverlay) {
-      return;
-    }
-
-    updateCastAimOverlay({
-      app: this.app,
-      castAimOverlay: this.castAimOverlay,
-      castAimMask: this.castAimMask,
-      gameStore: this.gameStore,
-      sessionStore: this.sessionStore,
-    });
+    return tickerUpdateCastAim(this);
   }
 
   // Ticker method for caustics + displacement animation
   tickerUpdateCaustics() {
-    if (!this.app || this.isDestroyed || !this.environmentLayers) return;
-
-    const dt = this.app.ticker.deltaMS / 1000;
-
-    // Target values from store (may change instantly via UI or game events).
-    // currentSpeed scales directional drift (1 = default, 2 = twice as fast).
-    // choppiness scales displacement amplitude, sparkle density, caustic warp.
-    const targetSpeed = this.environmentLayers.currentSpeed ?? 1;
-    const targetChoppiness = this.environmentLayers.choppiness ?? 1;
-    const targetCloudCover = this.environmentLayers.cloudCover ?? 0.5;
-
-    // Smooth-lerp toward targets using frame-rate-independent exponential
-    // easing. Rate controls how fast the transition is — higher = snappier.
-    // At rate=3, ~95% of the transition completes in ~1 second.
-    const transitionRate = 3;
-    const blend = 1 - Math.exp(-transitionRate * dt);
-
-    this._smoothCurrentSpeed +=
-      (targetSpeed - this._smoothCurrentSpeed) * blend;
-    this._smoothChoppiness +=
-      (targetChoppiness - this._smoothChoppiness) * blend;
-    this._smoothCloudCover +=
-      (targetCloudCover - this._smoothCloudCover) * blend;
-
-    const currentSpeed = this._smoothCurrentSpeed;
-    const choppiness = this._smoothChoppiness;
-
-    // Accumulate downstream flow distance at 24 FPS cadence.
-    // Using accumulated distance instead of time*speed avoids discontinuities
-    // when currentSpeed transitions — the phase just grows faster/slower.
-    // _flowStepSpeed is snapshotted here so any uniform that depends on the
-    // instantaneous speed (e.g. foam stretch) updates at the same cadence as
-    // flowPhase — preventing visual desyncs where shape morphs at 60 FPS but
-    // scroll position steps at 24 FPS.
-    const FLOW_FPS_STEP = 1 / 24;
-    this._flowAccumTime += dt;
-    if (this._flowAccumTime >= FLOW_FPS_STEP) {
-      const steps = Math.floor(this._flowAccumTime / FLOW_FPS_STEP);
-      this._flowAccumTime -= steps * FLOW_FPS_STEP;
-      // Wrap at 1000 to prevent 32-bit float precision loss in GPU uniforms
-      // (above ~16384 sub-pixel detail is lost). 1000 is large enough that the
-      // wrap is invisible in the noise pattern.
-      this._flowPhase =
-        (this._flowPhase + steps * FLOW_FPS_STEP * currentSpeed) % 1000;
-      this._flowStepSpeed = currentSpeed;
-    }
-    const flowPhase = this._flowPhase;
-    const flowStepSpeed = this._flowStepSpeed ?? currentSpeed;
-
-    // Animate caustics uTime (normal rate — drift uses flowPhase).
-    // Wrap at 1000 to prevent 32-bit float precision loss in the shader.
-    const causticsFilter = this.environmentLayers.causticsFilter;
-    if (causticsFilter) {
-      const cu = causticsFilter.resources.causticsUniforms.uniforms;
-      cu.uTime = (cu.uTime + dt) % 1000;
-      cu.uFlowPhase = flowPhase;
-      cu.uChoppiness = choppiness;
-    }
-
-    // Animate sparkle overlay (separate layer on top of reflections)
-    const sparkleShader = this.environmentLayers.sparkleShader;
-    if (sparkleShader) {
-      const su = sparkleShader.resources.sparkleUniforms.uniforms;
-      su.uFlowPhase = flowPhase;
-      su.uChoppiness = choppiness;
-    }
-
-    // Update fluid foam coordinator (particle-based foam)
-    const fluidFoamCoordinator = this.environmentLayers.fluidFoamCoordinator;
-    if (fluidFoamCoordinator) {
-      fluidFoamCoordinator.setFlowSpeed(flowStepSpeed);
-      fluidFoamCoordinator.setChoppiness(choppiness);
-      fluidFoamCoordinator.update(dt);
-
-      // Update debug overlay
-      const debugOverlay = this.environmentLayers.fluidFoamDebugOverlay;
-      if (debugOverlay) {
-        debugOverlay.update();
-      }
-    } else {
-      // Debug: Log once if coordinator is missing
-      if (!this._loggedMissingCoordinator) {
-        console.warn("[FluidFoam] Coordinator not found in environmentLayers");
-        this._loggedMissingCoordinator = true;
-      }
-    }
-
-    const edgeFoamShader = this.environmentLayers.edgeFoamShader;
-    if (edgeFoamShader) {
-      const eu = edgeFoamShader.resources.edgeFoamUniforms.uniforms;
-      eu.uFlowPhase = flowPhase;
-      eu.uChoppiness = choppiness;
-      eu.uCurrentSpeed = flowStepSpeed;
-    }
-
-    // Animate reflection shader (sky + clouds)
-    const reflectionShader = this.environmentLayers.reflectionShader;
-    if (reflectionShader) {
-      const ru = reflectionShader.resources.reflectionUniforms.uniforms;
-      // Base cloud drift rate (tuned for gentle movement at windSpeed=1).
-      // windSpeed scales this: 2 = twice as fast, 0.5 = half speed.
-      const baseCloudDrift = 0.033;
-      ru.uTime =
-        (ru.uTime +
-          dt * baseCloudDrift * (this.environmentLayers.windSpeed ?? 1)) %
-        1000;
-      const wd = this.environmentLayers.windDir;
-      if (wd) {
-        ru.uWindDir[0] = wd[0];
-        ru.uWindDir[1] = wd[1];
-      }
-      // Map cloudCover (0 = clear, 1 = overcast) to FBM noise threshold.
-      // High threshold = few clouds, low threshold = heavy coverage.
-      // Range: cloudCover 0 → threshold 0.25 (nearly clear)
-      //        cloudCover 1 → threshold -0.15 (overcast)
-      const cloudCover = this._smoothCloudCover;
-      ru.uCloudThreshold = 0.25 - cloudCover * 0.4;
-
-      // Live-update reflection opacity from UI slider
-      const reflectionAlpha = this.gameStore.getState().reflectionAlpha;
-      ru.uReflectionAlpha = reflectionAlpha;
-    }
-
-    // Live-update water surface uniforms from UI sliders
-    const waterSurfaceShader = this.environmentLayers.waterSurfaceShader;
-    if (waterSurfaceShader) {
-      const wu = waterSurfaceShader.resources.waterUniforms.uniforms;
-      const gameState = this.gameStore.getState();
-      wu.uWaterAlpha = gameState.waterAlpha;
-    }
-
-    // Apply choppiness to displacement filter scale.
-    // Base scale is 4; choppiness multiplies it (1 = default, 2 = twice as wavy).
-    const displacementFilter = this.environmentLayers.displacementFilter;
-    if (displacementFilter) {
-      const baseScale = 4;
-      displacementFilter.scale.x = baseScale * choppiness;
-      displacementFilter.scale.y = baseScale * choppiness;
-    }
-
-    // Scroll displacement sprite along isometric X axis for water flow.
-    // Quantized to 24 FPS to match the pixel art animation cadence.
-    // Uses the smoothed currentSpeed so flow acceleration is gradual.
-    const sprite = this.environmentLayers.displacementSprite;
-    if (sprite) {
-      const baseFlowSpeed = 12; // pixels per second at currentSpeed=1
-      const FPS_STEP = 1 / 24;
-      this._displacementTime += dt;
-      if (this._displacementTime >= FPS_STEP) {
-        const steps = Math.floor(this._displacementTime / FPS_STEP);
-        this._displacementTime -= steps * FPS_STEP;
-        const elapsed = steps * FPS_STEP;
-        let dirX = this.environmentLayers.flowDirX;
-        let dirY = this.environmentLayers.flowDirY;
-        if (!Number.isFinite(dirX) || !Number.isFinite(dirY)) {
-          const metrics = getProjectionMetrics(this.environmentLayers.viewport);
-          const isoXLen = Math.hypot(
-            metrics.screenXPerWorldUnit,
-            metrics.screenYPerWorldUnit,
-          );
-          dirX = metrics.screenXPerWorldUnit / isoXLen;
-          dirY = metrics.screenYPerWorldUnit / isoXLen;
-        }
-        sprite.x += dirX * baseFlowSpeed * currentSpeed * elapsed;
-        sprite.y += dirY * baseFlowSpeed * currentSpeed * elapsed;
-      }
-    }
+    return tickerUpdateCaustics(this);
   }
 
   resize(width, height) {
-    if (!this.app || this.isDestroyed) return;
-
-    try {
-      this.app.renderer.resize(width, height);
-      this.width = width;
-      this.height = height;
-
-      // Update debug overlay if it exists
-      if (this.debugOverlay) {
-        this.debugOverlay.resize(width, height);
-      }
-    } catch (err) {
-      console.warn("Error during resize:", err);
-    }
+    return resizePixiApp(this, width, height);
   }
 
   /**
@@ -783,108 +281,6 @@ export class PixiApp {
   }
 
   destroy() {
-    console.log("PixiApp.destroy() called");
-
-    if (this.isDestroyed) {
-      console.log("PixiApp already destroyed, skipping");
-      return;
-    }
-
-    this.isDestroyed = true;
-
-    // Stop drag bubble animations
-    if (this.dragBubbleInterval) {
-      clearInterval(this.dragBubbleInterval);
-      this.dragBubbleInterval = null;
-    }
-
-    // Clean up rope graphics
-    if (this.dragLine) {
-      if (this.dragLine.parent) {
-        this.dragLine.parent.removeChild(this.dragLine);
-      }
-      this.dragLine.destroy();
-      this.dragLine = null;
-    }
-    if (this.dragLineUnderwater) {
-      if (this.dragLineUnderwater.parent) {
-        this.dragLineUnderwater.parent.removeChild(this.dragLineUnderwater);
-      }
-      this.dragLineUnderwater.destroy();
-      this.dragLineUnderwater = null;
-    }
-    if (this.dragLineDebug) {
-      if (this.dragLineDebug.parent) {
-        this.dragLineDebug.parent.removeChild(this.dragLineDebug);
-      }
-      this.dragLineDebug.destroy();
-      this.dragLineDebug = null;
-    }
-
-    if (this.castAimOverlay) {
-      if (this.castAimOverlay.parent) {
-        this.castAimOverlay.parent.removeChild(this.castAimOverlay);
-      }
-      this.castAimOverlay.destroy();
-      this.castAimOverlay = null;
-    }
-
-    // Clean up manual failure listener
-    if (this.handleManualFailure) {
-      window.removeEventListener("manualDragFailure", this.handleManualFailure);
-      this.handleManualFailure = null;
-    }
-
-    // Clean up location store subscription
-    if (this.locationStoreUnsubscribe) {
-      this.locationStoreUnsubscribe();
-      this.locationStoreUnsubscribe = null;
-    }
-
-    if (this.gameStoreUnsubscribe) {
-      this.gameStoreUnsubscribe();
-      this.gameStoreUnsubscribe = null;
-    }
-
-    // Clean up debug overlay
-    if (this.debugOverlay) {
-      this.debugOverlay.destroy();
-      this.debugOverlay = null;
-    }
-
-    // Clean up sprite manager
-    if (this.spriteManager) {
-      this.spriteManager.clearSprites();
-      this.spriteManager = null;
-    }
-
-    if (this.spriteLayers) {
-      this.spriteLayers.underwater.destroy({ children: true });
-      this.spriteLayers.aboveWater.destroy({ children: true });
-      this.spriteLayers.debug.destroy({ children: true });
-      this.spriteLayers = null;
-    }
-
-    // Clean up input manager (handles all keyboard/pointer events)
-    if (this.inputManager) {
-      this.inputManager.destroy();
-      this.inputManager = null;
-    }
-
-    if (this.app) {
-      // Safely destroy - check if renderer exists
-      try {
-        // Clear DevTools reference
-        if (import.meta.env.DEV && globalThis.__PIXI_APP__ === this.app) {
-          globalThis.__PIXI_APP__ = null;
-        }
-
-        this.app.destroy(true, { children: true, texture: true });
-        console.log("PixiJS app destroyed successfully");
-      } catch (err) {
-        console.warn("Error during PixiJS destroy:", err);
-      }
-      this.app = null;
-    }
+    return destroyPixiApp(this);
   }
 }
