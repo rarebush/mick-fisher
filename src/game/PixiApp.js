@@ -32,6 +32,7 @@ import {
   tickerUpdateRope,
   tickerUpdateSprites,
 } from "./app/pixiAppTickers.js";
+import { isDebugEnabled } from "./utils/debugFlags.js";
 
 export class PixiApp {
   constructor(
@@ -166,7 +167,9 @@ export class PixiApp {
       // Final check before setting up scene
       if (!this.isDestroyed && this.app) {
         await this.setupSceneInternal();
-        this.setupDebugOverlay(); // Must be before setupInteraction so InputManager can access it
+        if (isDebugEnabled()) {
+          this.setupDebugOverlay(); // Must be before setupInteraction so InputManager can access it
+        }
         this.setupInteraction();
         this.setupManualFailureListener();
         console.log("PixiJS initialized successfully");

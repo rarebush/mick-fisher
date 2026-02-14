@@ -4,6 +4,7 @@ import { setupEnvironmentLayers } from "../rendering/sceneSetup.js";
 import { SpriteManager } from "../rendering/spriteManager.js";
 import { clamp } from "../physics/vectorUtils.js";
 import { handleDragFailure } from "../sequences/castSequence.js";
+import { isDebugEnabled } from "../utils/debugFlags.js";
 
 export async function setupSceneInternal(pixiApp) {
   if (!pixiApp.app || pixiApp.isDestroyed) return;
@@ -96,6 +97,7 @@ export async function setupSceneInternal(pixiApp) {
 }
 
 export function setupDebugOverlay(pixiApp) {
+  if (!isDebugEnabled()) return;
   if (!pixiApp.app || pixiApp.isDestroyed) return;
 
   pixiApp.debugOverlay = new DebugOverlay(

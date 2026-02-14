@@ -277,6 +277,7 @@ function buildFoamSystem({
   screenWidth,
   screenHeight,
   debugContainer,
+  debugEnabled,
 }) {
   const projectionMetrics = getProjectionMetrics(viewport);
   const isoScaleY =
@@ -365,74 +366,77 @@ function buildFoamSystem({
 
     fluidFoamCoordinator.setShiftZones(CURRENT_SHIFT_ZONES);
 
-    const overlayContainer = debugContainer || foamTiles;
-    fluidFoamDebugOverlay = new FluidFoamDebugOverlay(
-      fluidFoamCoordinator,
-      overlayContainer,
-      {
-        screenSize: { width: screenWidth, height: screenHeight },
+    const allowDebug = Boolean(debugEnabled);
+    const overlayContainer = allowDebug ? debugContainer || foamTiles : null;
+    if (allowDebug && overlayContainer) {
+      fluidFoamDebugOverlay = new FluidFoamDebugOverlay(
+        fluidFoamCoordinator,
+        overlayContainer,
+        {
+          screenSize: { width: screenWidth, height: screenHeight },
+          worldToScreen: (x, y, z) => projectToScreen(x, y, z, viewport),
+          z: WORLD_Z.WATER_SURFACE,
+        },
+      );
+      fluidFoamDebugOverlay.setShiftZones(CURRENT_SHIFT_ZONES);
+
+      const spawnNoiseGraphics = new PIXI.Graphics();
+      spawnNoiseGraphics.zIndex = 9995;
+      overlayContainer.addChild(spawnNoiseGraphics);
+      fluidFoamCoordinator.setSpawnNoiseDebug({
+        graphics: spawnNoiseGraphics,
         worldToScreen: (x, y, z) => projectToScreen(x, y, z, viewport),
         z: WORLD_Z.WATER_SURFACE,
-      },
-    );
-    fluidFoamDebugOverlay.setShiftZones(CURRENT_SHIFT_ZONES);
+      });
 
-    const spawnNoiseGraphics = new PIXI.Graphics();
-    spawnNoiseGraphics.zIndex = 9995;
-    overlayContainer.addChild(spawnNoiseGraphics);
-    fluidFoamCoordinator.setSpawnNoiseDebug({
-      graphics: spawnNoiseGraphics,
-      worldToScreen: (x, y, z) => projectToScreen(x, y, z, viewport),
-      z: WORLD_Z.WATER_SURFACE,
-    });
+      const foamBoundsMinX = WORLD_X.SPAWN_MIN;
+      const foamBoundsMaxX = WORLD_X.MAX;
+      const foamBoundsMinY = WORLD_Y.WATER_NEAR;
+      const foamBoundsMaxY = WORLD_Y.WATER_FAR;
+      const foamBoundsScreen = [
+        projectToScreen(
+          foamBoundsMinX,
+          foamBoundsMinY,
+          WORLD_Z.WATER_SURFACE,
+          viewport,
+        ),
+        projectToScreen(
+          foamBoundsMaxX,
+          foamBoundsMinY,
+          WORLD_Z.WATER_SURFACE,
+          viewport,
+        ),
+        projectToScreen(
+          foamBoundsMaxX,
+          foamBoundsMaxY,
+          WORLD_Z.WATER_SURFACE,
+          viewport,
+        ),
+        projectToScreen(
+          foamBoundsMinX,
+          foamBoundsMaxY,
+          WORLD_Z.WATER_SURFACE,
+          viewport,
+        ),
+      ];
 
-    const foamBoundsMinX = WORLD_X.SPAWN_MIN;
-    const foamBoundsMaxX = WORLD_X.MAX;
-    const foamBoundsMinY = WORLD_Y.WATER_NEAR;
-    const foamBoundsMaxY = WORLD_Y.WATER_FAR;
-    const foamBoundsScreen = [
-      projectToScreen(
-        foamBoundsMinX,
-        foamBoundsMinY,
-        WORLD_Z.WATER_SURFACE,
-        viewport,
-      ),
-      projectToScreen(
-        foamBoundsMaxX,
-        foamBoundsMinY,
-        WORLD_Z.WATER_SURFACE,
-        viewport,
-      ),
-      projectToScreen(
-        foamBoundsMaxX,
-        foamBoundsMaxY,
-        WORLD_Z.WATER_SURFACE,
-        viewport,
-      ),
-      projectToScreen(
-        foamBoundsMinX,
-        foamBoundsMaxY,
-        WORLD_Z.WATER_SURFACE,
-        viewport,
-      ),
-    ];
-
-    const foamBoundsOutline = new PIXI.Graphics();
-    foamBoundsOutline
-      .poly([
-        foamBoundsScreen[0].x,
-        foamBoundsScreen[0].y,
-        foamBoundsScreen[1].x,
-        foamBoundsScreen[1].y,
-        foamBoundsScreen[2].x,
-        foamBoundsScreen[2].y,
-        foamBoundsScreen[3].x,
-        foamBoundsScreen[3].y,
-      ])
-      .fill({ color: 0x00ffff, alpha: 0.08 })
-      .stroke({ width: 2, color: 0x00ffff, alpha: 0.8 });
-    foamBoundsOutline.zIndex = 9998;
-    overlayContainer.addChild(foamBoundsOutline);
+      const foamBoundsOutline = new PIXI.Graphics();
+      foamBoundsOutline
+        .poly([
+          foamBoundsScreen[0].x,
+          foamBoundsScreen[0].y,
+          foamBoundsScreen[1].x,
+          foamBoundsScreen[1].y,
+          foamBoundsScreen[2].x,
+          foamBoundsScreen[2].y,
+          foamBoundsScreen[3].x,
+          foamBoundsScreen[3].y,
+        ])
+        .fill({ color: 0x00ffff, alpha: 0.08 })
+        .stroke({ width: 2, color: 0x00ffff, alpha: 0.8 });
+      foamBoundsOutline.zIndex = 9998;
+      overlayContainer.addChild(foamBoundsOutline);
+    }
   } else {
     console.warn(
       "[FluidFoam] Renderer not available, skipping fluid foam creation",
@@ -670,6 +674,7 @@ export async function createWaterLayers(
     noiseBasisY,
     renderer,
     debugContainer,
+    debugEnabled,
   } = context;
   const { submergedWallTiles, reflectionContainer } = layerInputs;
   const riverbedResult = await buildRiverbedTiles({
@@ -707,6 +712,7 @@ export async function createWaterLayers(
     screenWidth,
     screenHeight,
     debugContainer,
+    debugEnabled,
   });
   const { foamTiles, fluidFoamCoordinator, fluidFoamDebugOverlay } = foamResult;
 

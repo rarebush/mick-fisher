@@ -19,6 +19,7 @@ import useMagnetStore from "../state/magnetStore.js";
 import { magnitude } from "../physics/vectorUtils.js";
 import { cleanupDisplayObject } from "./displayCleanup.js";
 import { getPeakValue } from "../utils/peakUtils.js";
+import { isDebugEnabled } from "../utils/debugFlags.js";
 
 export class SpriteManager {
   constructor(app, layerContainers = null) {
@@ -64,6 +65,7 @@ export class SpriteManager {
    */
   updateSprites(item, itemWorld, physicsState) {
     if (!this.app || !itemWorld) return;
+    const debugEnabled = isDebugEnabled();
 
     const viewport = createViewport(
       this.app.screen.width,
@@ -119,7 +121,7 @@ export class SpriteManager {
     }
 
     // Create debug text if needed
-    if (!this.magnetDebugText) {
+    if (debugEnabled && !this.magnetDebugText) {
       this.magnetDebugText = new PIXI.Text({
         text: "",
         style: {
@@ -199,7 +201,7 @@ export class SpriteManager {
     }
 
     // Update debug text with world coordinates
-    if (this.magnetDebugText && magnetWorld) {
+    if (debugEnabled && this.magnetDebugText && magnetWorld) {
       const peaks = useMagnetStore.getState().getPeakValues();
       const peakX = getPeakValue(peaks, "X");
       const peakY = getPeakValue(peaks, "Y");

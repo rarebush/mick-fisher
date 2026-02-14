@@ -28,6 +28,7 @@ import {
 import { createWallLayers } from "./wallLayers.js";
 import { createReflectionLayers } from "./reflectionLayers.js";
 import { createWaterLayers } from "./waterLayers.js";
+import { isDebugEnabled } from "../utils/debugFlags.js";
 
 export { drawQuadrantGrid, drawWorldBoundsWireframe };
 
@@ -193,6 +194,8 @@ export async function setupEnvironmentLayers(
   );
 
   // Water layers: riverbed, water surface, sparkles, displacement
+  const debugEnabled = isDebugEnabled();
+
   const waterResult = await createWaterLayers(
     {
       viewport,
@@ -202,7 +205,8 @@ export async function setupEnvironmentLayers(
       noiseBasisX,
       noiseBasisY,
       renderer,
-      debugContainer: container,
+      debugContainer: debugEnabled ? container : null,
+      debugEnabled,
     },
     { submergedWallTiles, reflectionContainer },
     width,
@@ -219,7 +223,7 @@ export async function setupEnvironmentLayers(
   container.addChild(waterResult.waterGroup);
 
   // Add debug dots container on top of everything for visibility
-  if (waterResult.debugDotsContainer) {
+  if (debugEnabled && waterResult.debugDotsContainer) {
     container.addChild(waterResult.debugDotsContainer);
     console.log("[SceneSetup] Debug dots container added on top");
   }
@@ -264,13 +268,15 @@ export async function setupEnvironmentLayers(
   container.addChild(walkwayVolume);
 
   // Debug overlays (hidden by default)
-  const originAxes = createOriginAxes(viewport);
-  originAxes.visible = false;
-  container.addChild(originAxes);
+  if (debugEnabled) {
+    const originAxes = createOriginAxes(viewport);
+    originAxes.visible = false;
+    container.addChild(originAxes);
 
-  const displacementDebugRect = createDisplacementDebugRect(viewport);
-  displacementDebugRect.visible = false;
-  container.addChild(displacementDebugRect);
+    const displacementDebugRect = createDisplacementDebugRect(viewport);
+    displacementDebugRect.visible = false;
+    container.addChild(displacementDebugRect);
+  }
 
   return {
     waterVolume,
