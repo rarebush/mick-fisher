@@ -251,12 +251,7 @@ export function updateDragPhysics(deltaTime, isHolding, physicsState) {
       }
     }
 
-    if (
-      state.targetType !== "fish" &&
-      previousLineTaut &&
-      isHolding &&
-      unclampedRadialVelocity < 0
-    ) {
+    if (previousLineTaut && isHolding && unclampedRadialVelocity < 0) {
       effectiveReelCap = Math.max(
         playerRecoveryVelocity,
         intrinsicApproachRate,

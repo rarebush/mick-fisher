@@ -3,7 +3,7 @@ import {
   SLIP_CONSTANTS,
   TEMPERAMENT_MODIFIERS,
 } from "./physicsConstants.js";
-import { clamp } from "./vectorUtils.js";
+import { clamp, normalize } from "./vectorUtils.js";
 
 export function updateSlip(item, tension, equipment, deltaTime) {
   let slipAccumulation = item.slipAccumulation || 0;
@@ -53,8 +53,6 @@ export function updateFishAI(fish, tension, deltaTime, avatarPosition) {
     }
     return nextFish;
   }
-  void avatarPosition;
-
   // Fight cadence: alternate run bursts with rest windows (Game Mechanics - Horizontal Drag Phase.md).
   if (!fish.fightPhase || fish.fightPhaseTimer === undefined) {
     nextFish.fightPhase = "run";
@@ -104,9 +102,39 @@ export function updateFishAI(fish, tension, deltaTime, avatarPosition) {
   nextFish.directionChangeTimer = (fish.directionChangeTimer ?? 0) - deltaTime;
   if (nextFish.directionChangeTimer <= 0) {
     const angle = Math.random() * Math.PI * 2;
-    nextFish.targetDirection = {
+    const randomDirection = {
       x: Math.cos(angle),
       y: Math.sin(angle),
+    };
+    const biasWeight = clamp(
+      FISH_FIGHT_CONSTANTS.DIRECTION_AWAY_FROM_AVATAR_BIAS,
+      0,
+      1,
+    );
+    const awayFromAvatar = avatarPosition
+      ? normalize({
+          x: fish.position.x - avatarPosition.x,
+          y: fish.position.y - avatarPosition.y,
+        })
+      : null;
+    const hasAwayVector =
+      awayFromAvatar &&
+      (Math.abs(awayFromAvatar.x) > 0.0001 ||
+        Math.abs(awayFromAvatar.y) > 0.0001);
+    const nextDirection = hasAwayVector
+      ? normalize({
+          x:
+            randomDirection.x * (1 - biasWeight) +
+            awayFromAvatar.x * biasWeight,
+          y:
+            randomDirection.y * (1 - biasWeight) +
+            awayFromAvatar.y * biasWeight,
+        })
+      : randomDirection;
+
+    nextFish.targetDirection = {
+      x: nextDirection.x,
+      y: nextDirection.y,
     };
     const panicFrequencyMod = 1 - (fish.panicLevel / 100) * 0.7;
     nextFish.directionChangeTimer =
@@ -126,14 +154,35 @@ export function updateFishAI(fish, tension, deltaTime, avatarPosition) {
   const forceMagnitude =
     fish.baseStrength * energyFactor * strengthFactor * phaseMultiplier;
 
-  const safeDirection = nextFish.targetDirection ||
+  const targetDirection = nextFish.targetDirection ||
     fish.targetDirection || {
       x: 0,
       y: 1,
     };
+  const priorDirection = fish.currentDirection || targetDirection;
+  const directionBlendAlpha =
+    1 - Math.exp(-FISH_FIGHT_CONSTANTS.DIRECTION_BLEND_RATE * deltaTime);
+  const blendedDirection = normalize({
+    x:
+      priorDirection.x +
+      (targetDirection.x - priorDirection.x) * directionBlendAlpha,
+    y:
+      priorDirection.y +
+      (targetDirection.y - priorDirection.y) * directionBlendAlpha,
+  });
+
+  const desiredForce = {
+    x: blendedDirection.x * forceMagnitude,
+    y: blendedDirection.y * forceMagnitude,
+  };
+  const priorForce = fish.currentForce || { x: 0, y: 0 };
+  const forceBlendAlpha =
+    1 - Math.exp(-FISH_FIGHT_CONSTANTS.FORCE_BLEND_RATE * deltaTime);
+
+  nextFish.currentDirection = blendedDirection;
   nextFish.currentForce = {
-    x: safeDirection.x * forceMagnitude,
-    y: safeDirection.y * forceMagnitude,
+    x: priorForce.x + (desiredForce.x - priorForce.x) * forceBlendAlpha,
+    y: priorForce.y + (desiredForce.y - priorForce.y) * forceBlendAlpha,
   };
 
   if (nextFish.fightPhase === "run") {

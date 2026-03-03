@@ -20,6 +20,10 @@ function FishAIDebugWidget() {
     return null;
   }
 
+  const currentDirection = physicsState.target?.currentDirection ?? {
+    x: 0,
+    y: 0,
+  };
   const targetDirection = physicsState.target?.targetDirection ?? {
     x: 0,
     y: 0,
@@ -28,11 +32,13 @@ function FishAIDebugWidget() {
   const swimForce = magnitude(swimForceVector);
 
   const desiredWorldDirection =
-    magnitude(targetDirection) > 0.0001
-      ? normalize(targetDirection)
-      : magnitude(swimForceVector) > 0.0001
-        ? normalize(swimForceVector)
-        : { x: 0, y: 0 };
+    magnitude(currentDirection) > 0.0001
+      ? normalize(currentDirection)
+      : magnitude(targetDirection) > 0.0001
+        ? normalize(targetDirection)
+        : magnitude(swimForceVector) > 0.0001
+          ? normalize(swimForceVector)
+          : { x: 0, y: 0 };
 
   const viewport = createViewport(window.innerWidth, window.innerHeight);
   const metrics = getProjectionMetrics(viewport);
