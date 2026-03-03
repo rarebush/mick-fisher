@@ -6,7 +6,12 @@ import {
   screenToWorld,
   lerp,
   getAvatarHandWorldPosition,
+  getProjectionMetrics,
 } from "../mechanics/worldConstants.js";
+import {
+  FLOAT_WORLD_RADIUS,
+  FLOAT_VISUAL_SCALE,
+} from "../rendering/floatConstants.js";
 import { createMagnetSprite } from "../graphics/placeholderSprites.js";
 import useMagnetStore from "../state/magnetStore.js";
 import { renderProjectedRope } from "./projectedRopeRenderer.js";
@@ -34,6 +39,7 @@ export function animateCastLine(
   sessionStore,
   layerContainers = null,
   onWaterHit = null,
+  options = {},
 ) {
   return new Promise((resolve) => {
     if (!app) {
@@ -74,6 +80,8 @@ export function animateCastLine(
       }, ${viewport.worldZMax}]`,
     );
 
+    const skipSink = Boolean(options.skipSink);
+
     // ===========================================
     // AVATAR POSITION (fixed in world space, used for magnet throw)
     // ===========================================
@@ -105,12 +113,12 @@ export function animateCastLine(
     );
 
     // ===========================================
-    // TARGET POSITION (riverbed directly below click)
+    // TARGET POSITION (riverbed directly below click, or surface for rod)
     // ===========================================
     const targetWorld = {
       x: waterSurfaceWorld.x,
       y: waterSurfaceWorld.y,
-      z: WORLD_Z.RIVERBED,
+      z: skipSink ? WORLD_Z.WATER_SURFACE : WORLD_Z.RIVERBED,
     };
     const targetScreen = worldToScreen(targetWorld, viewport);
 
@@ -152,9 +160,11 @@ export function animateCastLine(
       sessionStore.getState().setPhaseProgress(0);
     }
 
-    // Spawn magnet in magnet store
     const magnetStore = useMagnetStore.getState();
-    magnetStore.spawnMagnet(avatarWorld.x);
+    if (!skipSink) {
+      // Spawn magnet in magnet store
+      magnetStore.spawnMagnet(avatarWorld.x);
+    }
 
     const aboveWaterContainer = layerContainers?.aboveWater ?? app.stage;
     const underwaterContainer = layerContainers?.underwater ?? app.stage;
@@ -166,13 +176,27 @@ export function animateCastLine(
     const lineUnderwater = new PIXI.Graphics();
     underwaterContainer.addChild(lineUnderwater);
     const lineDebug = new PIXI.Graphics();
-    lineDebug.visible = true;
+    lineDebug.visible = false;
     debugContainer.addChild(lineDebug);
 
-    // Create magnet sprite
-    const magnetSprite = createMagnetSprite();
-    magnetSprite.scale.set(2);
-    aboveWaterContainer.addChild(magnetSprite);
+    // Create cast sprite (magnet or float)
+    let magnetSprite = null;
+    let floatSprite = null;
+    if (!skipSink) {
+      magnetSprite = createMagnetSprite();
+      magnetSprite.scale.set(2);
+      aboveWaterContainer.addChild(magnetSprite);
+    } else {
+      const metrics = getProjectionMetrics(viewport);
+      const radiusPx =
+        FLOAT_WORLD_RADIUS *
+        ((metrics.screenXPerWorldUnit + metrics.screenYPerWorldUnit) / 2) *
+        FLOAT_VISUAL_SCALE;
+      floatSprite = new PIXI.Graphics()
+        .circle(0, 0, radiusPx)
+        .fill({ color: 0xe24b3a, alpha: 1 });
+      aboveWaterContainer.addChild(floatSprite);
+    }
 
     // Create debug text for magnet world coordinates
     const magnetDebugText = new PIXI.Text({
@@ -188,6 +212,17 @@ export function animateCastLine(
     magnetDebugText.visible = false;
     app.stage.addChild(magnetDebugText);
 
+    const updateCastSprite = (screenPos) => {
+      if (magnetSprite) {
+        magnetSprite.x = screenPos.x - magnetSprite.width / 2;
+        magnetSprite.y = screenPos.y - magnetSprite.height / 2;
+      }
+      if (floatSprite) {
+        floatSprite.x = screenPos.x;
+        floatSprite.y = screenPos.y;
+      }
+    };
+
     // ===========================================
     // ANIMATION PARAMETERS
     // ===========================================
@@ -195,7 +230,10 @@ export function animateCastLine(
     // Base 1200ms + 2.5ms per world unit of horizontal distance
     // Example: 100 units = 1450ms, 200 units = 1700ms, 400 units = 2200ms
     const throwDuration = Math.max(1200, 1200 + horizontalDistance * 2.5);
-    const settleDuration = 200;
+    const magnetSinkPhase = {
+      settleDuration: 200,
+    };
+    const settleDuration = skipSink ? 0 : magnetSinkPhase.settleDuration;
     const startTime = performance.now();
 
     let phase = "throwing"; // 'throwing' -> 'sinking' -> 'settling' -> 'done'
@@ -207,12 +245,14 @@ export function animateCastLine(
     // Sinking physics state
     let sinkVelocityZ = 0;
     let prevTime = startTime;
+    let prevMagnetZ = magnetWorld.z;
+    let lastVelocityZ = 0;
 
     // Tension animation: 95 (throw start) -> 15 (water) -> 10 (settled)
     let currentTension = 95;
     const animate = (currentTime) => {
       if (!app) {
-        cleanupDisplayObjects(line, magnetSprite, magnetDebugText);
+        cleanupDisplayObjects(line, magnetSprite, floatSprite, magnetDebugText);
         resolve({
           line: null,
           lineUnderwater: null,
@@ -226,15 +266,20 @@ export function animateCastLine(
 
       const elapsed = currentTime - startTime;
 
-      if (magnetWorld.z <= WORLD_Z.WATER_SURFACE) {
-        if (magnetSprite.parent !== underwaterContainer) {
-          if (magnetSprite.parent)
+      if (!skipSink && magnetSprite) {
+        if (magnetWorld.z <= WORLD_Z.WATER_SURFACE) {
+          if (magnetSprite.parent !== underwaterContainer) {
+            if (magnetSprite.parent) {
+              magnetSprite.parent.removeChild(magnetSprite);
+            }
+            underwaterContainer.addChild(magnetSprite);
+          }
+        } else if (magnetSprite.parent !== aboveWaterContainer) {
+          if (magnetSprite.parent) {
             magnetSprite.parent.removeChild(magnetSprite);
-          underwaterContainer.addChild(magnetSprite);
+          }
+          aboveWaterContainer.addChild(magnetSprite);
         }
-      } else if (magnetSprite.parent !== aboveWaterContainer) {
-        if (magnetSprite.parent) magnetSprite.parent.removeChild(magnetSprite);
-        aboveWaterContainer.addChild(magnetSprite);
       }
 
       if (phase === "throwing") {
@@ -265,12 +310,14 @@ export function animateCastLine(
         const arcOffset = Math.sin(progress * Math.PI) * arcHeight;
         magnetWorld.z = baseZ + arcOffset;
 
-        // Update magnet store with current position (automatically tracks peaks)
-        magnetStore.updateMagnetPosition(
-          magnetWorld.x,
-          magnetWorld.y,
-          magnetWorld.z,
-        );
+        if (!skipSink) {
+          // Update magnet store with current position (automatically tracks peaks)
+          magnetStore.updateMagnetPosition(
+            magnetWorld.x,
+            magnetWorld.y,
+            magnetWorld.z,
+          );
+        }
 
         renderProjectedRope(line, viewport, ropeAnchorWorld, magnetWorld, {
           tension: sessionStore?.getState().ropeTension,
@@ -278,29 +325,33 @@ export function animateCastLine(
           lineDebug,
         });
 
-        // Update magnet sprite screen position
+        // Update cast sprite screen position
         const magnetScreen = worldToScreen(magnetWorld, viewport);
-        magnetSprite.x = magnetScreen.x - magnetSprite.width / 2;
-        magnetSprite.y = magnetScreen.y - magnetSprite.height / 2;
+        updateCastSprite(magnetScreen);
 
         // Update debug text with world coordinates and peaks from store
         const peaks = magnetStore.getPeakValues();
         const peakX = getPeakValue(peaks, "X");
         const peakY = getPeakValue(peaks, "Y");
         const peakZ = getPeakValue(peaks, "Z");
-        magnetDebugText.text = `Magnet World:
-X: ${magnetWorld.x.toFixed(2)} (peak: ${peakX?.toFixed(2) ?? "n/a"})
-Y: ${magnetWorld.y.toFixed(2)} (peak: ${peakY?.toFixed(2) ?? "n/a"})
-Z: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
+        magnetDebugText.text = `Magnet World:\nX: ${magnetWorld.x.toFixed(
+          2,
+        )} (peak: ${peakX?.toFixed(2) ?? "n/a"})\nY: ${magnetWorld.y.toFixed(
+          2,
+        )} (peak: ${peakY?.toFixed(2) ?? "n/a"})\nZ: ${magnetWorld.z.toFixed(
+          2,
+        )} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
         magnetDebugText.x = 10;
         magnetDebugText.y = app.screen.height - 80;
 
         // Track velocity for water entry
         const dt = (currentTime - prevTime) / 1000;
         if (dt > 0) {
+          lastVelocityZ = (magnetWorld.z - prevMagnetZ) / dt;
           sinkVelocityZ = -2; // Initial sink velocity (world units/sec)
         }
         prevTime = currentTime;
+        prevMagnetZ = magnetWorld.z;
 
         if (progress >= 1) {
           // Magnet hit water surface
@@ -312,14 +363,20 @@ Z: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
           if (typeof onWaterHit === "function") {
             onWaterHit(magnetWorld.x, magnetWorld.y, WORLD_Z.WATER_SURFACE);
           }
-          phase = "sinking";
-          phaseStartTime = currentTime;
-          magnetWorld.z = WORLD_Z.WATER_SURFACE;
-          sinkVelocityZ = -3; // Fast initial sink (world units/sec)
+          if (skipSink) {
+            phase = "settling";
+            phaseStartTime = currentTime;
+            magnetWorld.z = WORLD_Z.WATER_SURFACE;
+          } else {
+            phase = "sinking";
+            phaseStartTime = currentTime;
+            magnetWorld.z = WORLD_Z.WATER_SURFACE;
+            sinkVelocityZ = -3; // Fast initial sink (world units/sec)
+          }
         }
       }
 
-      if (phase === "sinking") {
+      if (phase === "sinking" && !skipSink) {
         // PHASE 2: Sink from water surface to riverbed
         const dt = Math.min((currentTime - prevTime) / 1000, 0.05);
         prevTime = currentTime;
@@ -369,18 +426,20 @@ Z: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
 
         // Update magnet sprite
         const magnetScreen = worldToScreen(magnetWorld, viewport);
-        magnetSprite.x = magnetScreen.x - magnetSprite.width / 2;
-        magnetSprite.y = magnetScreen.y - magnetSprite.height / 2;
+        updateCastSprite(magnetScreen);
 
         // Update debug text with world coordinates and peaks from store
         const peaks = magnetStore.getPeakValues();
         const peakX = getPeakValue(peaks, "X");
         const peakY = getPeakValue(peaks, "Y");
         const peakZ = getPeakValue(peaks, "Z");
-        magnetDebugText.text = `Magnet World:
-X: ${magnetWorld.x.toFixed(2)} (peak: ${peakX?.toFixed(2) ?? "n/a"})
-Y: ${magnetWorld.y.toFixed(2)} (peak: ${peakY?.toFixed(2) ?? "n/a"})
-Z: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
+        magnetDebugText.text = `Magnet World:\nX: ${magnetWorld.x.toFixed(
+          2,
+        )} (peak: ${peakX?.toFixed(2) ?? "n/a"})\nY: ${magnetWorld.y.toFixed(
+          2,
+        )} (peak: ${peakY?.toFixed(2) ?? "n/a"})\nZ: ${magnetWorld.z.toFixed(
+          2,
+        )} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
         magnetDebugText.x = 10;
         magnetDebugText.y = app.screen.height - 80;
 
@@ -426,24 +485,26 @@ Z: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
 
         // Update magnet sprite
         const magnetScreen = worldToScreen(magnetWorld, viewport);
-        magnetSprite.x = magnetScreen.x - magnetSprite.width / 2;
-        magnetSprite.y = magnetScreen.y - magnetSprite.height / 2;
+        updateCastSprite(magnetScreen);
 
         // Update debug text with world coordinates and peaks from store
         const peaks = magnetStore.getPeakValues();
         const peakX = getPeakValue(peaks, "X");
         const peakY = getPeakValue(peaks, "Y");
         const peakZ = getPeakValue(peaks, "Z");
-        magnetDebugText.text = `Magnet World:
-X: ${magnetWorld.x.toFixed(2)} (peak: ${peakX?.toFixed(2) ?? "n/a"})
-Y: ${magnetWorld.y.toFixed(2)} (peak: ${peakY?.toFixed(2) ?? "n/a"})
-Z: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
+        magnetDebugText.text = `Magnet World:\nX: ${magnetWorld.x.toFixed(
+          2,
+        )} (peak: ${peakX?.toFixed(2) ?? "n/a"})\nY: ${magnetWorld.y.toFixed(
+          2,
+        )} (peak: ${peakY?.toFixed(2) ?? "n/a"})\nZ: ${magnetWorld.z.toFixed(
+          2,
+        )} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
         magnetDebugText.x = 10;
         magnetDebugText.y = app.screen.height - 80;
 
         if (settleProgress >= 1) {
           // Done - clean up cast magnet sprite (drag phase has its own)
-          cleanupDisplayObjects(magnetSprite, magnetDebugText);
+          cleanupDisplayObjects(magnetSprite, floatSprite, magnetDebugText);
 
           // Clean up debug graphics
           // debug overlay removed
@@ -462,6 +523,7 @@ Z: ${magnetWorld.z.toFixed(2)} (peak: ${peakZ?.toFixed(2) ?? "n/a"})`;
             playerX: avatarScreenPos.x,
             playerY: avatarScreenPos.y,
             finalTension: currentTension,
+            finalCastVelocityZ: lastVelocityZ,
             viewport, // Pass viewport for drag phase
             avatarWorld, // Pass avatar world position
             targetWorld, // Pass target world position

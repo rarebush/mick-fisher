@@ -8,9 +8,11 @@ The input system is centrally managed through the `InputManager` class, providin
 
 - **Single Source of Truth**: All input handling flows through InputManager
 - **Clear State Separation**: Physical input state vs logical game state
-- **Robust Tap/Hold Detection**: Timeout-based system prevents race conditions
+- **Hold-First Dragging**: Drag input is hold-only; tap detection is reserved for lift phase
 - **Multi-touch Prevention**: Track active pointer to ignore simultaneous inputs
 - **Graceful Degradation**: Window blur and pointer cancel events handled
+
+**Feb 2026 Update:** Drag tap-to-jerk is removed. Any tap/hold detection logic in this doc is legacy and should be ignored for drag; tap input now applies to lift-phase tapping only.
 
 ## Input State Management
 
@@ -24,8 +26,6 @@ this.activePointerId = null; // Which pointer is active (multi-touch prevention)
 
 // Logical game state
 this.isHoldingForDrag = false; // True when input qualifies as "hold for drag"
-this.lastTapReleaseTime = 0; // For tap history/debugging
-this.holdDetectionTimeout = null; // Pending timeout for hold detection
 this.isCasting = false; // Prevent duplicate casts
 ```
 
@@ -40,83 +40,22 @@ Previously, rapid tapping followed by a hold would fail to register the hold bec
 - `isHoldingForDrag`: Tracks whether this input counts as "holding for drag" in game logic
 - These can be different! Pointer can be down without being a "hold" during the 100ms detection window
 
-## Tap vs Hold Detection
+## Drag Hold Detection (Immediate)
 
-### Timeout-Based Detection (100ms threshold)
+Drag input is **hold-only** in the force/slack model. A pointer down immediately begins a drag hold; pointer up ends it. Tap detection is reserved for lift phase mechanics and is handled separately.
 
 ```javascript
 handleDragMouseDown() {
-  const now = performance.now();
-
-  // Clear any pending detection from previous input
-  if (this.holdDetectionTimeout) {
-    clearTimeout(this.holdDetectionTimeout);
-  }
-
-  // Mark pointer as physically down
   this.isPointerDown = true;
-  this.pointerDownTime = now;
-
-  // Schedule hold detection for 100ms in the future
-  this.holdDetectionTimeout = setTimeout(() => {
-    if (this.isPointerDown) {
-      // Still down after 100ms = this is a hold
-      this.isHoldingForDrag = true;
-      sessionStore.setState({ isDragging: true });
-    }
-  }, 100);
+  this.isHoldingForDrag = true;
+  sessionStore.setState({ isDragging: true });
 }
-```
 
-### Release Detection
-
-```javascript
 handleDragMouseUp() {
-  const now = performance.now();
-  const pressDuration = now - this.pointerDownTime;
-
-  // Clear the pending timeout (might not have fired yet)
-  if (this.holdDetectionTimeout) {
-    clearTimeout(this.holdDetectionTimeout);
-  }
-
   this.isPointerDown = false;
-
-  // Was this a tap? (released before 100ms OR never became a hold)
-  if (pressDuration < 100 || !this.isHoldingForDrag) {
-    // Process as tap: +10% tension boost
-    processTap();
-  }
-
-  // Always clear hold state on release
   this.isHoldingForDrag = false;
   sessionStore.setState({ isDragging: false });
 }
-```
-
-### Why 100ms Threshold?
-
-- **Responsive Feel**: 100ms is imperceptible to players (6 frames at 60fps)
-- **Reliable Distinction**: Taps are typically 50-80ms, holds are 200ms+
-- **Prevents Race Conditions**: No timing windows that block state transitions
-- **Seamless Tap→Hold**: Can tap 3 times then immediately hold without issues
-
-**Old System (200ms timing window):**
-
-```
-Tap 1: Down 0ms → Up 150ms ✓ (tap registered)
-Tap 2: Down 180ms → Up 330ms ✓ (tap registered)
-Tap 3: Down 350ms → Up 500ms ✓ (tap registered)
-Hold: Down 520ms → [BLOCKED! timeSinceLastTap = 20ms < 200ms]
-```
-
-**New System (100ms timeout):**
-
-```
-Tap 1: Down 0ms → Up 150ms ✓ (tap: released before timeout)
-Tap 2: Down 180ms → Up 330ms ✓ (tap: released before timeout)
-Tap 3: Down 350ms → Up 500ms ✓ (tap: released before timeout)
-Hold: Down 520ms → [timeout fires at 620ms] ✓ (hold registered)
 ```
 
 ## Input Channels
@@ -138,7 +77,7 @@ this.app.stage.on("pointercancel", this.handlePointerCancel);
 **Flow:**
 
 1. `pointerdown` → Check game phase → Route to casting or dragging
-2. `pointerup` → Check if tap or hold ended → Process accordingly
+2. `pointerup` → End drag hold (if dragging) or finalize cast input
 3. `pointerupoutside` → Treated same as `pointerup` (drag continues even if pointer leaves canvas)
 4. `pointercancel` → Force reset all input state (browser interrupted)
 
@@ -178,7 +117,7 @@ window.addEventListener("blur", this.handleWindowBlur);
 
 **Why No Tap Detection for Keyboard?**
 
-Spacebar is only used for holding during drag, never for tapping. Tapping for tension boost is pointer-only (allows rapid tapping with thumbs on mobile).
+Spacebar is only used for holding during drag. Drag input is hold-only in the force/slack model.
 
 ```javascript
 handleKeyDown(event) {
@@ -273,8 +212,8 @@ Click 3 locks radius, randomizes final landing point within the donut, and casts
 
 **Allowed Inputs:**
 
-- Pointer down → Start tap/hold detection
-- Pointer up → Process tap or end hold
+- Pointer down → Start hold
+- Pointer up → End hold
 - Space down → Start hold (keyboard)
 - Space up → End hold (keyboard)
 - Debug shortcuts (D, C)
@@ -290,9 +229,9 @@ function updateDragState() {
   const isDragging = sessionStore.getState().isDragging;
 
   if (isDragging) {
-    tension += buildRate * deltaTime; // Holding = tension builds
+    rpm += rampUp * deltaTime; // Holding = rpm ramps
   } else {
-    tension -= decayRate * deltaTime; // Not holding = tension decays
+    rpm -= rampDown * deltaTime; // Not holding = rpm decays
   }
 }
 ```
@@ -377,6 +316,8 @@ destroy() {
 ```
 
 ## Edge Cases Handled
+
+_Legacy note:_ Tap-related edge cases below are historical. Drag input is hold-only in the current model; tap logic applies to lift-phase input.
 
 ### 1. Rapid Tap → Hold Transition
 

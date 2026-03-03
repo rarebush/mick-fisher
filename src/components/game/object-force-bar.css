@@ -1,0 +1,68 @@
+.object-force {
+  width: 240px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: linear-gradient(
+    135deg,
+    rgba(24, 20, 26, 0.92),
+    rgba(12, 10, 14, 0.94)
+  );
+  border: 1px solid rgba(182, 142, 125, 0.25);
+  color: #f6f1ee;
+  font-family: "Space Grotesk", "Trebuchet MS", "Segoe UI", sans-serif;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: 0 10px 24px rgba(9, 7, 10, 0.45);
+}
+
+.object-force__header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.object-force__track {
+  position: relative;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(44, 36, 31, 0.8);
+  border: 1px solid rgba(182, 142, 125, 0.25);
+  overflow: hidden;
+}
+
+.object-force__fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  transition: width 0.12s ease-out;
+}
+
+.object-force__fill.away {
+  left: 50%;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 168, 84, 0.4),
+    rgba(238, 92, 64, 0.9)
+  );
+}
+
+.object-force__fill.toward {
+  right: 50%;
+  background: linear-gradient(
+    270deg,
+    rgba(113, 205, 206, 0.4),
+    rgba(76, 160, 187, 0.85)
+  );
+}
+
+.object-force__center {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  left: 50%;
+  width: 2px;
+  background: rgba(240, 230, 220, 0.8);
+}

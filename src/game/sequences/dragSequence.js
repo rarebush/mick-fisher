@@ -13,18 +13,23 @@ import {
   worldToScreen,
   screenToWorld,
   getAvatarHandWorldPosition,
+  getAvatarWorldPosition,
 } from "../mechanics/worldConstants.js";
 import useMagnetStore from "../state/magnetStore.js";
 import {
   updateDragPhysics,
   updateWaitPhase,
   createFishTarget,
-  HEAT_CONSTANTS,
-} from "../physics/physicsSystem.js";
-import { magnitude, speedFromDelta } from "../physics/vectorUtils.js";
+  LINE_CONDITION_CONSTANTS,
+  STRIKE_CONSTANTS,
+  getSpoolCapacity,
+} from "../physics/physicsExports.js";
+import { magnitude, speedFromDelta, subtract } from "../physics/vectorUtils.js";
 import { rollFishSize } from "../data/fishDatabase.js";
 import { getFishTableForLocation } from "../data/locationDatabase.js";
 import { emitAudioEvent } from "../audio/audioEvents.js";
+
+const MAX_DRAG_PHYSICS_DELTA_TIME = 0.067;
 
 /**
  * Calculate current item WORLD position during drag
@@ -89,7 +94,6 @@ export function updateRopePhysics(
 ) {
   void _tension;
   const phase = sessionStore.getState().phase;
-  const phaseProgress = sessionStore.getState().phaseProgress;
 
   // Skip updates during cast animation or reel-in - those are controlled by animations
   if (
@@ -99,12 +103,6 @@ export function updateRopePhysics(
     phase === "settling" ||
     phase === "reeling"
   ) {
-    // Only log occasionally to avoid spam
-    if (Math.random() < 0.1) {
-      console.log(
-        `[ROPE] Skipping physics update during ${phase} phase (progress: ${(phaseProgress * 100).toFixed(0)}%) - animation controls the rope`,
-      );
-    }
     return null;
   }
 
@@ -136,11 +134,13 @@ export function updateRopePhysics(
       }
     }
   } else if (castPosition) {
-    // During cast/settle phase, use stored cast position
+    // During cast/settle/wait phases, use stored cast position
+    const castPlaneZ =
+      phase === "waiting" ? WORLD_Z.WATER_SURFACE : WORLD_Z.RIVERBED;
     const castWorld = screenToWorld(
       castPosition.x,
       castPosition.y,
-      WORLD_Z.RIVERBED,
+      castPlaneZ,
       viewport,
     );
     magnetWorld = castWorld;
@@ -189,7 +189,15 @@ export async function updateDragMechanics(
   const newLastDragUpdateTime = now;
 
   if (gamePhase === "waiting" && physicsState.waitState) {
-    const waitResult = updateWaitPhase(physicsState.waitState, deltaTime);
+    const strikeQueued = sessionStore.getState().strikeQueued;
+    const waitResult = updateWaitPhase(
+      physicsState.waitState,
+      deltaTime,
+      strikeQueued,
+    );
+    if (strikeQueued) {
+      sessionStore.getState().clearStrike();
+    }
     sessionStore
       .getState()
       .setPhysicsState({ waitState: waitResult.waitState });
@@ -198,6 +206,18 @@ export async function updateDragMechanics(
     }
     if (waitResult.events.bite) {
       emitAudioEvent({ type: "fish-bite" });
+    }
+    if (waitResult.events.strikeStart) {
+      emitAudioEvent({ type: "fish-strike-alert" });
+      sessionStore
+        .getState()
+        .triggerScreenShake(
+          STRIKE_CONSTANTS.SCREEN_SHAKE_INTENSITY,
+          STRIKE_CONSTANTS.SCREEN_SHAKE_DURATION,
+        );
+    }
+    if (waitResult.events.strike) {
+      emitAudioEvent({ type: "fish-strike" });
       const locationId = gameStore.getState().currentLocation;
       const fishTable = getFishTableForLocation(
         locationId,
@@ -212,6 +232,11 @@ export async function updateDragMechanics(
       );
       if (fish) {
         const fishId = `fish_${species}_${size}`;
+        const avatarWorld = getAvatarWorldPosition();
+        const rawLineLength = magnitude(subtract(fish.position, avatarWorld));
+        const spoolCapacity = getSpoolCapacity(physicsState.equipment);
+        const lineLength = Math.min(rawLineLength, spoolCapacity);
+        const spoolRemaining = Math.max(0, spoolCapacity - lineLength);
         sessionStore.getState().setPhysicsState({
           active: true,
           mode: "dragging",
@@ -219,6 +244,14 @@ export async function updateDragMechanics(
           target: fish,
           tension: 0,
           lastTension: 0,
+          objectState: "kinetic",
+          lineLength,
+          straightLineDistance: lineLength,
+          slack: 0,
+          lineTaut: true,
+          spoolCapacity,
+          spoolRemaining,
+          breakThreshold: physicsState.equipment?.lineStrength ?? 0,
           waitState: null,
         });
         sessionStore.getState().setRopeTension(0);
@@ -241,8 +274,8 @@ export async function updateDragMechanics(
         gameStore.getState().setGamePhase("idle");
       }
     }
-    if (waitResult.events.timeout) {
-      emitAudioEvent({ type: "fish-timeout" });
+    if (waitResult.events.strikeMissed) {
+      emitAudioEvent({ type: "fish-strike-missed" });
       if (onDragSuccess) {
         onDragSuccess();
       }
@@ -255,7 +288,7 @@ export async function updateDragMechanics(
     }
     return {
       lastDragUpdateTime: newLastDragUpdateTime,
-      dragStartTime: waitResult.events.bite ? now : dragStartTime,
+      dragStartTime: waitResult.events.strike ? now : dragStartTime,
     };
   }
 
@@ -267,7 +300,8 @@ export async function updateDragMechanics(
     ? { x: physicsState.target.position.x, y: physicsState.target.position.y }
     : null;
 
-  const dragResult = updateDragPhysics(deltaTime, isDragging, physicsState);
+  const safeDeltaTime = Math.min(deltaTime, MAX_DRAG_PHYSICS_DELTA_TIME);
+  const dragResult = updateDragPhysics(safeDeltaTime, isDragging, physicsState);
   sessionStore.getState().setPhysicsState(dragResult.state);
   sessionStore.getState().setRopeTension(dragResult.state.tension);
   getItemWorldPosition(app, sessionStore);
@@ -275,7 +309,7 @@ export async function updateDragMechanics(
   if (prevTargetPos && dragResult.state.target) {
     const dx = dragResult.state.target.position.x - prevTargetPos.x;
     const dy = dragResult.state.target.position.y - prevTargetPos.y;
-    const speed = speedFromDelta(dx, dy, deltaTime);
+    const speed = speedFromDelta(dx, dy, safeDeltaTime);
     if (speed > 0.01 && typeof window !== "undefined" && window.getPixiApp) {
       const pixiApp = window.getPixiApp();
       pixiApp?.handleMagnetDragSplat(
@@ -286,19 +320,16 @@ export async function updateDragMechanics(
     }
   }
 
-  const prevZone = getTensionZone(physicsState.tension);
-  const nextZone = getTensionZone(dragResult.state.tension);
+  const prevZone = getTensionZone(
+    physicsState.tension,
+    physicsState.dragThresholdCurrent,
+  );
+  const nextZone = getTensionZone(
+    dragResult.state.tension,
+    dragResult.state.dragThresholdCurrent,
+  );
   if (prevZone !== nextZone) {
     emitAudioEvent({ type: "tension-zone-change", zone: nextZone });
-  }
-  if (physicsState.heat <= 0 && dragResult.state.heat > 0) {
-    emitAudioEvent({ type: "heat-start" });
-  }
-  if (
-    dragResult.state.heat >= HEAT_CONSTANTS.REDLINE_THRESHOLD &&
-    physicsState.heat < HEAT_CONSTANTS.REDLINE_THRESHOLD
-  ) {
-    emitAudioEvent({ type: "heat-redline" });
   }
   if (
     physicsState.slip?.percent < 0.8 &&
@@ -306,46 +337,21 @@ export async function updateDragMechanics(
   ) {
     emitAudioEvent({ type: "slip-warning" });
   }
-  if (
-    physicsState.lineStress?.percent < 0.8 &&
-    dragResult.state.lineStress?.percent >= 0.8
-  ) {
-    emitAudioEvent({ type: "line-stress-warning" });
-  }
-
-  if (Math.random() < 0.02) {
-    console.log(
-      `[DRAG] T:${dragResult.state.tension.toFixed(0)}% | Speed:${magnitudeOrZero(
-        dragResult.state.target?.velocity,
-      ).toFixed(
-        2,
-      )} | Dist:${dragResult.state.distanceToShore.toFixed(2)} | Type:${dragResult.state.targetType}`,
-    );
-  }
 
   if (dragResult.events.reachedShore) {
-    const finalSlip = sessionStore.getState().completeDrag();
-    const dragDuration = (now - dragStartTime) / 1000;
-
-    console.log(
-      `[DRAG COMPLETE] Duration:${dragDuration.toFixed(1)}s | AvgSpeed:${(dragResult.state.distanceToShore / Math.max(0.01, dragDuration)).toFixed(2)}m/s | Slip:${finalSlip.toFixed(1)}`,
-    );
+    sessionStore.getState().completeDrag();
 
     // Add to inventory
     if (inventoryStore) {
       const item = currentCast?.item || getItem(currentCast.itemId);
       if (item) {
         inventoryStore.getState().addItem(item);
-        console.log("Added item to inventory:", item.name);
       }
     }
 
     // Remove from engaged items
     if (currentCast.itemInstanceId) {
       const currentLocation = gameStore.getState().currentLocation;
-      console.log(
-        `[RETRIEVE] Removing engaged item: ${currentCast.itemInstanceId} from location: ${currentLocation}`,
-      );
       locationStore
         .getState()
         .removeEngagedItem(currentLocation, currentCast.itemInstanceId);
@@ -367,14 +373,13 @@ export async function updateDragMechanics(
   else if (
     dragResult.events.detached ||
     dragResult.events.lineSnapped ||
-    dragResult.events.overheated
+    dragResult.events.spoolEmpty
   ) {
     const reason = dragResult.events.detached
       ? "slip-failure"
       : dragResult.events.lineSnapped
         ? "line-snapped"
-        : "tension-overload";
-    console.log("Drag failed! Reason:", reason);
+        : "spool-empty";
 
     // Immediately deactivate drag to prevent re-triggering failure on next frame
     sessionStore.getState().deactivateDrag();
@@ -426,13 +431,8 @@ function selectRandomFish(fishTable) {
   return entries[0]?.[0] || "carp";
 }
 
-function magnitudeOrZero(vector) {
-  if (!vector) return 0;
-  return magnitude({ x: vector.x || 0, y: vector.y || 0 });
-}
-
-function getTensionZone(tension) {
-  if (tension >= 75) return "redline";
-  if (tension >= 40) return "working";
+function getTensionZone(tension, dragThresholdCurrent = 0) {
+  if (tension >= LINE_CONDITION_CONSTANTS.HOT_ZONE_THRESHOLD) return "redline";
+  if (tension >= dragThresholdCurrent) return "working";
   return "low";
 }

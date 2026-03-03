@@ -49,6 +49,8 @@ const useGameStore = create((set, get) => ({
   currentSpeed: 1, // Water flow speed multiplier (1 = default)
   choppiness: 1, // Water choppiness multiplier (1 = default)
   cloudCover: 0.5, // Cloud cover 0-1 (0 = clear, 1 = overcast)
+  windSpeed: 1, // Wind speed multiplier for cloud drift (1 = default)
+  windDirAngle: 0.5, // Wind direction slider 0-1 (0.5 = up)
   reflectionAlpha: 0.35, // Reflection opacity 0-1 (default 0.35)
   waterAlpha: 0.7, // Water surface base opacity (default 0.7)
 
@@ -83,6 +85,16 @@ const useGameStore = create((set, get) => ({
     set({
       cloudCover: Number.isFinite(val) ? Math.max(0, Math.min(1, val)) : 0.5,
     });
+  },
+
+  setWindSpeed: (windSpeed) => {
+    const val = parseFloat(windSpeed);
+    set({ windSpeed: Number.isFinite(val) ? val : 1 });
+  },
+
+  setWindDirAngle: (angle) => {
+    const val = parseFloat(angle);
+    set({ windDirAngle: Number.isFinite(val) ? clamp(val, 0, 1) : 0.5 });
   },
 
   setReflectionAlpha: (alpha) => {
@@ -187,6 +199,8 @@ const useGameStore = create((set, get) => ({
       currentSpeed: 1,
       choppiness: 1,
       cloudCover: 0.5,
+      windSpeed: 1,
+      windDirAngle: 0.5,
       reflectionAlpha: 0.35,
       waterAlpha: 0.7,
       sessionStats: {

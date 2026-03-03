@@ -9,8 +9,8 @@
  * carry the water hue based on their brightness. Applied once at setup (not
  * per-frame) for performance.
  *
- * Filter chain on riverbed: [underwaterTintFilter, causticsFilter] — tint first
- * so caustics add warm highlights on the tinted base. Submerged walls get the
+ * Filter chain on riverbed: [underwaterTintFilter] — caustics are currently
+ * disabled, so only the underwater tint is applied. Submerged walls get the
  * tint filter only.
  *
  * Alternative considered: PixiJS advanced `luminosity` blend mode
@@ -24,7 +24,7 @@
  */
 
 import * as PIXI from "pixi.js";
-import { ColorMatrixFilter, DisplacementFilter } from "pixi.js";
+import { BlurFilter, ColorMatrixFilter, DisplacementFilter } from "pixi.js";
 import { loadSpriteSheet } from "../graphics/spriteLoader.js";
 import { createWaterSurfaceShader } from "../graphics/waterSystem/waterSurfaceShader.js";
 import { createSparkleShader } from "../graphics/waterSystem/sparkleShader.js";
@@ -198,24 +198,30 @@ async function buildRiverbedTiles({
     });
   }
 
-  const riverbedDepthCoeffs = computeDepthCoeffs(WORLD_Z.RIVERBED, viewport);
-  const causticsFilter = createCausticsShader({
-    depthCoeffs: riverbedDepthCoeffs,
-    causticsScale: 6,
-    causticsSpeed: 0.4,
-    causticsIntensity: 0.15,
-    causticsColor: [1.0, 0.95, 0.8],
-    flowDir: [flowDirX, flowDirY],
-    noiseBasisX,
-    noiseBasisY,
-  });
+  const enableUnderwaterCaustics = false;
+  let causticsFilter = null;
+  if (enableUnderwaterCaustics) {
+    const riverbedDepthCoeffs = computeDepthCoeffs(WORLD_Z.RIVERBED, viewport);
+    causticsFilter = createCausticsShader({
+      depthCoeffs: riverbedDepthCoeffs,
+      causticsScale: 6,
+      causticsSpeed: 0.4,
+      causticsIntensity: 0.15,
+      causticsColor: [1.0, 0.95, 0.8],
+      flowDir: [flowDirX, flowDirY],
+      noiseBasisX,
+      noiseBasisY,
+    });
+  }
   const waterColorNear = [0.12, 0.24, 0.2];
   const waterColorFar = [0.05, 0.13, 0.12];
 
   const underwaterTintFilter = new ColorMatrixFilter();
   applyUnderwaterTint(underwaterTintFilter, waterColorNear);
 
-  riverbedTiles.filters = [underwaterTintFilter, causticsFilter];
+  riverbedTiles.filters = causticsFilter
+    ? [underwaterTintFilter, causticsFilter]
+    : [underwaterTintFilter];
   submergedWallTiles.filters = [underwaterTintFilter];
 
   return {
@@ -260,14 +266,31 @@ function buildWaterSurfaceAndSparkle({
     noiseBasisX,
     noiseBasisY,
   });
+  sparkleTiles.blendMode = "add";
   sparkleTiles.filters = [sparkleShader];
   sparkleTiles.addChild(createWaterSurfacePolygon(viewport, 0x000000, 0));
+
+  const sparkleBloomTiles = new PIXI.Container();
+  const sparkleBloomShader = createSparkleShader({
+    flowDir: [flowDirX, flowDirY],
+    noiseBasisX,
+    noiseBasisY,
+  });
+  const sparkleBloomFilter = new BlurFilter();
+  sparkleBloomFilter.strength = 4;
+  sparkleBloomFilter.quality = 3;
+  sparkleBloomFilter.repeatEdgePixels = true;
+  sparkleBloomTiles.blendMode = "add";
+  sparkleBloomTiles.filters = [sparkleBloomShader, sparkleBloomFilter];
+  sparkleBloomTiles.addChild(createWaterSurfacePolygon(viewport, 0x000000, 0));
 
   return {
     waterSurfaceTiles,
     waterSurfaceShader,
     sparkleTiles,
     sparkleShader,
+    sparkleBloomTiles,
+    sparkleBloomShader,
   };
 }
 
@@ -602,6 +625,7 @@ function assembleWaterGroup({
   foamTiles,
   edgeFoamTiles,
   sparkleTiles,
+  sparkleBloomTiles,
   waterObjectsAbove,
 }) {
   const displacedLayers = new PIXI.Container();
@@ -628,6 +652,7 @@ function assembleWaterGroup({
   const waterGroup = new PIXI.Container();
   waterGroup.addChild(
     displacedLayers,
+    sparkleBloomTiles,
     sparkleTiles,
     foamTiles,
     edgeFoamTiles,
@@ -638,6 +663,7 @@ function assembleWaterGroup({
   applyWaterSurfaceMask(foamTiles, waterGroup, viewport);
   applyWaterSurfaceMask(edgeFoamTiles, waterGroup, viewport);
   applyWaterSurfaceMask(sparkleTiles, waterGroup, viewport);
+  applyWaterSurfaceMask(sparkleBloomTiles, waterGroup, viewport);
 
   return { waterGroup, displacementSprite, displacementFilter };
 }
@@ -705,6 +731,7 @@ export async function createWaterLayers(
   });
   const { waterSurfaceTiles, waterSurfaceShader, sparkleTiles, sparkleShader } =
     surfaceResult;
+  const { sparkleBloomTiles, sparkleBloomShader } = surfaceResult;
 
   const foamResult = buildFoamSystem({
     viewport,
@@ -751,6 +778,7 @@ export async function createWaterLayers(
       foamTiles,
       edgeFoamTiles,
       sparkleTiles,
+      sparkleBloomTiles,
       waterObjectsAbove,
     });
 
@@ -764,6 +792,7 @@ export async function createWaterLayers(
     waterSurfaceShader,
     fluidFoamDebugOverlay,
     sparkleShader,
+    sparkleBloomShader,
     edgeFoamShader,
     fluidFoamCoordinator,
     displacementSprite,

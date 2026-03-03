@@ -1,5 +1,11 @@
 import { PHYSICS_CONSTANTS } from "./physicsConstants.js";
-import { magnitude, normalize, subtract } from "./vectorUtils.js";
+import {
+  clamp,
+  dotProduct,
+  magnitude,
+  normalize,
+  subtract,
+} from "./vectorUtils.js";
 
 export function getEngineTorque(tension, equipment) {
   const normalizedTension = tension / 100;
@@ -14,6 +20,55 @@ export function getEngineTorque(tension, equipment) {
     torqueMultiplier = 0.6 + zoneProgress * 0.4;
   }
   return (equipment?.maxPullForce ?? 0) * torqueMultiplier;
+}
+
+export function getLineAxis(avatarPosition, targetPosition) {
+  const delta = subtract(targetPosition, avatarPosition);
+  const distance = magnitude(delta);
+  if (distance <= 0.0001) {
+    return { axis: { x: 0, y: 1 }, distance: 0 };
+  }
+  return { axis: { x: delta.x / distance, y: delta.y / distance }, distance };
+}
+
+export function getSignedAxisVelocity(velocity, axis) {
+  return dotProduct(velocity, axis);
+}
+
+export function getDragThresholdMax(equipment) {
+  return (
+    equipment?.dragThresholdMax ?? PHYSICS_CONSTANTS.DEFAULT_DRAG_THRESHOLD_MAX
+  );
+}
+
+export function getDragThresholdMin(equipment) {
+  return (
+    equipment?.dragThresholdMin ?? PHYSICS_CONSTANTS.DEFAULT_DRAG_THRESHOLD_MIN
+  );
+}
+
+export function getDragThresholdCurrent(equipment) {
+  const max = getDragThresholdMax(equipment);
+  const min = Math.min(getDragThresholdMin(equipment), max);
+  const current = equipment?.dragThresholdCurrent;
+  if (Number.isFinite(current)) {
+    return clamp(current, min, max);
+  }
+  return max;
+}
+
+export function getSpoolCapacity(equipment) {
+  return equipment?.spoolCapacity ?? PHYSICS_CONSTANTS.DEFAULT_SPOOL_CAPACITY;
+}
+
+export function getAvatarPullForceFromRpm(rpm, equipment) {
+  const rpmMax = equipment?.rpmMax ?? PHYSICS_CONSTANTS.RPM_MAX;
+  const powerExponent =
+    equipment?.rpmPowerExponent ?? PHYSICS_CONSTANTS.RPM_POWER_EXPONENT;
+  const normalized = rpmMax > 0 ? clamp(rpm / rpmMax, 0, 1) : 0;
+  const curve = Math.pow(normalized, powerExponent);
+  const maxPullForce = equipment?.maxPullForce ?? 0;
+  return maxPullForce * curve;
 }
 
 export function getPullForce(tension, equipment, target, avatarPosition) {

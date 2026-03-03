@@ -2,11 +2,80 @@ import { getProjectionMetrics } from "../mechanics/worldConstants.js";
 import { updateCastAimOverlay } from "../rendering/castAimRenderer.js";
 import { updateSpriteTicker } from "../rendering/spriteTicker.js";
 import { updateRopeTicker } from "../rendering/ropeTicker.js";
+import { updateFloatTicker } from "../rendering/floatTicker.js";
 import { updateDragTicker } from "../sequences/dragTicker.js";
+
+export function tickerUpdateScreenShake(pixiApp) {
+  if (!pixiApp.app || !pixiApp.sceneContainer || !pixiApp.sessionStore) {
+    return;
+  }
+
+  const sessionState = pixiApp.sessionStore.getState();
+  const requestId = sessionState.screenShakeRequestId || 0;
+  const request = sessionState.screenShakeRequest;
+  if (requestId !== pixiApp._screenShakeRequestId && request) {
+    pixiApp._screenShakeRequestId = requestId;
+    pixiApp._screenShakeRemaining = request.duration;
+    pixiApp._screenShakeDuration = request.duration;
+    pixiApp._screenShakeIntensity = request.intensity;
+    pixiApp._screenShakeFrequency = request.frequency || 30;
+    pixiApp._screenShakeSampleTimer = 0;
+  }
+
+  if (
+    pixiApp._screenShakeRemaining <= 0 ||
+    pixiApp._screenShakeIntensity <= 0
+  ) {
+    if (pixiApp._screenShakeActive) {
+      pixiApp.sceneContainer.x = 0;
+      pixiApp.sceneContainer.y = 0;
+      pixiApp._screenShakeActive = false;
+    }
+    return;
+  }
+
+  const deltaSeconds = pixiApp.app.ticker.deltaMS / 1000;
+  const progress =
+    pixiApp._screenShakeDuration > 0
+      ? pixiApp._screenShakeRemaining / pixiApp._screenShakeDuration
+      : 0;
+  const amplitude = pixiApp._screenShakeIntensity * Math.max(0, progress);
+
+  const sampleInterval = 1 / Math.max(1, pixiApp._screenShakeFrequency || 30);
+  pixiApp._screenShakeSampleTimer -= deltaSeconds;
+  if (pixiApp._screenShakeSampleTimer <= 0) {
+    const angle = Math.random() * Math.PI * 2;
+    pixiApp._screenShakeOffset = {
+      x: Math.cos(angle),
+      y: Math.sin(angle),
+    };
+    pixiApp._screenShakeSampleTimer = sampleInterval;
+  }
+
+  pixiApp._screenShakeActive = true;
+  pixiApp.sceneContainer.x = pixiApp._screenShakeOffset.x * amplitude;
+  pixiApp.sceneContainer.y = pixiApp._screenShakeOffset.y * amplitude;
+
+  pixiApp._screenShakeRemaining -= deltaSeconds;
+  if (pixiApp._screenShakeRemaining <= 0) {
+    pixiApp.sceneContainer.x = 0;
+    pixiApp.sceneContainer.y = 0;
+    pixiApp._screenShakeActive = false;
+  }
+}
 
 export function tickerUpdateSprites(pixiApp) {
   updateSpriteTicker({
     spriteManager: pixiApp.spriteManager,
+    sessionStore: pixiApp.sessionStore,
+    gameStore: pixiApp.gameStore,
+    app: pixiApp.app,
+  });
+}
+
+export function tickerUpdateFloat(pixiApp) {
+  updateFloatTicker({
+    floatManager: pixiApp.floatManager,
     sessionStore: pixiApp.sessionStore,
     gameStore: pixiApp.gameStore,
     app: pixiApp.app,
@@ -66,60 +135,70 @@ export function tickerUpdateCastAim(pixiApp) {
   });
 }
 
-export function tickerUpdateCaustics(pixiApp) {
+// Updates all water-related visuals (caustics, foam, sparkle, reflections).
+export function tickerUpdateWaterEffects(pixiApp) {
   if (!pixiApp.app || pixiApp.isDestroyed || !pixiApp.environmentLayers) return;
 
-  const dt = pixiApp.app.ticker.deltaMS / 1000;
+  const deltaSeconds = pixiApp.app.ticker.deltaMS / 1000;
 
-  const targetSpeed = pixiApp.environmentLayers.currentSpeed ?? 1;
+  const targetCurrentSpeed = pixiApp.environmentLayers.currentSpeed ?? 1;
   const targetChoppiness = pixiApp.environmentLayers.choppiness ?? 1;
   const targetCloudCover = pixiApp.environmentLayers.cloudCover ?? 0.5;
 
-  const transitionRate = 3;
-  const blend = 1 - Math.exp(-transitionRate * dt);
+  const smoothingRate = 3;
+  const smoothingBlend = 1 - Math.exp(-smoothingRate * deltaSeconds);
 
   pixiApp._smoothCurrentSpeed +=
-    (targetSpeed - pixiApp._smoothCurrentSpeed) * blend;
+    (targetCurrentSpeed - pixiApp._smoothCurrentSpeed) * smoothingBlend;
   pixiApp._smoothChoppiness +=
-    (targetChoppiness - pixiApp._smoothChoppiness) * blend;
+    (targetChoppiness - pixiApp._smoothChoppiness) * smoothingBlend;
   pixiApp._smoothCloudCover +=
-    (targetCloudCover - pixiApp._smoothCloudCover) * blend;
+    (targetCloudCover - pixiApp._smoothCloudCover) * smoothingBlend;
 
-  const currentSpeed = pixiApp._smoothCurrentSpeed;
-  const choppiness = pixiApp._smoothChoppiness;
+  const smoothedCurrentSpeed = pixiApp._smoothCurrentSpeed;
+  const smoothedChoppiness = pixiApp._smoothChoppiness;
 
-  const FLOW_FPS_STEP = 1 / 24;
-  pixiApp._flowAccumTime += dt;
-  if (pixiApp._flowAccumTime >= FLOW_FPS_STEP) {
-    const steps = Math.floor(pixiApp._flowAccumTime / FLOW_FPS_STEP);
-    pixiApp._flowAccumTime -= steps * FLOW_FPS_STEP;
+  const FLOW_STEP_SECONDS = 1 / 24;
+  pixiApp._flowAccumTime += deltaSeconds;
+  if (pixiApp._flowAccumTime >= FLOW_STEP_SECONDS) {
+    const steps = Math.floor(pixiApp._flowAccumTime / FLOW_STEP_SECONDS);
+    pixiApp._flowAccumTime -= steps * FLOW_STEP_SECONDS;
     pixiApp._flowPhase =
-      (pixiApp._flowPhase + steps * FLOW_FPS_STEP * currentSpeed) % 1000;
-    pixiApp._flowStepSpeed = currentSpeed;
+      (pixiApp._flowPhase + steps * FLOW_STEP_SECONDS * smoothedCurrentSpeed) %
+      1000;
+    pixiApp._flowStepSpeed = smoothedCurrentSpeed;
   }
   const flowPhase = pixiApp._flowPhase;
-  const flowStepSpeed = pixiApp._flowStepSpeed ?? currentSpeed;
+  const flowStepSpeed = pixiApp._flowStepSpeed ?? smoothedCurrentSpeed;
 
   const causticsFilter = pixiApp.environmentLayers.causticsFilter;
   if (causticsFilter) {
-    const cu = causticsFilter.resources.causticsUniforms.uniforms;
-    cu.uTime = (cu.uTime + dt) % 1000;
-    cu.uFlowPhase = flowPhase;
-    cu.uChoppiness = choppiness;
+    const causticsUniforms = causticsFilter.resources.causticsUniforms.uniforms;
+    causticsUniforms.uTime = (causticsUniforms.uTime + deltaSeconds) % 1000;
+    causticsUniforms.uFlowPhase = flowPhase;
+    causticsUniforms.uChoppiness = smoothedChoppiness;
   }
 
   const sparkleShader = pixiApp.environmentLayers.sparkleShader;
   if (sparkleShader) {
-    const su = sparkleShader.resources.sparkleUniforms.uniforms;
-    su.uFlowPhase = flowPhase;
-    su.uChoppiness = choppiness;
+    const sparkleUniforms = sparkleShader.resources.sparkleUniforms.uniforms;
+    sparkleUniforms.uFlowPhase = flowPhase;
+    sparkleUniforms.uChoppiness = smoothedChoppiness;
+  }
+
+  const sparkleBloomShader = pixiApp.environmentLayers.sparkleBloomShader;
+  if (sparkleBloomShader) {
+    const sparkleBloomUniforms =
+      sparkleBloomShader.resources.sparkleUniforms.uniforms;
+    sparkleBloomUniforms.uFlowPhase = flowPhase;
+    sparkleBloomUniforms.uChoppiness = smoothedChoppiness;
   }
 
   const fluidFoamCoordinator = pixiApp.environmentLayers.fluidFoamCoordinator;
   if (fluidFoamCoordinator) {
     fluidFoamCoordinator.setFlowSpeed(flowStepSpeed);
-    fluidFoamCoordinator.setChoppiness(choppiness);
-    fluidFoamCoordinator.update(dt);
+    fluidFoamCoordinator.setChoppiness(smoothedChoppiness);
+    fluidFoamCoordinator.update(deltaSeconds);
 
     const debugOverlay = pixiApp.environmentLayers.fluidFoamDebugOverlay;
     if (debugOverlay) {
@@ -134,55 +213,85 @@ export function tickerUpdateCaustics(pixiApp) {
 
   const edgeFoamShader = pixiApp.environmentLayers.edgeFoamShader;
   if (edgeFoamShader) {
-    const eu = edgeFoamShader.resources.edgeFoamUniforms.uniforms;
-    eu.uFlowPhase = flowPhase;
-    eu.uChoppiness = choppiness;
-    eu.uCurrentSpeed = flowStepSpeed;
+    const edgeFoamUniforms = edgeFoamShader.resources.edgeFoamUniforms.uniforms;
+    edgeFoamUniforms.uFlowPhase = flowPhase;
+    edgeFoamUniforms.uChoppiness = smoothedChoppiness;
+    edgeFoamUniforms.uCurrentSpeed = flowStepSpeed;
   }
 
   const reflectionShader = pixiApp.environmentLayers.reflectionShader;
   if (reflectionShader) {
-    const ru = reflectionShader.resources.reflectionUniforms.uniforms;
+    const reflectionUniforms =
+      reflectionShader.resources.reflectionUniforms.uniforms;
     const baseCloudDrift = 0.033;
-    ru.uTime =
-      (ru.uTime +
-        dt * baseCloudDrift * (pixiApp.environmentLayers.windSpeed ?? 1)) %
+    reflectionUniforms.uTime =
+      (reflectionUniforms.uTime +
+        deltaSeconds *
+          baseCloudDrift *
+          (pixiApp.environmentLayers.windSpeed ?? 1)) %
       1000;
-    const wd = pixiApp.environmentLayers.windDir;
-    if (wd) {
-      ru.uWindDir[0] = wd[0];
-      ru.uWindDir[1] = wd[1];
+    const baseCloudMorph = 0.0003;
+    const morphSpeed = pixiApp.environmentLayers.cloudMorphSpeed ?? 1;
+    reflectionUniforms.uMorphTime =
+      (reflectionUniforms.uMorphTime +
+        deltaSeconds * baseCloudMorph * morphSpeed) %
+      1000;
+    const windDir = pixiApp.environmentLayers.windDir;
+    if (windDir) {
+      reflectionUniforms.uWindDir[0] = windDir[0];
+      reflectionUniforms.uWindDir[1] = windDir[1];
     }
     const cloudCover = pixiApp._smoothCloudCover;
-    ru.uCloudThreshold = 0.25 - cloudCover * 0.4;
+    reflectionUniforms.uCloudCover = cloudCover;
+    const lightDir = pixiApp.environmentLayers.cloudLightDir;
+    if (lightDir) {
+      reflectionUniforms.uLightDir[0] = lightDir[0];
+      reflectionUniforms.uLightDir[1] = lightDir[1];
+    }
+    if (Number.isFinite(pixiApp.environmentLayers.cloudLightOffset)) {
+      reflectionUniforms.uLightOffset =
+        pixiApp.environmentLayers.cloudLightOffset;
+    }
+    if (Number.isFinite(pixiApp.environmentLayers.cloudLightStrength)) {
+      reflectionUniforms.uLightStrength =
+        pixiApp.environmentLayers.cloudLightStrength;
+    }
+    if (Number.isFinite(pixiApp.environmentLayers.cloudSoftEdges)) {
+      reflectionUniforms.uSoftEdges = pixiApp.environmentLayers.cloudSoftEdges;
+    }
+    if (Number.isFinite(pixiApp.environmentLayers.cloudSoftLight)) {
+      reflectionUniforms.uSoftLight = pixiApp.environmentLayers.cloudSoftLight;
+    }
 
     const reflectionAlpha = pixiApp.gameStore.getState().reflectionAlpha;
-    ru.uReflectionAlpha = reflectionAlpha;
+    reflectionUniforms.uReflectionAlpha = reflectionAlpha;
   }
 
   const waterSurfaceShader = pixiApp.environmentLayers.waterSurfaceShader;
   if (waterSurfaceShader) {
-    const wu = waterSurfaceShader.resources.waterUniforms.uniforms;
+    const waterUniforms = waterSurfaceShader.resources.waterUniforms.uniforms;
     const gameState = pixiApp.gameStore.getState();
-    wu.uWaterAlpha = gameState.waterAlpha;
+    waterUniforms.uWaterAlpha = gameState.waterAlpha;
   }
 
   const displacementFilter = pixiApp.environmentLayers.displacementFilter;
   if (displacementFilter) {
     const baseScale = 4;
-    displacementFilter.scale.x = baseScale * choppiness;
-    displacementFilter.scale.y = baseScale * choppiness;
+    displacementFilter.scale.x = baseScale * smoothedChoppiness;
+    displacementFilter.scale.y = baseScale * smoothedChoppiness;
   }
 
-  const sprite = pixiApp.environmentLayers.displacementSprite;
-  if (sprite) {
-    const baseFlowSpeed = 12;
-    const FPS_STEP = 1 / 24;
-    pixiApp._displacementTime += dt;
-    if (pixiApp._displacementTime >= FPS_STEP) {
-      const steps = Math.floor(pixiApp._displacementTime / FPS_STEP);
-      pixiApp._displacementTime -= steps * FPS_STEP;
-      const elapsed = steps * FPS_STEP;
+  const displacementSprite = pixiApp.environmentLayers.displacementSprite;
+  if (displacementSprite) {
+    const displacementBaseSpeed = 12;
+    const DISPLACEMENT_STEP_SECONDS = 1 / 24;
+    pixiApp._displacementTime += deltaSeconds;
+    if (pixiApp._displacementTime >= DISPLACEMENT_STEP_SECONDS) {
+      const steps = Math.floor(
+        pixiApp._displacementTime / DISPLACEMENT_STEP_SECONDS,
+      );
+      pixiApp._displacementTime -= steps * DISPLACEMENT_STEP_SECONDS;
+      const elapsed = steps * DISPLACEMENT_STEP_SECONDS;
       let dirX = pixiApp.environmentLayers.flowDirX;
       let dirY = pixiApp.environmentLayers.flowDirY;
       if (!Number.isFinite(dirX) || !Number.isFinite(dirY)) {
@@ -196,8 +305,10 @@ export function tickerUpdateCaustics(pixiApp) {
         dirX = metrics.screenXPerWorldUnit / isoXLen;
         dirY = metrics.screenYPerWorldUnit / isoXLen;
       }
-      sprite.x += dirX * baseFlowSpeed * currentSpeed * elapsed;
-      sprite.y += dirY * baseFlowSpeed * currentSpeed * elapsed;
+      displacementSprite.x +=
+        dirX * displacementBaseSpeed * smoothedCurrentSpeed * elapsed;
+      displacementSprite.y +=
+        dirY * displacementBaseSpeed * smoothedCurrentSpeed * elapsed;
     }
   }
 }

@@ -3,43 +3,32 @@
 **Overview:**
 Player pulls item horizontally through water toward shore/bank. Tension controls drag speed and slip accumulation rate. This phase focuses on balancing speed (high tension) against risk (slip build-up and instant rip-off at max tension).
 
+**Fishing Variant (Fight Phase):**
+For rod fishing, this phase becomes a **fight** rather than a steady drag. The fish alternates between **bursts away from the player** and **rest windows** where the player can reel in. When the fish moves away, tension should spike quickly (near-max) based on fish speed/stamina, creating a high-risk window. Fish movement can **drift toward the player** during rest windows to generate slack and snap-taut risk; forward progress should still primarily happen during rest windows or brief player-favored moments.
+
+**Rhythm Goal:** Strike → fish runs away (tension spikes) → rest window (player reels) → fish runs away again → repeat until capture.
+
 ---
 
-## Core Interaction: Hold-to-Pull + Tap-to-Jerk
+## Core Interaction: Hold-to-Reel (RPM)
 
-**Two Input Methods:**
-
-**1. Hold (Continuous Pull)**
-
-- Press and hold button/screen to generate sustained pull force
-- Tension builds gradually with diminishing returns
-- Release to allow tension decay
-- Resuming hold continues from current tension level
-
-**2. Tap (Quick Jerk)**
-
-- Quick press-release (down/up within 200ms)
-- Immediately adds 10% tension (fixed increment)
-- Can tap repeatedly in quick succession
-- Used to rapidly build tension when needed
-
-**Combined Strategy:**
-
-- Hold to build baseline tension steadily
-- Tap when you need quick tension increase
-- Release to let tension decay when approaching limit
-- Pulse-hold (hold → release → hold) for control
-- Rapid tapping for emergency speed bursts
+- Hold input builds **RPM** toward a per-equipment cap; release decays RPM
+- RPM drives **avatarPullForce** via a power curve (zero at 0 RPM, max at cap)
+- **reelDragThreshold** is always present; when holding it stacks with avatarPullForce
+- **totalPlayerResistance** is the value the object must beat to pay out line
+- Tap-to-jerk has been removed in the force/slack model
 
 **Tension Mechanics:**
 
-- **Tension Value:** 0-100% representing pulling force
-- **Build Rate (Hold):** Gradual increase while holding with diminishing returns (base: 15%/second at 0% tension, modified by weight and current tension)
-- **Build Rate (Tap):** Instant +10% per tap (no diminishing returns)
-- **Decay Rate:** Gradual decrease when not holding (10%/second, constant)
-- **Visual Meter:** Shows current tension with color-coded zones
+- **Tension Value:** Output force on a taut line (not an input)
+- **Slack Gate:** If slack > 0, tension is zero and forces do not transmit
+- **Break Threshold:** Line snaps if tension exceeds break threshold (scaled by line condition)
+- **Hot Zone:** High tension accelerates line condition decay and snap probability
+- **Visual Meter:** Unified bar with slack on the left and tension on the right, break marker moves left as line condition degrades
 
 **Tension Consequences:**
+
+_Legacy reference only: percent-based tension tables are superseded by the force/slack model and break-threshold logic._
 
 | Tension Level    | Drag Speed   | Slip Rate | Risk Level          |
 | ---------------- | ------------ | --------- | ------------------- |
@@ -51,12 +40,12 @@ Player pulls item horizontally through water toward shore/bank. Tension controls
 | 86-99% (Extreme) | 1.8x-2.0x    | 6.0x      | Extreme             |
 | 100% (Max)       | N/A          | N/A       | **INSTANT RIP-OFF** |
 
-**Critical Rule: 100% Tension = Instant Failure**
+**Critical Rule: Break Threshold = Instant Failure**
 
-- Reaching maximum tension causes immediate magnet detachment
-- Bypasses slip system entirely (pure force overload)
-- Most common during snag events if player doesn't release
-- Audio/visual: loud snap, magnet yanks off item
+- If tension (including snap-taut impulse) exceeds the current break threshold, the line snaps
+- Break threshold scales down as line condition degrades
+- Slack prevents tension entirely; no tension means no break risk
+- Audio/visual: sharp snap, line whips back
 - Item lost, session continues (soft fail)
 
 **Strategic Tension Management:**
@@ -166,6 +155,8 @@ Snag Build Rate = Base Rate (15%/s) × Snag Modifier (8-10x) = 120-150%/s
 ---
 
 ## Tap-to-Jerk Mechanic (Detailed)
+
+**Deprecated (Feb 2026):** Tap-to-jerk is removed in the force/slack model. Hold-to-reel RPM is the only drag input.
 
 **Input Detection:**
 

@@ -1,0 +1,43 @@
+.spool-indicator {
+  width: 240px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: linear-gradient(
+    135deg,
+    rgba(18, 23, 28, 0.9),
+    rgba(9, 12, 16, 0.92)
+  );
+  border: 1px solid rgba(121, 160, 149, 0.2);
+  color: #e7f2ee;
+  font-family: "Space Grotesk", "Trebuchet MS", "Segoe UI", sans-serif;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: 0 10px 24px rgba(7, 9, 11, 0.45);
+}
+
+.spool-indicator__header {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.spool-indicator__track {
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(31, 46, 40, 0.7);
+  border: 1px solid rgba(121, 160, 149, 0.25);
+  overflow: hidden;
+}
+
+.spool-indicator__fill {
+  height: 100%;
+  background: linear-gradient(
+    90deg,
+    rgba(120, 200, 150, 0.7),
+    rgba(80, 160, 130, 0.9)
+  );
+  transition: width 0.12s ease-out;
+}

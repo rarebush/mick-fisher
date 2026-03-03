@@ -1,0 +1,97 @@
+.player-force {
+  width: 240px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: linear-gradient(
+    135deg,
+    rgba(20, 29, 36, 0.9),
+    rgba(10, 15, 20, 0.92)
+  );
+  border: 1px solid rgba(116, 173, 201, 0.2);
+  color: #eef6fa;
+  font-family: "Space Grotesk", "Trebuchet MS", "Segoe UI", sans-serif;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: 0 10px 24px rgba(8, 12, 16, 0.45);
+}
+
+.player-force__header {
+  display: flex;
+  justify-content: space-between;
+  text-transform: uppercase;
+  font-size: 11px;
+  letter-spacing: 0.12em;
+}
+
+.player-force__track {
+  position: relative;
+  height: 10px;
+  border-radius: 999px;
+  background: rgba(30, 46, 58, 0.75);
+  border: 1px solid rgba(120, 170, 190, 0.25);
+  overflow: hidden;
+}
+
+.player-force__drag,
+.player-force__fill {
+  position: absolute;
+  height: 100%;
+  transition: width 0.12s ease-out;
+}
+
+.player-force__drag {
+  left: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(88, 194, 203, 0.55),
+    rgba(76, 160, 187, 0.85)
+  );
+}
+
+.player-force__drag--quick {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 210, 96, 0.65),
+    rgba(255, 168, 62, 0.9)
+  );
+  animation: quick-release-pulse 0.6s ease-in-out infinite;
+}
+
+.player-force__fill {
+  background: linear-gradient(
+    90deg,
+    rgba(94, 200, 173, 0.7),
+    rgba(72, 163, 220, 0.85)
+  );
+}
+
+.player-force__baseline {
+  position: absolute;
+  top: -3px;
+  bottom: -3px;
+  width: 2px;
+  background: #f6c067;
+  box-shadow: 0 0 8px rgba(246, 192, 103, 0.5);
+}
+
+.player-force__labels {
+  display: flex;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 6px 12px;
+  font-size: 11px;
+  color: rgba(215, 235, 244, 0.75);
+}
+
+@keyframes quick-release-pulse {
+  0% {
+    box-shadow: 0 0 6px rgba(255, 196, 85, 0.35);
+  }
+  50% {
+    box-shadow: 0 0 12px rgba(255, 196, 85, 0.7);
+  }
+  100% {
+    box-shadow: 0 0 6px rgba(255, 196, 85, 0.35);
+  }
+}

@@ -57,18 +57,19 @@ _Note: Depletion & spawn timer system is planned for Phase 2+ - see Phase 2+ Fea
 
 **Modes:**
 
-1. **Click Mode (Quadrant Cast)**  
+1. **Click Mode (Quadrant Cast)**
    - Single click on water surface selects a quadrant and begins cast sequence.
-2. **Direction + Power Mode**  
-   - Click 1: Start oscillating angle  
-   - Click 2: Lock angle and start oscillating power  
+2. **Direction + Power Mode**
+   - Click 1: Start oscillating angle
+   - Click 2: Lock angle and start oscillating power
    - Click 3: Lock power and cast to computed target
-3. **Donut Mode (Accuracy Zone)**  
-   - Click 1: Choose target on water surface, show min/max accuracy rings  
-   - Click 2: Start oscillating ring between min and max radii  
+3. **Donut Mode (Accuracy Zone)**
+   - Click 1: Choose target on water surface, show min/max accuracy rings
+   - Click 2: Start oscillating ring between min and max radii
    - Click 3: Lock current radius; final landing point is randomized within the donut area
 
 **Notes:**
+
 - Donut mode requires the target to be within the water surface bounds.
 - Final landing point is sampled uniformly by area within the donut.
 
@@ -101,6 +102,21 @@ _Note: Depletion & spawn timer system is planned for Phase 2+ - see Phase 2+ Fea
    - Magnet rests on riverbed (Z=0) at cast position
    - Brief pause (200ms) for suspense
    - Final position: `{ x: targetX, y: targetY, z: 0 }`
+
+### Fishing (Rod) Cast Flow (Float/Lure)
+
+Fishing does **not** follow the magnet sinking sequence.
+
+**Rod-specific sequence:**
+
+1. Float/lure is cast through the air via the same arc projection.
+2. Float hits the **water surface (Z=1)** and stays there.
+3. **No sinking phase** for fishing. The float remains on the surface and begins bobbing.
+4. **Wait phase:** Player can wait for a bite for a very long time (hours).
+5. **Bite phase:** Float dips below the surface irregularly.
+6. **Strike phase:** Alert + small screen shake; timing input snags the fish.
+
+**Line attachment:** The rope/line endpoint attaches to the center of the float for now.
 
 **Total Arc Animation Time:**
 

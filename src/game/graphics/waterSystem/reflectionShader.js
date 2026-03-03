@@ -20,12 +20,20 @@ uniform vec3 uSkyColorFar;
 // Clouds
 uniform vec3 uCloudColor;
 uniform float uCloudScale;
-uniform float uCloudThreshold;
+uniform float uCloudCover;
 uniform float uCloudAlpha;
 uniform float uTime;
 uniform vec2 uWindDir;
 uniform vec2 uNoiseBasisX;
 uniform vec2 uNoiseBasisY;
+uniform float uMorphTime;
+uniform float uMorphScale;
+uniform float uMorphStrength;
+uniform vec2 uLightDir;
+uniform float uLightOffset;
+uniform float uLightStrength;
+uniform float uSoftEdges;
+uniform float uSoftLight;
 
 // --- 2D gradient noise (Perlin-style) ---
 
@@ -84,12 +92,37 @@ void main() {
   );
   vec2 cloudPos = noiseBasis * uCloudScale - windInBasis * uTime;
 
-  float noise = fbm(cloudPos);
-  // Hard-edged clouds for pixel art style
-  float cloudMask = step(uCloudThreshold, noise);
+  float baseNoise = fbm(cloudPos);
+  float morphNoise = fbm(cloudPos * uMorphScale + vec2(uMorphTime));
+  float noise = mix(baseNoise, morphNoise, uMorphStrength);
+
+  // Map to [0,1] for coverage control
+  float n01 = noise * 0.5 + 0.5;
+  float coverInput = clamp(uCloudCover, 0.0, 1.0);
+  float coverT = clamp((coverInput - 0.1) / 0.65, 0.0, 1.0);
+  float coverage = mix(0.43, 0.6, coverT);
+  float threshold = clamp(1.0 - coverage + 0.02, 0.0, 1.0);
+  float cloudMask = mix(
+    step(threshold, n01),
+    smoothstep(threshold - 0.03, threshold + 0.03, n01),
+    step(0.5, uSoftEdges)
+  );
+
+  // Directional lighting using an offset noise sample
+  float lightLen = max(length(uLightDir), 0.001);
+  vec2 lightDir = uLightDir / lightLen;
+  float lightSample = fbm(cloudPos + lightDir * uLightOffset);
+  float lightN01 = lightSample * 0.5 + 0.5;
+  float lit = mix(
+    step(0.0, lightN01 - n01),
+    smoothstep(-0.05, 0.05, lightN01 - n01),
+    step(0.5, uSoftLight)
+  );
+  float brightness = mix(1.0 - uLightStrength, 1.0, lit);
+  vec3 cloudColor = uCloudColor * brightness;
 
   // Composite: sky, then clouds on top
-  vec3 reflection = mix(sky, uCloudColor, cloudMask * uCloudAlpha);
+  vec3 reflection = mix(sky, cloudColor, cloudMask * uCloudAlpha);
 
   // Composite sky+clouds behind wall tiles at full opacity first,
   // then apply uReflectionAlpha to the entire result.
@@ -128,8 +161,15 @@ void main() {
  * @param {number[]} options.skyColorFar       - RGB sky at far edge        (default [0.35, 0.55, 0.85])
  * @param {number[]} options.cloudColor        - RGB cloud tint             (default [0.9, 0.92, 0.95])
  * @param {number}   options.cloudScale        - FBM noise frequency        (default 0.008)
- * @param {number}   options.cloudThreshold    - step() cutoff for edges    (default 0.15)
+ * @param {number}   options.cloudCover        - cover 0-1 (not full)        (default 0.5)
  * @param {number}   options.cloudAlpha        - cloud opacity 0-1          (default 0.6)
+ * @param {number}   options.morphScale        - morph noise scale          (default 0.35)
+ * @param {number}   options.morphStrength     - morph blend 0-1            (default 0.5)
+ * @param {number}   options.lightOffset       - light sample offset        (default 0.45)
+ * @param {number}   options.lightStrength     - lighting contrast 0-1      (default 0.25)
+ * @param {number[]} options.lightDir          - light direction [x,y]      (default [0.6,-0.8])
+ * @param {number}   options.softEdges         - cloud edge smoothing 0/1   (default 0)
+ * @param {number}   options.softLight         - light edge smoothing 0/1   (default 0)
  * @param {number[]} options.windDir           - screen-space wind [x,y]    (default [1,0])
  * @param {number}   options.reflectionAlpha   - global reflection opacity  (default 0.35)
  * @param {number[]} options.noiseBasisX       - iso X basis [x,y]          (default [1,0])
@@ -163,14 +203,51 @@ export function createReflectionShader(options = {}) {
       value: Number.isFinite(options.cloudScale) ? options.cloudScale : 0.008,
       type: "f32",
     },
-    uCloudThreshold: {
-      value: Number.isFinite(options.cloudThreshold)
-        ? options.cloudThreshold
-        : 0.15,
+    uCloudCover: {
+      value: Number.isFinite(options.cloudCover) ? options.cloudCover : 0.5,
       type: "f32",
     },
     uCloudAlpha: {
       value: Number.isFinite(options.cloudAlpha) ? options.cloudAlpha : 0.6,
+      type: "f32",
+    },
+    uMorphTime: {
+      value: 0,
+      type: "f32",
+    },
+    uMorphScale: {
+      value: Number.isFinite(options.morphScale) ? options.morphScale : 0.35,
+      type: "f32",
+    },
+    uMorphStrength: {
+      value: Number.isFinite(options.morphStrength)
+        ? options.morphStrength
+        : 0.5,
+      type: "f32",
+    },
+    uLightDir: {
+      value:
+        Array.isArray(options.lightDir) && options.lightDir.length === 2
+          ? options.lightDir
+          : [0.6, -0.8],
+      type: "vec2<f32>",
+    },
+    uLightOffset: {
+      value: Number.isFinite(options.lightOffset) ? options.lightOffset : 0.45,
+      type: "f32",
+    },
+    uLightStrength: {
+      value: Number.isFinite(options.lightStrength)
+        ? options.lightStrength
+        : 0.25,
+      type: "f32",
+    },
+    uSoftEdges: {
+      value: Number.isFinite(options.softEdges) ? options.softEdges : 0,
+      type: "f32",
+    },
+    uSoftLight: {
+      value: Number.isFinite(options.softLight) ? options.softLight : 0,
       type: "f32",
     },
     uWindDir: {

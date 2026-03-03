@@ -1,71 +1,21 @@
-import { getAvatarWorldPosition } from "../mechanics/worldConstants.js";
 import {
-  HEAT_CONSTANTS,
+  FISH_FIGHT_CONSTANTS,
   SLIP_CONSTANTS,
   TEMPERAMENT_MODIFIERS,
 } from "./physicsConstants.js";
-import {
-  clamp,
-  dotProduct,
-  magnitude,
-  normalize,
-  subtract,
-} from "./vectorUtils.js";
+import { clamp } from "./vectorUtils.js";
 
-function calculateLoadFactor(target, avatarPosition) {
-  const speed = magnitude(target.velocity);
-  const speedFactor = 1 / (1 + speed * 0.5);
-  const massFactor = Math.min(target.mass / 50, 1);
-  const pullDirection = normalize(subtract(avatarPosition, target.position));
-  let alignment = 1;
-  if (speed > 0.01) {
-    alignment = dotProduct(normalize(target.velocity), pullDirection);
-  }
-  const alignmentPenalty = clamp(1 - alignment * 0.5, 0.5, 1.5);
-  return clamp(speedFactor * (0.5 + massFactor * 0.5) * alignmentPenalty, 0, 1);
-}
-
-export function updateTensionValue(
-  currentTension,
-  deltaTime,
-  isHolding,
-  target,
-  equipment,
-  avatarPosition
-) {
-  let tension = currentTension;
-  const speed = magnitude(target.velocity);
-  if (isHolding) {
-    const BASE_CLIMB_RATE = 40;
-    const loadFactor = calculateLoadFactor(target, avatarPosition);
-    const climbRate = BASE_CLIMB_RATE * (1 - loadFactor * 0.8);
-    const effectiveClimbRate = Math.max(climbRate, 5);
-    tension += effectiveClimbRate * deltaTime;
-  } else {
-    const BASE_DECAY_RATE = 30;
-    const pullbackEffect = Math.min(speed * 3, 15);
-    const decayRate = BASE_DECAY_RATE - pullbackEffect;
-    tension -= decayRate * deltaTime;
-  }
-  return clamp(tension, 0, 100);
-}
-
-export function updateSlip(item, tension, equipment, lastTension) {
+export function updateSlip(item, tension, equipment, deltaTime) {
   let slipAccumulation = item.slipAccumulation || 0;
-  if (tension > lastTension) {
-    const tensionIncrease = tension - lastTension;
-    const tensionPenalty = 1 - (tension / 100) * 0.5;
-    const surfaceMultiplier =
-      SLIP_CONSTANTS.SURFACE_MULTIPLIERS[item.surfaceCondition] || 1;
-    const resistanceBonus = equipment?.slipResistance || 1.0;
-    const slipGain =
-      (tensionIncrease *
-        tensionPenalty *
-        surfaceMultiplier *
-        SLIP_CONSTANTS.MASTER_MULTIPLIER) /
-      resistanceBonus;
-    slipAccumulation += slipGain;
-  }
+  const surfaceMultiplier =
+    SLIP_CONSTANTS.SURFACE_MULTIPLIERS[item.surfaceCondition] || 1;
+  const resistanceBonus = equipment?.slipResistance || 1.0;
+  const tensionFactor = clamp(tension / 100, 0, 1);
+  const slipRate =
+    SLIP_CONSTANTS.MASTER_MULTIPLIER *
+    surfaceMultiplier *
+    (0.25 + tensionFactor);
+  slipAccumulation += (slipRate * deltaTime * 100) / resistanceBonus;
   const slipLimit = item.slipLimit || 1;
   const detached = slipAccumulation >= slipLimit;
   return {
@@ -76,101 +26,136 @@ export function updateSlip(item, tension, equipment, lastTension) {
   };
 }
 
-export function updateLineStress(fish, tension, equipment, deltaTime) {
-  const pullForce = (tension / 100) * (equipment?.maxPullForce ?? 0);
-  const fishForce = magnitude(fish.currentForce || { x: 0, y: 0 });
-  const pullDirection = normalize(
-    subtract(getAvatarWorldPosition(), fish.position)
-  );
-  const fishDirection = normalize(fish.currentForce || { x: 0, y: 0 });
-  const opposition = -dotProduct(pullDirection, fishDirection);
-  let lineStress = fish.lineStress || 0;
-  if (opposition > 0) {
-    const combinedForce = pullForce + fishForce * opposition;
-    const stressGain =
-      (combinedForce / (equipment?.lineStrength ?? 1)) * 10 * deltaTime;
-    lineStress += stressGain;
-  } else {
-    lineStress -= 5 * deltaTime;
-  }
-  lineStress = Math.max(0, lineStress);
-  const lineSnapped = lineStress >= 100;
-  return {
-    lineStress,
-    lineSnapped,
-    stressPercent: clamp(lineStress / 100, 0, 1),
-  };
-}
-
-export function updateHeat(deltaTime, tension, heat) {
-  let nextHeat = heat;
-  if (tension >= HEAT_CONSTANTS.REDLINE_THRESHOLD) {
-    const redlineDepth =
-      (tension - HEAT_CONSTANTS.REDLINE_THRESHOLD) /
-      (100 - HEAT_CONSTANTS.REDLINE_THRESHOLD);
-    nextHeat += HEAT_CONSTANTS.BUILD_RATE * redlineDepth * deltaTime;
-  } else {
-    nextHeat -= HEAT_CONSTANTS.DECAY_RATE * deltaTime;
-  }
-  nextHeat = clamp(nextHeat, 0, HEAT_CONSTANTS.FAILURE_THRESHOLD);
-  return {
-    heat: nextHeat,
-    overheated: nextHeat >= HEAT_CONSTANTS.FAILURE_THRESHOLD,
-    heatPercent: nextHeat / HEAT_CONSTANTS.FAILURE_THRESHOLD,
-  };
-}
-
-export function updateFishAI(fish, tension, deltaTime) {
+export function updateFishAI(fish, tension, deltaTime, avatarPosition) {
+  const nextFish = { ...fish };
   const temperament = TEMPERAMENT_MODIFIERS[fish.temperament];
+  const regenRate = fish.energyRegen ?? 0;
+  const maxEnergy = Math.max(0, fish.maxEnergy || 0);
+  const resumeThreshold =
+    maxEnergy * FISH_FIGHT_CONSTANTS.ENERGY_RESUME_THRESHOLD;
   if (fish.state === "tired") {
-    fish.currentForce = { x: 0, y: 0 };
-    return;
+    nextFish.currentForce = { x: 0, y: 0 };
+    if (regenRate > 0 && fish.maxEnergy > 0) {
+      nextFish.energy = Math.min(
+        fish.maxEnergy,
+        fish.energy + regenRate * deltaTime,
+      );
+      if (nextFish.energy >= resumeThreshold) {
+        nextFish.state = "hooked";
+        nextFish.fightPhase = "rest";
+        nextFish.fightPhaseTimer = fish.fightRestDuration
+          ? fish.fightRestDuration
+          : FISH_FIGHT_CONSTANTS.REST_DURATION_RANGE.min +
+            Math.random() *
+              (FISH_FIGHT_CONSTANTS.REST_DURATION_RANGE.max -
+                FISH_FIGHT_CONSTANTS.REST_DURATION_RANGE.min);
+      }
+    }
+    return nextFish;
+  }
+  void avatarPosition;
+
+  // Fight cadence: alternate run bursts with rest windows (Game Mechanics - Horizontal Drag Phase.md).
+  if (!fish.fightPhase || fish.fightPhaseTimer === undefined) {
+    nextFish.fightPhase = "run";
+    const runRange = FISH_FIGHT_CONSTANTS.RUN_DURATION_RANGE;
+    nextFish.fightPhaseTimer =
+      runRange.min + Math.random() * (runRange.max - runRange.min);
+  }
+  const energyRatio = maxEnergy > 0 ? fish.energy / maxEnergy : 0;
+  nextFish.fightPhaseTimer = (fish.fightPhaseTimer ?? 0) - deltaTime;
+  if (nextFish.fightPhaseTimer <= 0) {
+    const wantsRun = fish.fightPhase === "rest";
+    if (
+      wantsRun &&
+      energyRatio < FISH_FIGHT_CONSTANTS.ENERGY_RESUME_THRESHOLD
+    ) {
+      nextFish.fightPhase = "rest";
+      nextFish.fightPhaseTimer =
+        FISH_FIGHT_CONSTANTS.REST_DURATION_RANGE.min +
+        Math.random() *
+          (FISH_FIGHT_CONSTANTS.REST_DURATION_RANGE.max -
+            FISH_FIGHT_CONSTANTS.REST_DURATION_RANGE.min);
+    } else {
+      const range = wantsRun
+        ? FISH_FIGHT_CONSTANTS.RUN_DURATION_RANGE
+        : FISH_FIGHT_CONSTANTS.REST_DURATION_RANGE;
+      nextFish.fightPhase = wantsRun ? "run" : "rest";
+      nextFish.fightPhaseTimer =
+        range.min + Math.random() * (range.max - range.min);
+    }
   }
   if (tension > fish.panicThreshold) {
     const panicIncrease =
       (tension - fish.panicThreshold) * temperament.panicBuildRate * deltaTime;
-    fish.panicLevel += panicIncrease;
+    nextFish.panicLevel = fish.panicLevel + panicIncrease;
   } else {
     const panicDecrease = temperament.panicDecayRate * 20 * deltaTime;
-    fish.panicLevel -= panicDecrease;
+    nextFish.panicLevel = fish.panicLevel - panicDecrease;
   }
-  fish.panicLevel = clamp(fish.panicLevel, 0, 100);
+  nextFish.panicLevel = clamp(nextFish.panicLevel ?? 0, 0, 100);
 
-  if (fish.panicLevel > 50 && fish.state === "hooked") {
-    fish.state = "fighting";
-  } else if (fish.panicLevel < 20 && fish.state === "fighting") {
-    fish.state = "hooked";
+  if (nextFish.panicLevel > 50 && fish.state === "hooked") {
+    nextFish.state = "fighting";
+  } else if (nextFish.panicLevel < 20 && fish.state === "fighting") {
+    nextFish.state = "hooked";
   }
 
-  fish.directionChangeTimer -= deltaTime;
-  if (fish.directionChangeTimer <= 0) {
+  nextFish.directionChangeTimer = (fish.directionChangeTimer ?? 0) - deltaTime;
+  if (nextFish.directionChangeTimer <= 0) {
     const angle = Math.random() * Math.PI * 2;
-    fish.targetDirection = { x: Math.cos(angle), y: Math.sin(angle) };
+    nextFish.targetDirection = {
+      x: Math.cos(angle),
+      y: Math.sin(angle),
+    };
     const panicFrequencyMod = 1 - (fish.panicLevel / 100) * 0.7;
-    fish.directionChangeTimer =
+    nextFish.directionChangeTimer =
       fish.directionChangeFrequency * panicFrequencyMod + Math.random() * 0.5;
   }
 
   const energyFactor = fish.energy / fish.maxEnergy;
-  const panicFactor = fish.panicLevel / 100;
+  const panicFactor = nextFish.panicLevel / 100;
   const strengthWhenCalm = temperament.strengthWhenCalm;
   const strengthWhenPanicked = temperament.strengthWhenPanicked;
   const strengthFactor =
     strengthWhenCalm + (strengthWhenPanicked - strengthWhenCalm) * panicFactor;
-  const forceMagnitude = fish.baseStrength * energyFactor * strengthFactor;
+  const phaseMultiplier =
+    nextFish.fightPhase === "run"
+      ? FISH_FIGHT_CONSTANTS.RUN_FORCE_MULTIPLIER
+      : FISH_FIGHT_CONSTANTS.REST_FORCE_MULTIPLIER;
+  const forceMagnitude =
+    fish.baseStrength * energyFactor * strengthFactor * phaseMultiplier;
 
-  fish.currentForce = {
-    x: fish.targetDirection.x * forceMagnitude,
-    y: fish.targetDirection.y * forceMagnitude,
+  const safeDirection = nextFish.targetDirection ||
+    fish.targetDirection || {
+      x: 0,
+      y: 1,
+    };
+  nextFish.currentForce = {
+    x: safeDirection.x * forceMagnitude,
+    y: safeDirection.y * forceMagnitude,
   };
 
-  if (fish.state === "fighting") {
-    fish.energy -= temperament.energyDrainRate * 5 * deltaTime;
+  if (nextFish.fightPhase === "run") {
+    nextFish.energy = fish.energy - temperament.energyDrainRate * 6 * deltaTime;
+  } else {
+    nextFish.energy =
+      fish.energy - temperament.energyDrainRate * 1.8 * deltaTime;
   }
 
-  if (fish.energy <= 0) {
-    fish.energy = 0;
-    fish.state = "tired";
-    fish.currentForce = { x: 0, y: 0 };
+  if (nextFish.fightPhase === "rest" && regenRate > 0) {
+    nextFish.energy += regenRate * deltaTime;
   }
+
+  if (maxEnergy > 0) {
+    nextFish.energy = clamp(nextFish.energy, 0, maxEnergy);
+  }
+
+  if (nextFish.energy <= 0) {
+    nextFish.energy = 0;
+    nextFish.state = "tired";
+    nextFish.currentForce = { x: 0, y: 0 };
+  }
+
+  return nextFish;
 }

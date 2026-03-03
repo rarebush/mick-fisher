@@ -118,7 +118,7 @@ const active = magnetStore.isMagnetActive(); // boolean
     /components
       /game
         CastingView.jsx          # PixiJS canvas - top-down fishing view
-        TensionBar.jsx           # Hold-to-pull meter during drag
+        TensionBar.jsx           # Slack/tension line state bar during drag
         TugMinigame.jsx          # Oscillating slider for clearing snags
         LiftInterface.jsx        # Tap rhythm + slip meter for vertical lift
         SlipMeter.jsx            # Visual slip accumulation indicator
@@ -183,15 +183,17 @@ app.ticker.add((ticker) => {
   const deltaTime = deltaMS / 1000; // Convert to seconds
 
   // Update all game state at 60 FPS
-  updateTension(deltaTime);
+  updateDragPhysics(deltaTime);
   updateSlipPosition(deltaTime);
   checkForSnagContact(deltaTime);
-  detectTapInput(deltaTime);
+  updateInputState(deltaTime);
   updateVisuals(); // PixiJS graphics - 60 FPS
 });
 ```
 
 **Why 60 FPS for Core Mechanics:**
+
+_Note (Feb 2026): Force/slack physics replaces percent-based tension build; the timing examples below are legacy references for overall responsiveness._
 
 1. **Tension System:**
    - Build rate: 15%/s base with weight modifiers
@@ -214,6 +216,14 @@ app.ticker.add((ticker) => {
    - Expert players recognize item weight within 2 seconds
    - Heavy items make tension build FASTER (visible immediately)
    - Requires smooth 60 FPS bar animation to convey weight signature
+
+### Force/Slack Drag Physics (2026)
+
+- Line mechanics track `lineLength`, `straightLineDistance`, and `slack` each tick
+- Tension is an **output** when the line is taut; slack disables tension entirely
+- Player input controls RPM, which drives `avatarPullForce` and `totalPlayerResistance`
+- Line payout and recovery update `lineLength` and `spoolRemaining`, with spool-empty as a fail state
+- Line condition decays in the hot zone and scales the break threshold dynamically
 
 ### Event System (Distance/Position-Based)
 

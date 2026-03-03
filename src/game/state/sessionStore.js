@@ -5,8 +5,17 @@
 
 import { create } from "zustand";
 import useMagnetStore from "./magnetStore.js";
-import { createInitialPhysicsState } from "../physics/physicsSystem.js";
+import { createInitialPhysicsState } from "../physics/physicsExports.js";
 import { clamp } from "../physics/vectorUtils.js";
+
+let quickReleaseTimeoutId = null;
+
+const clearQuickReleaseTimeout = () => {
+  if (quickReleaseTimeoutId) {
+    clearTimeout(quickReleaseTimeoutId);
+    quickReleaseTimeoutId = null;
+  }
+};
 
 const DEFAULT_CAST_AIM_STATE = {
   phase: "idle", // idle | angle | power
@@ -47,6 +56,9 @@ const useSessionStore = create((set, get) => ({
   // Drag hold state (managed by PixiApp)
   isDragging: false,
 
+  // Quick release toggle (independent from hold)
+  dragQuickReleaseActive: false,
+
   // Drag phase state
   dragState: {
     active: false,
@@ -82,6 +94,11 @@ const useSessionStore = create((set, get) => ({
   castInputMode: "click", // click | direction_power | donut
   castAimState: { ...DEFAULT_CAST_AIM_STATE },
   donutAimState: { ...DEFAULT_DONUT_AIM_STATE },
+
+  // Strike input + screen shake
+  strikeQueued: false,
+  screenShakeRequestId: 0,
+  screenShakeRequest: null,
 
   // Central physics state
   physicsState: createInitialPhysicsState(),
@@ -133,8 +150,10 @@ const useSessionStore = create((set, get) => ({
     quadrant = 0,
     slipDirection = 0, // Calculated by caller using calculateSlipDirection()
   ) => {
+    clearQuickReleaseTimeout();
     set({
       isDragging: false, // Reset to ensure no auto-dragging
+      dragQuickReleaseActive: false,
       phase: "drag",
       phaseProgress: 0,
       dragState: {
@@ -185,6 +204,20 @@ const useSessionStore = create((set, get) => ({
     set({ ropeTension: Math.max(0, tension) });
   },
 
+  queueStrike: () => set({ strikeQueued: true }),
+
+  clearStrike: () => set({ strikeQueued: false }),
+
+  triggerScreenShake: (intensity, duration, frequency = 30) =>
+    set((state) => ({
+      screenShakeRequestId: state.screenShakeRequestId + 1,
+      screenShakeRequest: {
+        duration: Math.max(0, duration),
+        intensity: Math.max(0, intensity),
+        frequency,
+      },
+    })),
+
   setRopeWaterHitWorld: (worldPoint) => {
     set({ ropeWaterHitWorld: worldPoint });
   },
@@ -217,8 +250,10 @@ const useSessionStore = create((set, get) => ({
     // Despawn magnet
     useMagnetStore.getState().despawnMagnet();
 
+    clearQuickReleaseTimeout();
     set({
       isDragging: false,
+      dragQuickReleaseActive: false,
       phase: "idle", // Reset phase
       phaseProgress: 0,
       ropeTension: 0,
@@ -240,8 +275,10 @@ const useSessionStore = create((set, get) => ({
     // Despawn magnet
     useMagnetStore.getState().despawnMagnet();
 
+    clearQuickReleaseTimeout();
     set((state) => ({
       isDragging: false,
+      dragQuickReleaseActive: false,
       ropeTension: 0,
       dragState: {
         ...state.dragState,
@@ -356,7 +393,52 @@ const useSessionStore = create((set, get) => ({
           ? updater(state.physicsState)
           : { ...state.physicsState, ...updater },
     })),
-  resetPhysicsState: () => set({ physicsState: createInitialPhysicsState() }),
+  resetPhysicsState: () => {
+    clearQuickReleaseTimeout();
+    set({
+      dragQuickReleaseActive: false,
+      physicsState: createInitialPhysicsState(),
+    });
+  },
+
+  setDragQuickReleaseActive: (active) =>
+    set((state) => {
+      const next = Boolean(active);
+      if (!next) {
+        clearQuickReleaseTimeout();
+      }
+      return {
+        dragQuickReleaseActive: next,
+        physicsState: {
+          ...state.physicsState,
+          dragQuickReleaseActive: next,
+        },
+      };
+    }),
+
+  activateDragQuickRelease: (durationMs) => {
+    const ms = Number.isFinite(durationMs) ? Math.max(0, durationMs) : 0;
+    clearQuickReleaseTimeout();
+    set((state) => ({
+      dragQuickReleaseActive: true,
+      physicsState: {
+        ...state.physicsState,
+        dragQuickReleaseActive: true,
+      },
+    }));
+    if (ms > 0) {
+      quickReleaseTimeoutId = setTimeout(() => {
+        set((state) => ({
+          dragQuickReleaseActive: false,
+          physicsState: {
+            ...state.physicsState,
+            dragQuickReleaseActive: false,
+          },
+        }));
+        quickReleaseTimeoutId = null;
+      }, ms);
+    }
+  },
 
   setPhase: (phase) => set({ phase }),
 

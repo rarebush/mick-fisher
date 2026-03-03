@@ -16,6 +16,7 @@ import {
   getCastingEquipmentById,
   getCastingEquipmentMaxRange,
 } from "../data/castingEquipmentDatabase.js";
+import { QUICK_RELEASE_DURATION_MS } from "../physics/physicsConstants.js";
 import {
   getQuadrantFromPosition,
   getRiverbedScreenFromWaterScreen,
@@ -49,6 +50,10 @@ export class InputManager {
     this.rightPointerId = null;
     this.isRightPointerDown = false;
     this.lastRightWorld = null;
+    this.pointerDownTime = 0;
+    this.lastTapTime = 0;
+    this.doubleTapWindowMs = 250;
+    this.tapMaxDurationMs = 200;
 
     // Bind event handlers
     this.handlePointerDown = this.handlePointerDown.bind(this);
@@ -111,7 +116,13 @@ export class InputManager {
     // Handle dragging phase
     if (gamePhase === "dragging") {
       this.activePointerId = event.pointerId;
+      this.pointerDownTime = performance.now();
       this.handleDragMouseDown();
+      return;
+    }
+
+    if (gamePhase === "waiting") {
+      this.sessionStore?.getState().queueStrike();
       return;
     }
 
@@ -178,6 +189,23 @@ export class InputManager {
 
     const gamePhase = this.gameStore?.getState().gamePhase;
     if (gamePhase === "dragging") {
+      const now = performance.now();
+      const pressDuration = Math.max(0, now - (this.pointerDownTime || now));
+      if (pressDuration <= this.tapMaxDurationMs) {
+        if (
+          this.lastTapTime &&
+          now - this.lastTapTime <= this.doubleTapWindowMs
+        ) {
+          this.lastTapTime = 0;
+          this.sessionStore
+            ?.getState()
+            .activateDragQuickRelease?.(QUICK_RELEASE_DURATION_MS);
+        } else {
+          this.lastTapTime = now;
+        }
+      } else {
+        this.lastTapTime = 0;
+      }
       this.handleDragMouseUp();
     }
 
@@ -200,6 +228,7 @@ export class InputManager {
 
     const gamePhase = this.gameStore?.getState().gamePhase;
     if (gamePhase === "dragging") {
+      this.lastTapTime = 0;
       this.handleDragMouseUp();
     }
 
@@ -303,6 +332,14 @@ export class InputManager {
       return;
     }
 
+    if (gamePhase === "waiting") {
+      if (event.code === "Space" || event.key === " ") {
+        event.preventDefault();
+        this.sessionStore?.getState().queueStrike();
+      }
+      return;
+    }
+
     // Drag controls only work during dragging phase
     if (gamePhase !== "dragging") return;
 
@@ -348,6 +385,8 @@ export class InputManager {
     this.activePointerId = null;
     this.isRightPointerDown = false;
     this.lastRightWorld = null;
+    this.pointerDownTime = 0;
+    this.lastTapTime = 0;
 
     if (this.sessionStore) {
       this.sessionStore.setState({ isDragging: false });

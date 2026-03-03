@@ -11,14 +11,25 @@ function WaitIndicator() {
   }
 
   const waitState = physicsState.waitState;
-  const progress =
-    waitState.maxWaitTime > 0
-      ? Math.min(1, waitState.waitTime / waitState.maxWaitTime)
-      : 0;
+  const isStrikeWindow = waitState.mode === "strike";
+  const progress = isStrikeWindow
+    ? waitState.strikeWindowSeconds > 0
+      ? Math.min(
+          1,
+          waitState.strikeTimeRemaining / waitState.strikeWindowSeconds,
+        )
+      : 0
+    : 0;
+
+  const handleCancel = () => {
+    window.dispatchEvent(new CustomEvent("manualWaitCancel"));
+  };
 
   return (
-    <div className="wait-indicator">
-      <div className="wait-title">Waiting for a bite...</div>
+    <div className={`wait-indicator ${isStrikeWindow ? "strike" : ""}`}>
+      <div className="wait-title">
+        {isStrikeWindow ? "Strike now!" : "Waiting for a bite..."}
+      </div>
       <div className="wait-progress">
         <div
           className="wait-progress-fill"
@@ -26,9 +37,18 @@ function WaitIndicator() {
         />
       </div>
       <div className="wait-meta">
-        <span>Time: {waitState.waitTime.toFixed(1)}s</span>
+        {isStrikeWindow ? (
+          <span>Window: {waitState.strikeTimeRemaining.toFixed(2)}s</span>
+        ) : (
+          <span>Time: {waitState.waitTime.toFixed(1)}s</span>
+        )}
         <span>Nibble: {waitState.nibbleCount}</span>
       </div>
+      {!isStrikeWindow && (
+        <button className="wait-cancel" onClick={handleCancel}>
+          Reel In
+        </button>
+      )}
     </div>
   );
 }

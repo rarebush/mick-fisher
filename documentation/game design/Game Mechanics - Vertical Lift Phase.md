@@ -3,6 +3,9 @@
 **Overview:**
 After horizontal drag brings item to shore/bank, player must lift vertically from underwater to air. This phase has two distinct sub-phases: blind underwater lift (mystery) and revealed lift (informed decision-making).
 
+**Fishing Exception:**
+Rod fishing currently **skips the lift phase**. The fish is captured when it reaches the shore/edge and is aligned with the avatar worldspace **x=0**. No blind/revealed lift steps apply to fishing until a future design update.
+
 ## Phase 2a: Blind Underwater Lift
 
 **Context:**

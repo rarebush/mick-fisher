@@ -78,16 +78,6 @@ function createReflectedTexture(texture, isoRatio) {
 
   outCtx.putImageData(outData, 0, 0);
 
-  // Debug: show the reflected tile in the dev tools console
-  console.log(
-    `[REFLECTION DEBUG] Reflected texture: ${w}x${h} (maxShift=${maxShift}, isoRatio=${isoRatio})`,
-  );
-  const debugDataUrl = outCanvas.toDataURL();
-  console.log(
-    "%c ",
-    `font-size: 1px; padding: ${Math.ceil(h / 2)}px ${Math.ceil(w / 2)}px; background: url(${debugDataUrl}) no-repeat; background-size: ${w}px ${h}px;`,
-  );
-
   const newTexture = PIXI.Texture.from(outCanvas);
   newTexture.source.scaleMode = "nearest";
   return newTexture;

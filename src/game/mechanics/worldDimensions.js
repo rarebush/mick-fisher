@@ -1,6 +1,7 @@
 /**
  * worldDimensions.js
  * World-space dimensions and avatar anchor positions.
+ * setDebugEnabled(false) to hide debug visuals (world bounds, avatar position)
  */
 
 const WORLD_X_MIN = -15;
@@ -31,7 +32,7 @@ export const WORLD_Z = {
 
 export const AVATAR_CAST_OFFSET = {
   x: 0,
-  y: 0,
+  y: 0.25,
   z: WORLD_Z.AVATAR_HAND - WORLD_Z.AVATAR_FEET,
 };
 
@@ -71,7 +72,7 @@ export const WORLD_Y = {
   WALKWAY_BACK: WORLD_Y_WALKWAY_BACK, // Back edge of walkway (toward camera)
   WALKWAY_FRONT: 0, // Front edge of walkway (where avatar stands)
 
-  AVATAR: -1, // Avatar is set back from the front edge
+  AVATAR: -0.25, // Avatar is set back from the front edge
 
   // Wall is at the front edge, no Y depth (vertical surface)
   WALL_EDGE: 0, // Wall is at Y=0, spans Z from walkway to water

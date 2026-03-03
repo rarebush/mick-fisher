@@ -25,7 +25,7 @@ export function animateReelIn(
   startX,
   startY,
   sessionStore,
-  options = {}
+  options = {},
 ) {
   return new Promise((resolve) => {
     if (!app || !line) {
@@ -43,15 +43,15 @@ export function animateReelIn(
     const startWorld = screenToWorld(
       startX,
       startY,
-      WORLD_Z.RIVERBED,
-      viewport
+      Number.isFinite(options.startZ) ? options.startZ : WORLD_Z.RIVERBED,
+      viewport,
     );
 
     const reelMagnetSprite = createMagnetSprite();
     reelMagnetSprite.scale.set(2);
     reelMagnetSprite.pivot.set(
       reelMagnetSprite.width / 2,
-      reelMagnetSprite.height / 2
+      reelMagnetSprite.height / 2,
     );
     (line.parent || app.stage).addChild(reelMagnetSprite);
 
@@ -61,7 +61,7 @@ export function animateReelIn(
           line,
           options.lineUnderwater,
           options.lineDebug,
-          reelMagnetSprite
+          reelMagnetSprite,
         );
         resolve();
         return;
@@ -100,7 +100,7 @@ export function animateReelIn(
         line,
         options.lineUnderwater,
         options.lineDebug,
-        reelMagnetSprite
+        reelMagnetSprite,
       );
 
       console.log("[REEL-IN] Complete");

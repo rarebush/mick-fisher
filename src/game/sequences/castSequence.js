@@ -12,10 +12,12 @@ import {
   EQUIPMENT_CATEGORIES,
   getFishingEquipmentById,
 } from "../data/fishingEquipmentDatabase.js";
+import { getCastingEquipmentById } from "../data/castingEquipmentDatabase.js";
 import {
   createMetallicTargetFromItem,
+  getSpoolCapacity,
   initializeWaitPhase,
-} from "../physics/physicsSystem.js";
+} from "../physics/physicsExports.js";
 import { distance2D } from "../physics/vectorUtils.js";
 import { cleanupDisplayObjects } from "../rendering/displayCleanup.js";
 import { emitAudioEvent } from "../audio/audioEvents.js";
@@ -77,6 +79,11 @@ export async function executeCastSequence(
 
   const currentLocation =
     gameStore?.getState().currentLocation || "picturesque-river";
+  const selectedCastingEquipmentId =
+    gameStore?.getState().selectedCastingEquipmentId || "hand";
+  const selectedCastingEquipment = getCastingEquipmentById(
+    selectedCastingEquipmentId,
+  );
   const fishingEquipmentState = gameStore?.getState().fishingEquipment ?? {
     type: "magnet",
     tierId: "magnet_basic",
@@ -126,18 +133,36 @@ export async function executeCastSequence(
   }
 
   // Animate casting line and get graphics for continued rendering
-  const { line, lineUnderwater, lineDebug, playerX, playerY } =
-    await animateCastLine(
-      app,
-      x,
-      y,
-      gameStore,
-      sessionStore,
-      pixiApp?.spriteLayers ?? null,
-      pixiApp?.handleMagnetLandingSplat
-        ? pixiApp.handleMagnetLandingSplat.bind(pixiApp)
-        : null,
-    );
+  const {
+    line,
+    lineUnderwater,
+    lineDebug,
+    playerX,
+    playerY,
+    finalCastVelocityZ,
+  } = await animateCastLine(
+    app,
+    x,
+    y,
+    gameStore,
+    sessionStore,
+    pixiApp
+      ? {
+          underwater:
+            pixiApp.environmentLayers?.waterObjectsBelow ??
+            pixiApp.spriteLayers?.underwater ??
+            null,
+          aboveWater: pixiApp.spriteLayers?.aboveWater ?? null,
+          debug: pixiApp.spriteLayers?.debug ?? null,
+        }
+      : null,
+    pixiApp?.handleMagnetLandingSplat
+      ? pixiApp.handleMagnetLandingSplat.bind(pixiApp)
+      : null,
+    {
+      skipSink: Boolean(equipmentCategory?.requiresWait),
+    },
+  );
 
   // Store line and player position on PixiApp instance for rendering
   if (pixiApp) {
@@ -149,13 +174,20 @@ export async function executeCastSequence(
   }
 
   // Store cast position for rope rendering (before drag starts)
-  sessionStore.getState().setCastPosition(riverbedScreen.x, riverbedScreen.y);
+  const castScreenPosition = equipmentCategory?.requiresWait
+    ? { x, y }
+    : riverbedScreen;
+  sessionStore
+    .getState()
+    .setCastPosition(castScreenPosition.x, castScreenPosition.y);
 
   // Visual feedback - ripple at landing point
   createRipple(app, x, y);
 
   // Create bubbles to show magnet sinking
-  createBubbles(app, waterWorld.x, waterWorld.y, 500);
+  if (!equipmentCategory?.requiresWait) {
+    createBubbles(app, waterWorld.x, waterWorld.y, 500);
+  }
 
   const castResult = equipmentCategory?.requiresWait
     ? {
@@ -263,7 +295,10 @@ export async function executeCastSequence(
 
       const avatarWorld = getAvatarWorldPosition();
       const targetWorld = castResult.itemPositionWorld;
-      const lineLength = distance2D(targetWorld, avatarWorld);
+      const rawLineLength = distance2D(targetWorld, avatarWorld);
+      const spoolCapacity = getSpoolCapacity(resolvedEquipment);
+      const lineLength = Math.min(rawLineLength, spoolCapacity);
+      const spoolRemaining = Math.max(0, spoolCapacity - lineLength);
 
       const target = createMetallicTargetFromItem(castResult.item, targetWorld);
 
@@ -273,6 +308,16 @@ export async function executeCastSequence(
         target,
         equipment: resolvedEquipment,
         tension: 0,
+        lineLength,
+        straightLineDistance: lineLength,
+        slack: 0,
+        lineTaut: true,
+        lineCondition: 100,
+        breakThreshold: resolvedEquipment?.lineStrength ?? 0,
+        spoolRemaining,
+        spoolCapacity,
+        rpm: 0,
+        objectState: "static",
       });
 
       const { startDrag } = sessionStore.getState();
@@ -314,6 +359,19 @@ export async function executeCastSequence(
         "|",
         castResult.placementQuality.label,
       );
+      console.log("[CAST DEBUG] Full catch payload", {
+        item: castResult.item,
+        selectedCastingGear: {
+          id: selectedCastingEquipmentId,
+          data: selectedCastingEquipment,
+        },
+        selectedFishingGear: {
+          type: fishingEquipmentState.type,
+          tierId: fishingEquipmentState.tierId,
+          category: equipmentCategory,
+          data: resolvedEquipment,
+        },
+      });
 
       return { dragBubbleInterval, line, playerX, playerY };
     }
@@ -323,7 +381,11 @@ export async function executeCastSequence(
       sessionStore.getState().initializePhysicsState({
         mode: "waiting",
         equipment: resolvedEquipment,
-        waitState: initializeWaitPhase(resolvedEquipment, waterWorld),
+        waitState: initializeWaitPhase(
+          resolvedEquipment,
+          waterWorld,
+          finalCastVelocityZ ?? 0,
+        ),
       });
       sessionStore.getState().setRopeTension(0);
       setGamePhase("waiting");

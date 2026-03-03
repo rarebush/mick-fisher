@@ -2,18 +2,23 @@ import * as PIXI from "pixi.js";
 import { DebugOverlay } from "../graphics/debugOverlay.js";
 import { setupEnvironmentLayers } from "../rendering/sceneSetup.js";
 import { SpriteManager } from "../rendering/spriteManager.js";
+import { FloatManager } from "../rendering/floatManager.js";
 import { clamp } from "../physics/vectorUtils.js";
 import { handleDragFailure } from "../sequences/castSequence.js";
+import { animateReelIn } from "../animations/reelInAnimation.js";
+import { WORLD_Z } from "../mechanics/worldConstants.js";
 import { isDebugEnabled } from "../utils/debugFlags.js";
 
 export async function setupSceneInternal(pixiApp) {
   if (!pixiApp.app || pixiApp.isDestroyed) return;
 
-  pixiApp.app.ticker.add(pixiApp.tickerUpdateSprites, pixiApp);
   pixiApp.app.ticker.add(pixiApp.tickerUpdateDragMechanics, pixiApp);
   pixiApp.app.ticker.add(pixiApp.tickerUpdateRope, pixiApp);
+  pixiApp.app.ticker.add(pixiApp.tickerUpdateSprites, pixiApp);
+  pixiApp.app.ticker.add(pixiApp.tickerUpdateFloat, pixiApp);
+  pixiApp.app.ticker.add(pixiApp.tickerUpdateScreenShake, pixiApp);
   pixiApp.app.ticker.add(pixiApp.tickerUpdateCastAim, pixiApp);
-  pixiApp.app.ticker.add(pixiApp.tickerUpdateCaustics, pixiApp);
+  pixiApp.app.ticker.add(pixiApp.tickerUpdateWaterEffects, pixiApp);
 
   pixiApp.sceneContainer = new PIXI.Container();
   pixiApp.sceneContainer.y = 0;
@@ -48,6 +53,13 @@ export async function setupSceneInternal(pixiApp) {
   pixiApp.sceneContainer.addChild(pixiApp.spriteLayers.debug);
 
   pixiApp.spriteManager = new SpriteManager(pixiApp.app, pixiApp.spriteLayers);
+  const floatLayerTargets = pixiApp.environmentLayers?.waterObjectsAbove
+    ? {
+        aboveWater: pixiApp.environmentLayers.waterObjectsAbove,
+        underwater: pixiApp.environmentLayers.waterObjectsBelow,
+      }
+    : pixiApp.spriteLayers;
+  pixiApp.floatManager = new FloatManager(pixiApp.app, floatLayerTargets);
 
   const initialRenderResolutionScale =
     pixiApp.gameStore?.getState()?.renderResolutionScale ?? 1;
@@ -58,6 +70,15 @@ export async function setupSceneInternal(pixiApp) {
       pixiApp.environmentLayers.currentSpeed = storeState.currentSpeed ?? 1;
       pixiApp.environmentLayers.choppiness = storeState.choppiness ?? 1;
       pixiApp.environmentLayers.cloudCover = storeState.cloudCover ?? 0.5;
+      pixiApp.environmentLayers.windSpeed = storeState.windSpeed ?? 1;
+      const windAngle = Number.isFinite(storeState.windDirAngle)
+        ? storeState.windDirAngle
+        : 0.5;
+      const windRad = (0.25 + windAngle) * Math.PI * 2;
+      pixiApp.environmentLayers.windDir = [
+        Math.cos(windRad),
+        Math.sin(windRad),
+      ];
     }
 
     pixiApp.gameStoreUnsubscribe = pixiApp.gameStore.subscribe(
@@ -78,6 +99,23 @@ export async function setupSceneInternal(pixiApp) {
         if (state.cloudCover !== prevState.cloudCover) {
           if (pixiApp.environmentLayers) {
             pixiApp.environmentLayers.cloudCover = state.cloudCover;
+          }
+        }
+        if (state.windSpeed !== prevState.windSpeed) {
+          if (pixiApp.environmentLayers) {
+            pixiApp.environmentLayers.windSpeed = state.windSpeed;
+          }
+        }
+        if (state.windDirAngle !== prevState.windDirAngle) {
+          if (pixiApp.environmentLayers) {
+            const windAngle = Number.isFinite(state.windDirAngle)
+              ? state.windDirAngle
+              : 0.5;
+            const windRad = (0.25 + windAngle) * Math.PI * 2;
+            pixiApp.environmentLayers.windDir = [
+              Math.cos(windRad),
+              Math.sin(windRad),
+            ];
           }
         }
       },
@@ -195,6 +233,50 @@ export function setupManualFailureListener(pixiApp) {
   };
 
   window.addEventListener("manualDragFailure", pixiApp.handleManualFailure);
+
+  pixiApp.handleManualWaitCancel = async () => {
+    const gamePhase = pixiApp.gameStore?.getState().gamePhase;
+    const sessionState = pixiApp.sessionStore?.getState();
+
+    if (gamePhase !== "waiting" || !sessionState?.physicsState?.waitState) {
+      return;
+    }
+
+    pixiApp.inputManager?.resetInputState();
+    pixiApp.sessionStore.getState().setPhase("reeling");
+    pixiApp.sessionStore.getState().clearStrike();
+
+    const castPosition = sessionState.castPosition;
+    if (pixiApp.dragLine && castPosition) {
+      await animateReelIn(
+        pixiApp.app,
+        null,
+        pixiApp.dragLine,
+        pixiApp.dragPlayerX,
+        pixiApp.dragPlayerY,
+        castPosition.x,
+        castPosition.y,
+        pixiApp.sessionStore,
+        {
+          startZ: WORLD_Z.WATER_SURFACE,
+          lineUnderwater: pixiApp.dragLineUnderwater,
+          lineDebug: pixiApp.dragLineDebug,
+        },
+      );
+    }
+
+    pixiApp.dragLine = null;
+    pixiApp.dragLineUnderwater = null;
+    pixiApp.dragLineDebug = null;
+
+    pixiApp.sessionStore.getState().setPhase("idle");
+    pixiApp.sessionStore.getState().setPhaseProgress(0);
+    pixiApp.sessionStore.getState().setCastPosition(null, null);
+    pixiApp.sessionStore.getState().resetPhysicsState();
+    pixiApp.gameStore.getState().setGamePhase("idle");
+  };
+
+  window.addEventListener("manualWaitCancel", pixiApp.handleManualWaitCancel);
 }
 
 export function setRenderResolutionScale(pixiApp, scale) {

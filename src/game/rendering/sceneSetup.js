@@ -281,6 +281,8 @@ export async function setupEnvironmentLayers(
   return {
     waterVolume,
     waterSurfaceTiles: waterResult.waterSurfaceTiles,
+    waterObjectsBelow: waterResult.waterObjectsBelow,
+    waterObjectsAbove: waterResult.waterObjectsAbove,
     walkwayTiles,
     walkwayVolume,
     viewport,
@@ -289,6 +291,7 @@ export async function setupEnvironmentLayers(
     underwaterTintFilter: waterResult.underwaterTintFilter,
     waterSurfaceShader: waterResult.waterSurfaceShader,
     sparkleShader: waterResult.sparkleShader,
+    sparkleBloomShader: waterResult.sparkleBloomShader,
     edgeFoamShader: waterResult.edgeFoamShader,
     fluidFoamCoordinator: waterResult.fluidFoamCoordinator,
     fluidFoamDebugOverlay: waterResult.fluidFoamDebugOverlay,
@@ -307,5 +310,17 @@ export async function setupEnvironmentLayers(
     windSpeed: 1,
     /** Cloud cover 0-1 (0 = clear sky, 1 = overcast). */
     cloudCover: 0.5,
+    /** Cloud morph speed multiplier (1 = default). */
+    cloudMorphSpeed: 10,
+    /** Cloud light direction in screen-space [x, y]. */
+    cloudLightDir: [0.6, -0.8],
+    /** Cloud lighting offset in noise space. */
+    cloudLightOffset: 0.45,
+    /** Cloud lighting contrast 0-1. */
+    cloudLightStrength: 0.15,
+    /** Cloud edge smoothing toggle (0 = hard, 1 = soft). */
+    cloudSoftEdges: 0,
+    /** Cloud lighting edge smoothing toggle (0 = hard, 1 = soft). */
+    cloudSoftLight: 0,
   };
 }

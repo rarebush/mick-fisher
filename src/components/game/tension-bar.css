@@ -1,217 +1,190 @@
 .tension-bar-container {
-  width: 80px;
-  height: 400px;
-  background: rgba(0, 0, 0, 0.8);
-  border-radius: 12px;
-  padding: 16px 12px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 12px;
+  width: 280px;
+  padding: 12px 14px;
+  background: linear-gradient(
+    135deg,
+    rgba(17, 24, 32, 0.92),
+    rgba(12, 17, 24, 0.82)
+  );
+  border: 1px solid rgba(120, 170, 190, 0.2);
+  border-radius: 14px;
+  box-shadow: 0 12px 30px rgba(6, 10, 14, 0.55);
+  font-family: "Space Grotesk", "Trebuchet MS", "Segoe UI", sans-serif;
+  color: #f3f6f7;
 }
 
-.tension-bar-inner {
-  width: 100%;
-  height: 100%;
+.tension-bar-panel {
   display: flex;
   flex-direction: column;
-  align-items: center;
-  gap: 12px;
+  gap: 10px;
 }
 
-.tension-bar-inner--shaking {
-  animation: tension-shake 0.12s infinite;
+.tension-bar-panel--slack {
+  box-shadow: inset 0 0 0 1px rgba(66, 214, 198, 0.35);
 }
 
-.drag-info {
+.tension-bar-panel--engaged {
+  box-shadow: inset 0 0 0 1px rgba(120, 170, 190, 0.25);
+}
+
+.tension-bar-panel--clamped {
+  box-shadow: inset 0 0 0 1px rgba(133, 211, 150, 0.35);
+}
+
+.tension-bar-panel--payout {
+  box-shadow: inset 0 0 0 1px rgba(240, 90, 58, 0.45);
+}
+
+.tension-header {
   display: flex;
-  flex-direction: column;
-  gap: 8px;
+  align-items: baseline;
+  justify-content: space-between;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+}
+
+.tension-title {
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.tension-sub {
   font-size: 11px;
-  color: #fff;
-  text-align: center;
-  width: 100%;
+  color: rgba(206, 225, 236, 0.7);
 }
 
-.info-item {
+.tension-state-row {
   display: flex;
-  flex-direction: column;
-  gap: 2px;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
 }
 
-.info-item .label {
-  color: #aaa;
+.tension-chip {
+  border-radius: 999px;
+  border: 1px solid rgba(120, 170, 190, 0.25);
+  background: rgba(21, 29, 38, 0.85);
+  color: rgba(220, 235, 244, 0.9);
   font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  padding: 3px 7px;
+  font-weight: 700;
 }
 
-.info-item .value {
-  color: #fff;
-  font-weight: bold;
-  font-size: 13px;
+.tension-chip--slack {
+  border-color: rgba(66, 214, 198, 0.45);
+  color: rgba(141, 243, 224, 0.95);
 }
 
-.tension-bar {
-  width: 32px;
-  height: 240px;
-  flex-shrink: 0;
-  background: rgba(255, 255, 255, 0.1);
-  border-radius: 4px;
-  overflow: hidden;
+.tension-chip--engaged {
+  border-color: rgba(120, 170, 190, 0.45);
+  color: rgba(220, 235, 244, 0.95);
+}
+
+.tension-chip--clamped {
+  border-color: rgba(133, 211, 150, 0.55);
+  color: rgba(187, 239, 199, 0.95);
+}
+
+.tension-chip--payout {
+  border-color: rgba(240, 90, 58, 0.55);
+  color: rgba(255, 173, 156, 0.95);
+}
+
+.tension-chip--quick {
+  border-color: rgba(255, 196, 88, 0.65);
+  color: rgba(255, 217, 143, 0.95);
+}
+
+.tension-chip--cap-met {
+  border-color: rgba(133, 211, 150, 0.65);
+  color: rgba(187, 239, 199, 0.98);
+}
+
+.tension-track {
   position: relative;
-  border: 2px solid rgba(255, 255, 255, 0.2);
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
+  height: 16px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    rgba(33, 45, 58, 0.8),
+    rgba(21, 29, 38, 0.9)
+  );
+  border: 1px solid rgba(120, 170, 190, 0.25);
+  overflow: hidden;
+}
+
+.tension-track-hot {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: var(--hot-zone-start, 85%);
+  right: 0;
+  background: linear-gradient(
+    90deg,
+    rgba(255, 174, 84, 0.35),
+    rgba(230, 78, 56, 0.6)
+  );
 }
 
 .tension-fill {
-  width: 100%;
-  transition:
-    height 0.1s ease-out,
-    background-color 0.2s ease;
-  border-radius: 4px;
-}
-
-.tension-threshold-line {
   position: absolute;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: rgba(255, 255, 255, 0.85);
-  box-shadow: 0 0 6px rgba(255, 255, 255, 0.5);
-  z-index: 2;
-  pointer-events: none;
+  top: 0;
+  bottom: 0;
+  transition: width 0.15s ease-out;
 }
 
-.tension-zone-line {
+.tension-fill.slack {
+  right: 50%;
+  width: var(--slack-fill, 0%);
+  background: linear-gradient(
+    90deg,
+    rgba(58, 190, 199, 0.1),
+    rgba(66, 214, 198, 0.75)
+  );
+}
+
+.tension-fill.pull {
+  left: 50%;
+  width: var(--tension-fill, 0%);
+  background: linear-gradient(
+    90deg,
+    rgba(255, 196, 88, 0.6),
+    rgba(240, 90, 58, 0.9)
+  );
+}
+
+.tension-center {
   position: absolute;
-  left: 0;
-  right: 0;
-  height: 2px;
-  background: rgba(255, 255, 255, 0.5);
-  z-index: 2;
-  pointer-events: none;
+  top: -2px;
+  bottom: -2px;
+  left: 50%;
+  width: 2px;
+  background: rgba(210, 236, 242, 0.8);
 }
 
-.tension-zone-line--working {
-  background: rgba(255, 235, 59, 0.8);
-  box-shadow: 0 0 6px rgba(255, 235, 59, 0.6);
+.tension-break-marker {
+  position: absolute;
+  top: -4px;
+  bottom: -4px;
+  left: var(--break-marker, 100%);
+  width: 3px;
+  background: var(--condition-color, #59c37b);
+  box-shadow: 0 0 12px rgba(255, 255, 255, 0.2);
 }
 
-.tension-zone-line--low {
-  background: rgba(255, 255, 255, 0.35);
+.tension-readout {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px 12px;
+  font-size: 12px;
+  color: rgba(220, 235, 244, 0.85);
 }
 
-.drag-instruction {
-  width: 100%;
-  padding: 8px 4px;
-  font-size: 10px;
-  font-weight: bold;
-  text-align: center;
-  color: rgba(255, 255, 255, 0.8);
-  background: rgba(102, 126, 234, 0.3);
-  border-radius: 8px;
-  border: 1px solid rgba(102, 126, 234, 0.5);
-  flex-shrink: 0;
-}
-
-.tension-hint {
-  font-size: 9px;
-  text-align: center;
-  color: #aaa;
-  font-style: italic;
-  min-height: 16px;
-  flex-shrink: 0;
-}
-
-.overload-meter {
-  width: 100%;
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  text-align: center;
-  font-size: 9px;
-  color: #eee;
-}
-
-.overload-label {
-  color: #cfcfcf;
-  letter-spacing: 0.3px;
-  text-transform: uppercase;
-  font-size: 8px;
-}
-
-.overload-track {
-  width: 100%;
-  height: 8px;
-  border-radius: 999px;
-  background: rgba(255, 255, 255, 0.12);
-  border: 1px solid rgba(255, 255, 255, 0.2);
-  overflow: hidden;
-  position: relative;
-}
-
-.overload-fill {
-  height: 100%;
-  width: 0%;
-  background: linear-gradient(90deg, #ffb74d, #f44336);
-  transition: width 0.12s ease-out;
-}
-
-.overload-track--danger {
-  box-shadow: 0 0 6px rgba(244, 67, 54, 0.8);
-  animation: overload-pulse 0.8s ease-in-out infinite;
-}
-
-.overload-value {
-  font-size: 9px;
-  color: #fff;
-}
-
-@keyframes overload-pulse {
-  0% {
-    box-shadow: 0 0 4px rgba(244, 67, 54, 0.4);
-  }
-  50% {
-    box-shadow: 0 0 10px rgba(244, 67, 54, 0.9);
-  }
-  100% {
-    box-shadow: 0 0 4px rgba(244, 67, 54, 0.4);
-  }
-}
-
-@keyframes tension-shake {
-  0% {
-    transform: translate(
-      calc(var(--shake-intensity, 0px) * -0.6),
-      calc(var(--shake-intensity, 0px) * 0.4)
-    );
-  }
-  25% {
-    transform: translate(
-      calc(var(--shake-intensity, 0px) * 0.7),
-      calc(var(--shake-intensity, 0px) * -0.5)
-    );
-  }
-  50% {
-    transform: translate(
-      calc(var(--shake-intensity, 0px) * -0.8),
-      calc(var(--shake-intensity, 0px) * 0.6)
-    );
-  }
-  75% {
-    transform: translate(
-      calc(var(--shake-intensity, 0px) * 0.6),
-      calc(var(--shake-intensity, 0px) * -0.7)
-    );
-  }
-  100% {
-    transform: translate(
-      calc(var(--shake-intensity, 0px) * -0.4),
-      calc(var(--shake-intensity, 0px) * 0.5)
-    );
-  }
+.tension-readout span {
+  font-weight: 700;
+  color: #f8fbff;
 }
 
 /* Mobile responsiveness */

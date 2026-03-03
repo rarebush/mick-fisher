@@ -3,6 +3,7 @@ import "./inventory.css";
 
 function Inventory() {
   const { sessionItems, sessionValue } = useInventoryStore();
+  const recentSessionItems = sessionItems.slice(-3);
 
   return (
     <div className="inventory">
@@ -12,7 +13,7 @@ function Inventory() {
         <div className="empty-state">No catches yet...</div>
       ) : (
         <ul className="item-list">
-          {sessionItems.map((item, index) => (
+          {recentSessionItems.map((item, index) => (
             <li key={`${item.id}-${index}`} className="item">
               <div className="item-icon">{item.icon}</div>
               <div className="item-info">

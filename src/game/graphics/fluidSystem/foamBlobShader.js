@@ -48,6 +48,9 @@ uniform float uBlurStrength;
 uniform vec3 uCoreColor;
 uniform vec3 uMidColor;
 uniform vec3 uEdgeColor;
+uniform float uCoreAlpha;
+uniform float uMidAlpha;
+uniform float uEdgeAlpha;
 
 void main() {
   float c = texture(uTexture, vTextureCoord).r;
@@ -71,7 +74,10 @@ void main() {
   float step2 = step(uStepThreshold2, density);
   vec3 color = mix(uEdgeColor, uMidColor, step1);
   color = mix(color, uCoreColor, step2);
-  finalColor = vec4(color * alpha, alpha);
+  float bandAlpha = mix(uEdgeAlpha, uMidAlpha, step1);
+  bandAlpha = mix(bandAlpha, uCoreAlpha, step2);
+  float outAlpha = alpha * bandAlpha;
+  finalColor = vec4(color * outAlpha, outAlpha);
 }
 `;
 
@@ -92,13 +98,16 @@ export function createFoamBlobFilter(options = {}) {
       type: "vec3<f32>",
     },
     uMidColor: {
-      value: options.midColor ?? [0.92, 0.94, 0.92],
+      value: options.midColor ?? [1.0, 1.0, 1.0],
       type: "vec3<f32>",
     },
     uEdgeColor: {
-      value: options.edgeColor ?? [0.82, 0.9, 1.0],
+      value: options.edgeColor ?? [1.0, 1.0, 1.0],
       type: "vec3<f32>",
     },
+    uCoreAlpha: { value: options.coreAlpha ?? 1.0, type: "f32" },
+    uMidAlpha: { value: options.midAlpha ?? 0.7, type: "f32" },
+    uEdgeAlpha: { value: options.edgeAlpha ?? 0.45, type: "f32" },
   });
 
   const glProgram = GlProgram.from({

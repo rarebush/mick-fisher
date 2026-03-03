@@ -251,6 +251,41 @@ export function renderProjectedRopePoints(points, line, viewport, config = {}) {
   line.stroke();
 }
 
+function renderProjectedRopeSegments(segments, line, viewport, config = {}) {
+  if (!line || !viewport || !Array.isArray(segments) || segments.length === 0) {
+    return;
+  }
+
+  const safeConfig = {
+    ...CORNER_PROJECTION_CONFIG,
+    ...config,
+    line: {
+      ...CORNER_PROJECTION_CONFIG.line,
+      ...(config?.line ?? {}),
+    },
+  };
+
+  line.setStrokeStyle({
+    width: safeConfig.line.width,
+    color: safeConfig.line.color,
+    alpha: safeConfig.line.alpha,
+  });
+
+  segments.forEach((segment) => {
+    if (!Array.isArray(segment) || segment.length < 2) {
+      return;
+    }
+    const startScreen = worldToScreen(segment[0], viewport);
+    line.moveTo(startScreen.x, startScreen.y);
+    for (let i = 1; i < segment.length; i += 1) {
+      const screen = worldToScreen(segment[i], viewport);
+      line.lineTo(screen.x, screen.y);
+    }
+  });
+
+  line.stroke();
+}
+
 /**
  * Render rope using projected rope points and optional debug overlay.
  * This is the shared entrypoint for cast/drag/reel visuals.
@@ -286,7 +321,21 @@ export function renderProjectedRope(
     tension,
     projectedConfig,
   );
-  renderProjectedRopePoints(projectedPoints, line, viewport, projectedConfig);
+  if (options.lineUnderwater) {
+    const { aboveSegments, underwaterSegments } = splitRopeByWaterSurface(
+      projectedPoints,
+      WORLD_Z.WATER_SURFACE,
+    );
+    renderProjectedRopeSegments(aboveSegments, line, viewport, projectedConfig);
+    renderProjectedRopeSegments(
+      underwaterSegments,
+      options.lineUnderwater,
+      viewport,
+      projectedConfig,
+    );
+  } else {
+    renderProjectedRopePoints(projectedPoints, line, viewport, projectedConfig);
+  }
 
   const waterHitWorld = getWaterSurfaceIntersection(projectedPoints);
 
@@ -302,6 +351,83 @@ export function renderProjectedRope(
   }
 
   return { waterHitWorld, points: projectedPoints };
+}
+
+function splitRopeByWaterSurface(points, waterZ) {
+  const aboveSegments = [];
+  const underwaterSegments = [];
+
+  const pushPoint = (segment, point) => {
+    const last = segment[segment.length - 1];
+    if (!last) {
+      segment.push(point);
+      return;
+    }
+    if (last.x === point.x && last.y === point.y && last.z === point.z) {
+      return;
+    }
+    segment.push(point);
+  };
+
+  const appendSegment = (segments, segment) => {
+    if (!Array.isArray(segment) || segment.length < 2) {
+      return;
+    }
+    const lastSegment = segments[segments.length - 1];
+    if (
+      lastSegment &&
+      lastSegment.length > 0 &&
+      segment[0].x === lastSegment[lastSegment.length - 1].x &&
+      segment[0].y === lastSegment[lastSegment.length - 1].y &&
+      segment[0].z === lastSegment[lastSegment.length - 1].z
+    ) {
+      for (let i = 1; i < segment.length; i += 1) {
+        pushPoint(lastSegment, segment[i]);
+      }
+      return;
+    }
+    segments.push(segment);
+  };
+
+  if (!Array.isArray(points) || points.length < 2) {
+    return { aboveSegments, underwaterSegments };
+  }
+
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const a = points[i];
+    const b = points[i + 1];
+    const da = a.z - waterZ;
+    const db = b.z - waterZ;
+
+    const segmentsToAdd = [];
+    if (da === 0 || db === 0 || da * db <= 0) {
+      if (da * db < 0) {
+        const t = (waterZ - a.z) / (b.z - a.z);
+        const hit = {
+          x: lerp(a.x, b.x, t),
+          y: lerp(a.y, b.y, t),
+          z: waterZ,
+        };
+        segmentsToAdd.push([a, hit], [hit, b]);
+      } else {
+        segmentsToAdd.push([a, b]);
+      }
+    } else {
+      segmentsToAdd.push([a, b]);
+    }
+
+    segmentsToAdd.forEach((segment) => {
+      const midZ = (segment[0].z + segment[1].z) / 2;
+      if (midZ >= waterZ) {
+        appendSegment(aboveSegments, segment);
+      }
+      if (midZ <= waterZ) {
+        appendSegment(underwaterSegments, segment);
+      }
+    });
+  }
+
+  return { aboveSegments, underwaterSegments };
 }
 
 function getWaterSurfaceIntersection(points) {

@@ -18,6 +18,16 @@
 - **Status:** Planned for MVP implementation after core rope physics complete
 - **Impact:** Eliminates arbitrary wait periods, enables realistic depth variation, sets foundation for lift mechanics
 
+**Q41 (NEW - FISHING):** What exact curve should drive the **tension spike** when a fish runs away?
+
+- **Background:** Fishing fight phase needs a rapid rise toward near-max tension based on fish speed/stamina.
+- **Decision:** Choose a simple curve (linear vs exponential) and clamp behavior (e.g., cap at 90-95%).
+
+**Q42 (NEW - FISHING):** What is the intended **visual scale multiplier** for the float in screen space?
+
+- **Background:** Float world size is 0.1 units, but must be visually exaggerated for readability.
+- **Decision:** Confirm a multiplier derived from `tile_pixel_multiplier` (e.g., 1.5x, 2x, 3x).
+
 **Q7:** Should current surge events be completely random or telegraphed slightly (ripple pattern changes 2s before)?
 
 **Q9:** How many retry attempts should be allowed after magnet slip-off before item is lost? (Current: 3 retries)

@@ -27,10 +27,12 @@ import {
 } from "./app/pixiAppInteractions.js";
 import {
   tickerUpdateCastAim,
-  tickerUpdateCaustics,
   tickerUpdateDragMechanics,
+  tickerUpdateFloat,
   tickerUpdateRope,
+  tickerUpdateScreenShake,
   tickerUpdateSprites,
+  tickerUpdateWaterEffects,
 } from "./app/pixiAppTickers.js";
 import { isDebugEnabled } from "./utils/debugFlags.js";
 
@@ -56,6 +58,7 @@ export class PixiApp {
 
     // Managers (initialized in setupScene)
     this.spriteManager = null;
+    this.floatManager = null;
     this.inputManager = null;
     this.debugOverlay = null;
 
@@ -86,7 +89,7 @@ export class PixiApp {
     this.dragPlayerY = 0;
     this.castAimOverlay = null;
 
-    // Water animation state (used by tickerUpdateCaustics)
+    // Water animation state (used by tickerUpdateWaterEffects)
     this._smoothCurrentSpeed = 1;
     this._smoothChoppiness = 1;
     this._flowAccumTime = 0;
@@ -94,6 +97,15 @@ export class PixiApp {
     this._displacementTime = 0;
     this._reflectionTime = 0;
     this._smoothCloudCover = 0.5;
+
+    this._screenShakeActive = false;
+    this._screenShakeSampleTimer = 0;
+    this._screenShakeOffset = { x: 0, y: 0 };
+    this._screenShakeRequestId = 0;
+    this._screenShakeRemaining = 0;
+    this._screenShakeDuration = 0;
+    this._screenShakeIntensity = 0;
+    this._screenShakeFrequency = 30;
 
     this._foamSplatPresets = {
       input: { radiusWorld: 0.7, strength: 8.0, maxForce: 0.6 },
@@ -239,6 +251,16 @@ export class PixiApp {
     return tickerUpdateSprites(this);
   }
 
+  // Ticker method for float rendering during wait phase
+  tickerUpdateFloat() {
+    return tickerUpdateFloat(this);
+  }
+
+  // Ticker method for screen shake
+  tickerUpdateScreenShake() {
+    return tickerUpdateScreenShake(this);
+  }
+
   // Ticker method for drag mechanics updates
   async tickerUpdateDragMechanics() {
     return tickerUpdateDragMechanics(this);
@@ -254,9 +276,9 @@ export class PixiApp {
     return tickerUpdateCastAim(this);
   }
 
-  // Ticker method for caustics + displacement animation
-  tickerUpdateCaustics() {
-    return tickerUpdateCaustics(this);
+  // Ticker method for water effects (caustics, foam, sparkle, reflections)
+  tickerUpdateWaterEffects() {
+    return tickerUpdateWaterEffects(this);
   }
 
   resize(width, height) {

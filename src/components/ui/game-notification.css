@@ -1,4 +1,30 @@
+.game-notification-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  pointer-events: auto;
+}
+
+.game-notification-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(6px);
+}
+
+@supports not (backdrop-filter: blur(6px)) {
+  .game-notification-backdrop {
+    background: rgba(0, 0, 0, 0.7);
+  }
+}
+
 .game-notification {
+  position: relative;
+  z-index: 1;
   background: linear-gradient(
     145deg,
     rgba(0, 0, 0, 0.95),

@@ -185,6 +185,18 @@ waterLayer.rect(
 waterLayer.fill({ color: 0x3498db, alpha: 0.4 }); // Translucent water
 ```
 
+### Fishing Float Rendering (Surface Split)
+
+Rod fishing uses a surface float that should render **partly above** and **partly below** the water plane.
+
+- **World-space size:** Diameter 0.1 world units (radius 0.05).
+- **Visual scale:** Apply a render-only scale based on `tile_pixel_multiplier` so the float reads in screen space.
+- **Layering:**
+  - **Above-water pass:** Render in a layer between water surface and UI.
+  - **Below-water pass:** Render below the water surface layer so it appears submerged.
+- **Occlusion rule:** Determine the intersection of the sphere with the water plane (Z=1). Clip/scale the above/below sprites based on how much of the sphere is above or below the surface.
+- **Bobbing:** Apply vertical bobbing in world space; intersection with the water plane updates each frame.
+
 ### 7. Magnet Layer (Dynamic Z-based positioning)
 
 - **Purpose**: Magnet sprite during cast/drag/lift phases

@@ -226,6 +226,15 @@ items: [
 
 **4. Fishing Interface (Main Gameplay):**
 
+### Fishing Float Visual Notes
+
+- **Shape:** Sphere with a horizontal band around the center.
+- **World size:** Diameter 0.1 world units (radius 0.05).
+- **Line attach:** Rope/line attaches to the sphere center (simplified).
+- **Bobbing:** Small vertical bob around the water surface; amount of visible sphere above/below surface should respond to the bob height.
+- **Occlusion:** Render the portion below the water surface as submerged (tinted/occluded) while the portion above remains crisp.
+- **Visual scale:** Use `tile_pixel_multiplier` (world-to-screen scale) to exaggerate the float in screen space without changing the world-space radius.
+
 **Landscape Layout:**
 
 ```

@@ -23,6 +23,7 @@ function FishStatus() {
     Math.max(0, (physicsState.fishStatus.panic || 0) / 100),
   );
   const fishState = physicsState.fishStatus.state || "hooked";
+  const fightPhase = physicsState.fishStatus.fightPhase || "run";
 
   return (
     <div className="fish-status">
@@ -46,6 +47,7 @@ function FishStatus() {
         </div>
       </div>
       <div className="fish-status-state">State: {fishState}</div>
+      <div className="fish-status-state">Phase: {fightPhase}</div>
     </div>
   );
 }
