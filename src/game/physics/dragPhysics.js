@@ -156,20 +156,18 @@ export function updateDragPhysics(deltaTime, isHolding, physicsState) {
     state.targetType === "fish" && previousLineTaut
       ? Math.max(clutchForce, isHolding ? avatarPullForce : 0)
       : 0;
-  const lineLoadForceForMotion =
+  const metallicLineLoadForce =
     dotProduct(swimForceVector, previousAxis) +
     dotProduct(externalForceVector, previousAxis);
-  const reactiveDragForMotionLegacy = previousLineTaut
-    ? Math.min(Math.max(lineLoadForceForMotion, 0), effectiveDragThreshold)
+  const metallicReactiveDrag = previousLineTaut
+    ? Math.min(Math.max(metallicLineLoadForce, 0), effectiveDragThreshold)
     : 0;
-  const playerLineForceForMotionLegacy =
-    reactiveDragForMotionLegacy + (isHolding ? avatarPullForce : 0);
+  const metallicPlayerForce =
+    metallicReactiveDrag + (isHolding ? avatarPullForce : 0);
   const playerForceVectorForMotion = previousLineTaut
     ? scale(
         previousAxis,
-        -(state.targetType === "fish"
-          ? lineInwardForce
-          : playerLineForceForMotionLegacy),
+        -(state.targetType === "fish" ? lineInwardForce : metallicPlayerForce),
       )
     : { x: 0, y: 0 };
   const isOverwhelmed =
@@ -192,6 +190,8 @@ export function updateDragPhysics(deltaTime, isHolding, physicsState) {
       ? fishOutwardForce - lineInwardForce
       : fishOutwardForce;
   const radialForceVector = scale(previousAxis, radialNetForce);
+  // Fish: clutch constraint decomposes into tangential (free) + radial (clamped by clutch/player)
+  // Metallic: additive friction model applies player force as a separate opposing vector
   const netForceVector =
     state.targetType === "fish"
       ? add(tangentialForce, radialForceVector)
@@ -394,13 +394,21 @@ export function updateDragPhysics(deltaTime, isHolding, physicsState) {
   const fishOutwardResistance = Math.max(fishOutwardForce, 0);
   const clutchForceAccounting =
     state.targetType === "fish" && lineTaut ? clutchForce : 0;
-  let reactiveDrag =
-    state.targetType === "fish"
-      ? clutchForceAccounting
-      : Math.min(Math.max(lineLoadForce, 0), effectiveDragThreshold);
-  let playerLineForce = reactiveDrag + (isHolding ? avatarPullForce : 0);
-  let lineInwardForceAccounting =
-    state.targetType === "fish" ? playerLineForce : playerLineForce;
+  let reactiveDrag;
+  let playerLineForce;
+  let lineInwardForceAccounting;
+
+  if (state.targetType === "fish") {
+    reactiveDrag = clutchForceAccounting;
+    lineInwardForceAccounting = lineTaut
+      ? Math.max(clutchForceAccounting, isHolding ? avatarPullForce : 0)
+      : 0;
+    playerLineForce = lineInwardForceAccounting;
+  } else {
+    reactiveDrag = Math.min(Math.max(lineLoadForce, 0), effectiveDragThreshold);
+    playerLineForce = reactiveDrag + (isHolding ? avatarPullForce : 0);
+    lineInwardForceAccounting = playerLineForce;
+  }
   let tension = 0;
   let linePayout = 0;
   let slackChangeRate = 0;
@@ -435,15 +443,6 @@ export function updateDragPhysics(deltaTime, isHolding, physicsState) {
         : isHolding
           ? Math.max(velocityDrag, 0)
           : 0;
-    if (state.targetType === "fish") {
-      lineInwardForceAccounting = Math.max(
-        clutchForceAccounting,
-        isHolding ? avatarPullForce : 0,
-      );
-      playerLineForce = lineInwardForceAccounting;
-    } else {
-      lineInwardForceAccounting = playerLineForce;
-    }
     shouldPayOutLine =
       state.targetType === "fish"
         ? fishOutwardForce > 0 && fishOutwardForce > lineInwardForceAccounting
