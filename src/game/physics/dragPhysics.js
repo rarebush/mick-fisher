@@ -162,8 +162,9 @@ export function updateDragPhysics(deltaTime, isHolding, physicsState) {
   const metallicReactiveDrag = previousLineTaut
     ? Math.min(Math.max(metallicLineLoadForce, 0), effectiveDragThreshold)
     : 0;
-  const metallicPlayerForce =
-    metallicReactiveDrag + (isHolding ? avatarPullForce : 0);
+  const metallicPlayerForce = previousLineTaut
+    ? Math.max(metallicReactiveDrag, isHolding ? avatarPullForce : 0)
+    : 0;
   const playerForceVectorForMotion = previousLineTaut
     ? scale(
         previousAxis,
@@ -191,7 +192,7 @@ export function updateDragPhysics(deltaTime, isHolding, physicsState) {
       : fishOutwardForce;
   const radialForceVector = scale(previousAxis, radialNetForce);
   // Fish: clutch constraint decomposes into tangential (free) + radial (clamped by clutch/player)
-  // Metallic: additive friction model applies player force as a separate opposing vector
+  // Metallic: clutch-constrained inward force opposes object forces (max of reactive drag and player pull)
   const netForceVector =
     state.targetType === "fish"
       ? add(tangentialForce, radialForceVector)
@@ -406,7 +407,7 @@ export function updateDragPhysics(deltaTime, isHolding, physicsState) {
     playerLineForce = lineInwardForceAccounting;
   } else {
     reactiveDrag = Math.min(Math.max(lineLoadForce, 0), effectiveDragThreshold);
-    playerLineForce = reactiveDrag + (isHolding ? avatarPullForce : 0);
+    playerLineForce = Math.max(reactiveDrag, isHolding ? avatarPullForce : 0);
     lineInwardForceAccounting = playerLineForce;
   }
   let tension = 0;
@@ -451,11 +452,14 @@ export function updateDragPhysics(deltaTime, isHolding, physicsState) {
     if (state.targetType === "fish") {
       tension = Math.min(lineInwardForceAccounting, fishRadialResistance);
     } else {
-      tension = clampActive
-        ? Math.max(objectLineForce, 0) + reactiveDrag
-        : objectLineForce > 0
-          ? Math.max(objectLineForce, playerLineForce)
-          : playerLineForce;
+      if (shouldPayOutLine) {
+        tension = playerLineForce;
+      } else if (objectLineForce > 0) {
+        tension = Math.min(objectLineForce, playerLineForce);
+      } else {
+        tension = playerLineForce;
+      }
+      tension = Math.max(0, tension);
     }
 
     if (isHolding && objectApproachRate > 0) {
@@ -512,8 +516,9 @@ export function updateDragPhysics(deltaTime, isHolding, physicsState) {
       state.target.mass * PHYSICS_CONSTANTS.STATIC_FRICTION_COEFFICIENT;
 
     if (!state.target.isMoving) {
-      staticFrictionGateReached = lineTaut && isHolding;
-      const staticGateComparison = avatarPullForce > staticFrictionThreshold;
+      const netForceMagnitude = magnitude(netForceVector);
+      staticFrictionGateReached = netForceMagnitude > 0;
+      const staticGateComparison = netForceMagnitude > staticFrictionThreshold;
       if (staticFrictionGateReached && staticGateComparison) {
         state.target.isMoving = true;
         objectState = "kinetic";
