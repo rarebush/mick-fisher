@@ -156,6 +156,16 @@ export function updateDragPhysics(deltaTime, isHolding, physicsState) {
     state.targetType === "fish" && previousLineTaut
       ? Math.max(clutchForce, isHolding ? avatarPullForce : 0)
       : 0;
+  /*
+   * Intentional clutch-reactivity asymmetry between fish and metallic paths:
+   * - Fish path (`fishOutwardForce`) uses `forceWithoutPlayer`, which includes
+   *   swim, current, and velocity drag. Fish body drag is transmitted through
+   *   the fish to the line attachment point, so the clutch should react to it.
+   * - Metallic path (`metallicLineLoadForce`) uses swim + current only,
+   *   excluding velocity drag and kinetic friction. Those dissipative forces act
+   *   at the object-medium interface and are absorbed by water/riverbed rather
+   *   than loading the reel through the line.
+   */
   const metallicLineLoadForce =
     dotProduct(swimForceVector, previousAxis) +
     dotProduct(externalForceVector, previousAxis);
@@ -316,6 +326,10 @@ export function updateDragPhysics(deltaTime, isHolding, physicsState) {
       ? playerRecoveryVelocity * deltaTime
       : 0;
 
+  // Recovery uses two passes that share one per-tick budget (`recoveryBudgetRemaining`).
+  // This pre-taut pass consumes geometric approach first (target already moved closer),
+  // then the taut-branch pass below can only use what remains for reel-rate recovery.
+  // Total recovery per tick is capped at `playerRecoveryVelocity * deltaTime`.
   if (
     recoveryBudgetRemaining > 0 &&
     radialVelocity < 0 &&
@@ -386,10 +400,16 @@ export function updateDragPhysics(deltaTime, isHolding, physicsState) {
   const velocityDrag = dotProduct(velocityDragForLineLoadVector, lineAxis);
   const externalForce = dotProduct(externalForceVector, lineAxis);
   const frictionForce = dotProduct(frictionForLineLoadVector, lineAxis);
+  // Total non-player radial force balance on the object along the line axis.
+  // Includes swim, current, velocity drag, and (for metallic) kinetic friction.
+  // Used for payout/contest decisions and tension accounting at the object end.
   const objectLineForce =
     state.targetType === "metallic"
       ? swimForce + velocityDrag + externalForce + frictionForce
       : swimForce + velocityDrag + externalForce;
+  // Environmental line load transmitted to the reel mechanism.
+  // Includes swim + current only; excludes dissipative medium forces.
+  // Used to compute reactive drag (clutch response).
   const lineLoadForce = swimForce + externalForce;
 
   const fishOutwardResistance = Math.max(fishOutwardForce, 0);
@@ -442,7 +462,9 @@ export function updateDragPhysics(deltaTime, isHolding, physicsState) {
       fishOutwardResistance > 0
         ? fishOutwardResistance
         : isHolding
-          ? Math.max(velocityDrag, 0)
+          ? Math.max(velocityDrag, 0) +
+            Math.max(externalForce, 0) +
+            Math.max(swimForce, 0)
           : 0;
     shouldPayOutLine =
       state.targetType === "fish"
@@ -457,7 +479,7 @@ export function updateDragPhysics(deltaTime, isHolding, physicsState) {
       } else if (objectLineForce > 0) {
         tension = Math.min(objectLineForce, playerLineForce);
       } else {
-        tension = playerLineForce;
+        tension = 0;
       }
       tension = Math.max(0, tension);
     }
@@ -466,6 +488,7 @@ export function updateDragPhysics(deltaTime, isHolding, physicsState) {
       const recoveryRate = clampActive
         ? playerRecoveryVelocity
         : Math.min(objectApproachRate, playerRecoveryVelocity);
+      // Second recovery pass, budget shared with pre-taut pass above.
       const desiredRecovery = Math.min(
         recoveryRate * deltaTime,
         recoveryBudgetRemaining,
@@ -533,6 +556,21 @@ export function updateDragPhysics(deltaTime, isHolding, physicsState) {
     if (
       staticBreakTimer <= 0 &&
       state.target.isMoving &&
+      /*
+       * Kinetic->static re-entry intentionally uses total speed magnitude,
+       * not radial velocity. This only re-enters static when all velocity
+       * components are near zero, preserving tangential/cross-current motion.
+       *
+       * If changed to radial-only, the zeroing behavior in the static branch
+       * (`state.target.velocity = { x: 0, y: 0 }`) would erase tangential
+       * momentum during re-entry and collapse diagonal drift into radial-only
+       * trajectories.
+       *
+       * Note: with break timer expired and sustained force near epsilon,
+       * metallic targets can toggle static/kinetic frame-to-frame. The practical
+       * effect is small at current epsilon because only sub-epsilon velocity is
+       * discarded; risk grows if epsilon or static-gate delay is increased.
+       */
       magnitude(state.target.velocity) < PHYSICS_CONSTANTS.MOTION_EPSILON
     ) {
       state.target.isMoving = false;
