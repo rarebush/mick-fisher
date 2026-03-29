@@ -11,6 +11,12 @@ export const CORNER_PROJECTION_CONFIG = {
   transitionSamples: 4,
   enableDebugVisualization: true,
   slack: 0.2,
+  slackResponseExponent: 2,
+  maxSagDistanceFactor: 0.45,
+  strainStart: 0.1,
+  maxVibrationPx: 2.2,
+  vibrationFrequency: 28,
+  strainColor: 0xff3a30,
   line: {
     color: 0x414141,
     width: 1.1,
@@ -49,15 +55,134 @@ const projectToWalkway = (point) => ({
   z: WORLD_Z.WALKWAY,
 });
 
-const calculateSag = (start, end, tension, config) => {
+const calculateSag = (start, end, config, slackValue) => {
   const horizontalDistance = distance2D(start, end);
-  const tensionFactor = 1 - clamp(tension / 100, 0, 1);
-  const slack = Number.isFinite(config.slack) ? config.slack : 0.6;
-  const sag = slack * horizontalDistance * tensionFactor;
-  return Math.max(0, sag);
+  if (horizontalDistance <= 1e-6) {
+    return 0;
+  }
+
+  const resolvedSlack = Number.isFinite(slackValue)
+    ? Math.max(0, slackValue)
+    : 0;
+  if (resolvedSlack <= 0) {
+    return 0;
+  }
+
+  const slackRatio = clamp(resolvedSlack / horizontalDistance, 0, 10);
+  const slackResponseExponent = clamp(
+    Number.isFinite(config.slackResponseExponent)
+      ? config.slackResponseExponent
+      : 2,
+    0.5,
+    4,
+  );
+  const shapedSlack =
+    horizontalDistance * Math.pow(slackRatio, slackResponseExponent);
+
+  // For a parabolic arc, small-sag approximation gives:
+  // slack ~= (8 * sag^2) / (3 * distance) -> sag ~= sqrt((3 * distance * slack) / 8)
+  // We shape slack response before solving sag to reduce perceived
+  // near-taut acceleration while preserving a monotonic, distance-aware curve.
+  const sagFromSlack = Math.sqrt((3 * horizontalDistance * shapedSlack) / 8);
+  const maxSagDistanceFactor = clamp(
+    Number.isFinite(config.maxSagDistanceFactor)
+      ? config.maxSagDistanceFactor
+      : 0.45,
+    0.05,
+    1.5,
+  );
+  const maxSag = horizontalDistance * maxSagDistanceFactor;
+  return clamp(sagFromSlack, 0, maxSag);
 };
 
-const buildProjectedRopePoints = (castOrigin, magnetWorld, tension, config) => {
+const blendColor = (startColor, endColor, t) => {
+  const n = clamp(t, 0, 1);
+  const sr = (startColor >> 16) & 0xff;
+  const sg = (startColor >> 8) & 0xff;
+  const sb = startColor & 0xff;
+  const er = (endColor >> 16) & 0xff;
+  const eg = (endColor >> 8) & 0xff;
+  const eb = endColor & 0xff;
+
+  const r = Math.round(lerp(sr, er, n));
+  const g = Math.round(lerp(sg, eg, n));
+  const b = Math.round(lerp(sb, eb, n));
+  return (r << 16) | (g << 8) | b;
+};
+
+const getVisualState = (options, config) => {
+  const tension = Number.isFinite(options?.tension) ? options.tension : 0;
+  const breakThreshold = Number.isFinite(options?.breakThreshold)
+    ? Math.max(0, options.breakThreshold)
+    : 0;
+  const strainRatio =
+    breakThreshold > 0 ? clamp(tension / breakThreshold, 0, 1) : 0;
+
+  const strainStart = clamp(
+    Number.isFinite(config.strainStart) ? config.strainStart : 0.1,
+    0,
+    0.95,
+  );
+  const strainBlend =
+    strainRatio <= strainStart
+      ? 0
+      : clamp((strainRatio - strainStart) / (1 - strainStart), 0, 1);
+
+  const baseColor = config.line?.color ?? CORNER_PROJECTION_CONFIG.line.color;
+  const strainColor =
+    config.strainColor ?? CORNER_PROJECTION_CONFIG.strainColor ?? 0xff3a30;
+  const color = blendColor(baseColor, strainColor, strainBlend);
+
+  const maxVibrationPx = Math.max(
+    0,
+    Number.isFinite(config.maxVibrationPx) ? config.maxVibrationPx : 2.2,
+  );
+  const vibrationFrequency = Math.max(
+    0,
+    Number.isFinite(config.vibrationFrequency) ? config.vibrationFrequency : 28,
+  );
+  const timeSeconds = Number.isFinite(options?.timeSeconds)
+    ? options.timeSeconds
+    : performance.now() / 1000;
+
+  return {
+    color,
+    strainRatio,
+    vibration: {
+      amplitudePx: maxVibrationPx * strainBlend,
+      frequency: vibrationFrequency,
+      timeSeconds,
+    },
+  };
+};
+
+const applyVibrationToScreenPoint = (point, index, totalPoints, vibration) => {
+  if (!vibration || vibration.amplitudePx <= 0) {
+    return point;
+  }
+
+  const total = Math.max(2, totalPoints);
+  const t = clamp(index / (total - 1), 0, 1);
+  const envelope = Math.sin(Math.PI * t);
+  if (envelope <= 0) {
+    return point;
+  }
+
+  const phase = vibration.timeSeconds * Math.PI * 2 * vibration.frequency;
+  const wave = Math.sin(phase + index * 0.85);
+  const offsetY = wave * vibration.amplitudePx * envelope;
+  return {
+    x: point.x,
+    y: point.y + offsetY,
+  };
+};
+
+const buildProjectedRopePoints = (
+  castOrigin,
+  magnetWorld,
+  slackValue,
+  config,
+) => {
   const safeConfig = {
     ...CORNER_PROJECTION_CONFIG,
     ...config,
@@ -72,7 +197,7 @@ const buildProjectedRopePoints = (castOrigin, magnetWorld, tension, config) => {
     Math.round(safeConfig.transitionSamples ?? 0),
   );
 
-  const sag = calculateSag(castOrigin, magnetWorld, tension ?? 50, safeConfig);
+  const sag = calculateSag(castOrigin, magnetWorld, safeConfig, slackValue);
 
   const basePoints = [];
   const idealPoints = [];
@@ -152,14 +277,14 @@ const buildProjectedRopePoints = (castOrigin, magnetWorld, tension, config) => {
 export function getSingleCurveWithCornerProjection(
   castOrigin,
   magnetWorld,
-  tension,
+  slackValue,
   config = {},
 ) {
   if (!castOrigin || !magnetWorld) return [];
   const { points } = buildProjectedRopePoints(
     castOrigin,
     magnetWorld,
-    tension,
+    slackValue,
     config,
   );
   return points;
@@ -175,7 +300,7 @@ export function drawProjectedRopeDebug(
   graphics,
   castOrigin,
   magnetWorld,
-  tension,
+  slackValue,
   viewport,
   config = {},
 ) {
@@ -183,7 +308,7 @@ export function drawProjectedRopeDebug(
   const { debug } = buildProjectedRopePoints(
     castOrigin,
     magnetWorld,
-    tension,
+    slackValue,
     config,
   );
   if (!debug?.config?.enableDebugVisualization) return;
@@ -221,7 +346,13 @@ export function drawProjectedRopeDebug(
  * Render projected rope points onto a PIXI.Graphics line.
  * Uses black stroke by default to match desired rope color.
  */
-export function renderProjectedRopePoints(points, line, viewport, config = {}) {
+export function renderProjectedRopePoints(
+  points,
+  line,
+  viewport,
+  config = {},
+  renderState = {},
+) {
   if (!line || !viewport || !Array.isArray(points) || points.length < 2) {
     return;
   }
@@ -235,23 +366,40 @@ export function renderProjectedRopePoints(points, line, viewport, config = {}) {
     },
   };
 
-  line.clear();
   line.setStrokeStyle({
     width: safeConfig.line.width,
-    color: safeConfig.line.color,
+    color: renderState.color ?? safeConfig.line.color,
     alpha: safeConfig.line.alpha,
   });
 
-  const startScreen = worldToScreen(points[0], viewport);
+  const startScreenRaw = worldToScreen(points[0], viewport);
+  const startScreen = applyVibrationToScreenPoint(
+    startScreenRaw,
+    0,
+    points.length,
+    renderState.vibration,
+  );
   line.moveTo(startScreen.x, startScreen.y);
   for (let i = 1; i < points.length; i += 1) {
-    const screen = worldToScreen(points[i], viewport);
+    const screenRaw = worldToScreen(points[i], viewport);
+    const screen = applyVibrationToScreenPoint(
+      screenRaw,
+      i,
+      points.length,
+      renderState.vibration,
+    );
     line.lineTo(screen.x, screen.y);
   }
   line.stroke();
 }
 
-function renderProjectedRopeSegments(segments, line, viewport, config = {}) {
+function renderProjectedRopeSegments(
+  segments,
+  line,
+  viewport,
+  config = {},
+  renderState = {},
+) {
   if (!line || !viewport || !Array.isArray(segments) || segments.length === 0) {
     return;
   }
@@ -267,18 +415,42 @@ function renderProjectedRopeSegments(segments, line, viewport, config = {}) {
 
   line.setStrokeStyle({
     width: safeConfig.line.width,
-    color: safeConfig.line.color,
+    color: renderState.color ?? safeConfig.line.color,
     alpha: safeConfig.line.alpha,
   });
+
+  const totalPoints = Math.max(2, renderState.totalPoints ?? 2);
 
   segments.forEach((segment) => {
     if (!Array.isArray(segment) || segment.length < 2) {
       return;
     }
-    const startScreen = worldToScreen(segment[0], viewport);
+    const getPointIndex = (point, fallback) => {
+      const mapped = renderState.pointIndexLookup?.get(point);
+      if (Number.isFinite(mapped)) {
+        return mapped;
+      }
+      return fallback;
+    };
+
+    const startIndex = getPointIndex(segment[0], 0);
+    const startScreenRaw = worldToScreen(segment[0], viewport);
+    const startScreen = applyVibrationToScreenPoint(
+      startScreenRaw,
+      startIndex,
+      totalPoints,
+      renderState.vibration,
+    );
     line.moveTo(startScreen.x, startScreen.y);
     for (let i = 1; i < segment.length; i += 1) {
-      const screen = worldToScreen(segment[i], viewport);
+      const index = getPointIndex(segment[i], startIndex + i);
+      const screenRaw = worldToScreen(segment[i], viewport);
+      const screen = applyVibrationToScreenPoint(
+        screenRaw,
+        index,
+        totalPoints,
+        renderState.vibration,
+      );
       line.lineTo(screen.x, screen.y);
     }
   });
@@ -313,28 +485,61 @@ export function renderProjectedRope(
     Number.isFinite(options?.tension) && options.tension !== null
       ? options.tension
       : 50;
+  const slack =
+    Number.isFinite(options?.slack) && options.slack !== null
+      ? Math.max(0, options.slack)
+      : null;
   const projectedConfig =
     options.projectedRopeConfig ?? CORNER_PROJECTION_CONFIG;
+  const ropeConfig = {
+    ...projectedConfig,
+    breakThreshold: Number.isFinite(options?.breakThreshold)
+      ? Math.max(0, options.breakThreshold)
+      : projectedConfig.breakThreshold,
+  };
+  const visualState = getVisualState(options, ropeConfig);
   const projectedPoints = getSingleCurveWithCornerProjection(
     castOrigin,
     magnetWorld,
-    tension,
-    projectedConfig,
+    slack,
+    ropeConfig,
   );
+  const pointIndexLookup = new Map(
+    projectedPoints.map((point, index) => [point, index]),
+  );
+  const renderState = {
+    color: visualState.color,
+    vibration: visualState.vibration,
+    pointIndexLookup,
+    totalPoints: projectedPoints.length,
+  };
   if (options.lineUnderwater) {
     const { aboveSegments, underwaterSegments } = splitRopeByWaterSurface(
       projectedPoints,
       WORLD_Z.WATER_SURFACE,
     );
-    renderProjectedRopeSegments(aboveSegments, line, viewport, projectedConfig);
+    renderProjectedRopeSegments(
+      aboveSegments,
+      line,
+      viewport,
+      ropeConfig,
+      renderState,
+    );
     renderProjectedRopeSegments(
       underwaterSegments,
       options.lineUnderwater,
       viewport,
-      projectedConfig,
+      ropeConfig,
+      renderState,
     );
   } else {
-    renderProjectedRopePoints(projectedPoints, line, viewport, projectedConfig);
+    renderProjectedRopePoints(
+      projectedPoints,
+      line,
+      viewport,
+      ropeConfig,
+      renderState,
+    );
   }
 
   const waterHitWorld = getWaterSurfaceIntersection(projectedPoints);
@@ -344,9 +549,9 @@ export function renderProjectedRope(
       options.lineDebug,
       castOrigin,
       magnetWorld,
-      tension,
+      slack,
       viewport,
-      projectedConfig,
+      ropeConfig,
     );
   }
 

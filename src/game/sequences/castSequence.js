@@ -297,7 +297,16 @@ export async function executeCastSequence(
       const targetWorld = castResult.itemPositionWorld;
       const rawLineLength = distance2D(targetWorld, avatarWorld);
       const spoolCapacity = getSpoolCapacity(resolvedEquipment);
-      const lineLength = Math.min(rawLineLength, spoolCapacity);
+      const straightLineLength = Math.min(rawLineLength, spoolCapacity);
+      const visualSlack = Math.max(
+        0,
+        sessionStore.getState().ropeVisualSlack ?? 0,
+      );
+      const seededSlack = Math.min(
+        visualSlack,
+        Math.max(0, spoolCapacity - straightLineLength),
+      );
+      const lineLength = straightLineLength + seededSlack;
       const spoolRemaining = Math.max(0, spoolCapacity - lineLength);
 
       const target = createMetallicTargetFromItem(castResult.item, targetWorld);
@@ -309,9 +318,9 @@ export async function executeCastSequence(
         equipment: resolvedEquipment,
         tension: 0,
         lineLength,
-        straightLineDistance: lineLength,
-        slack: 0,
-        lineTaut: true,
+        straightLineDistance: straightLineLength,
+        slack: seededSlack,
+        lineTaut: seededSlack <= 0,
         lineCondition: 100,
         breakThreshold: resolvedEquipment?.lineStrength ?? 0,
         spoolRemaining,

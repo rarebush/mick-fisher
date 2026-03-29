@@ -18,6 +18,8 @@ import { renderProjectedRope } from "./projectedRopeRenderer.js";
 import { cleanupDisplayObjects } from "../rendering/displayCleanup.js";
 import { getPeakValue } from "../utils/peakUtils.js";
 
+const clamp01 = (value) => Math.max(0, Math.min(1, value));
+
 /**
  * Animate casting line from shore to target position
  * Shows magnet arc to water surface, splash, then sink to riverbed
@@ -55,9 +57,10 @@ export function animateCastLine(
     }
 
     if (sessionStore) {
-      sessionStore.getState().setPhase("idle");
-      sessionStore.getState().setPhaseProgress(0);
-      sessionStore.getState().setCastPosition(null, null);
+      const state = sessionStore.getState();
+      state.setPhase("idle");
+      state.setPhaseProgress(0);
+      state.resetRopeRenderState(true);
     }
 
     // ===========================================
@@ -148,6 +151,7 @@ export function animateCastLine(
     const dz = targetWorld.z - ropeAnchorWorld.z;
     const distance3D = Math.sqrt(dx * dx + dy * dy + dz * dz);
     const horizontalDistance = Math.sqrt(dx * dx + dy * dy);
+    const castMaxVisualSlack = Math.max(0.06, horizontalDistance * 0.12);
 
     console.log(
       `[CAST] Distance: ${distance3D.toFixed(
@@ -158,6 +162,7 @@ export function animateCastLine(
     if (sessionStore) {
       sessionStore.getState().setPhase("throwing");
       sessionStore.getState().setPhaseProgress(0);
+      sessionStore.getState().setRopeVisualSlack(0, 1e-4);
     }
 
     const magnetStore = useMagnetStore.getState();
@@ -250,6 +255,15 @@ export function animateCastLine(
 
     // Tension animation: 95 (throw start) -> 15 (water) -> 10 (settled)
     let currentTension = 95;
+    const updateCastVisualSlack = (normalizedProgress) => {
+      if (!sessionStore?.getState?.().setRopeVisualSlack) {
+        return 0;
+      }
+      const slack = castMaxVisualSlack * clamp01(normalizedProgress);
+      sessionStore.getState().setRopeVisualSlack(slack, 1e-4);
+      return slack;
+    };
+
     const animate = (currentTime) => {
       if (!app) {
         cleanupDisplayObjects(line, magnetSprite, floatSprite, magnetDebugText);
@@ -319,8 +333,19 @@ export function animateCastLine(
           );
         }
 
+        const throwSlack = updateCastVisualSlack(
+          skipSink ? progress : progress * 0.7,
+        );
+        const stateForRope = sessionStore?.getState?.();
+
         renderProjectedRope(line, viewport, ropeAnchorWorld, magnetWorld, {
-          tension: sessionStore?.getState().ropeTension,
+          tension: stateForRope?.ropeTension,
+          slack: throwSlack,
+          breakThreshold: Math.max(
+            0,
+            stateForRope?.physicsState?.breakThreshold ?? 0,
+          ),
+          timeSeconds: currentTime / 1000,
           lineUnderwater,
           lineDebug,
         });
@@ -417,9 +442,18 @@ export function animateCastLine(
           sessionStore.getState().setPhaseProgress(0.5 + sinkProgress * 0.4); // 50-90%
         }
 
+        const sinkSlack = updateCastVisualSlack(0.7 + sinkProgress * 0.2);
+        const stateForRope = sessionStore?.getState?.();
+
         // Render rope
         renderProjectedRope(line, viewport, ropeAnchorWorld, magnetWorld, {
-          tension: sessionStore?.getState().ropeTension,
+          tension: stateForRope?.ropeTension,
+          slack: sinkSlack,
+          breakThreshold: Math.max(
+            0,
+            stateForRope?.physicsState?.breakThreshold ?? 0,
+          ),
+          timeSeconds: currentTime / 1000,
           lineUnderwater,
           lineDebug,
         });
@@ -476,9 +510,20 @@ export function animateCastLine(
           sessionStore.getState().setPhaseProgress(0.9 + settleProgress * 0.1); // 90-100%
         }
 
+        const settleSlack = updateCastVisualSlack(
+          skipSink ? 1 : 0.9 + settleProgress * 0.1,
+        );
+        const stateForRope = sessionStore?.getState?.();
+
         // Render rope
         renderProjectedRope(line, viewport, ropeAnchorWorld, magnetWorld, {
-          tension: sessionStore?.getState().ropeTension,
+          tension: stateForRope?.ropeTension,
+          slack: settleSlack,
+          breakThreshold: Math.max(
+            0,
+            stateForRope?.physicsState?.breakThreshold ?? 0,
+          ),
+          timeSeconds: currentTime / 1000,
           lineUnderwater,
           lineDebug,
         });

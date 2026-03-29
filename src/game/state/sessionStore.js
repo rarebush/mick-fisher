@@ -87,6 +87,7 @@ const useSessionStore = create((set, get) => ({
 
   // Rope visualization state
   ropeTension: 0, // Single source of truth for rope tension
+  ropeVisualSlack: 0, // Visual-only slack for non-physics phases (cast/wait/reel)
   phase: "idle", // Current phase: 'idle', 'cast', 'drag', 'lift', 'waiting'
   phaseProgress: 0, // Phase completion (0 to 1)
   castPosition: null, // Cast landing position (set before drag starts, for rope rendering)
@@ -204,6 +205,26 @@ const useSessionStore = create((set, get) => ({
     set({ ropeTension: Math.max(0, tension) });
   },
 
+  setRopeVisualSlack: (slack, epsilon = 0) => {
+    const nextSlack = Math.max(0, slack);
+    const threshold = Math.max(0, epsilon);
+    set((state) => {
+      const currentSlack = state.ropeVisualSlack ?? 0;
+      if (Math.abs(currentSlack - nextSlack) <= threshold) {
+        return {};
+      }
+      return { ropeVisualSlack: nextSlack };
+    });
+  },
+
+  resetRopeRenderState: (clearCastPosition = true) =>
+    set((state) => ({
+      ropeTension: 0,
+      ropeVisualSlack: 0,
+      ropeWaterHitWorld: null,
+      castPosition: clearCastPosition ? null : state.castPosition,
+    })),
+
   queueStrike: () => set({ strikeQueued: true }),
 
   clearStrike: () => set({ strikeQueued: false }),
@@ -256,7 +277,6 @@ const useSessionStore = create((set, get) => ({
       dragQuickReleaseActive: false,
       phase: "idle", // Reset phase
       phaseProgress: 0,
-      ropeTension: 0,
       dragState: {
         ...state.dragState,
         active: false,
@@ -288,6 +308,8 @@ const useSessionStore = create((set, get) => ({
         accelerationTime: 0,
         overloadTimer: 0,
       },
+      ropeTension: 0,
+      ropeVisualSlack: 0,
       physicsState: createInitialPhysicsState(),
     }));
   },
@@ -628,6 +650,10 @@ const useSessionStore = create((set, get) => ({
       sessionTimeRemaining: 600,
       phase: "idle",
       phaseProgress: 0,
+      ropeTension: 0,
+      ropeVisualSlack: 0,
+      castPosition: null,
+      ropeWaterHitWorld: null,
       castInputMode: "click",
       castAimState: { ...DEFAULT_CAST_AIM_STATE },
       donutAimState: { ...DEFAULT_DONUT_AIM_STATE },

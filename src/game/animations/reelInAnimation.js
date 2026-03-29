@@ -40,6 +40,10 @@ export function animateReelIn(
     const startTime = performance.now();
     const viewport = createViewport(app.screen.width, app.screen.height);
     const castOrigin = getAvatarHandWorldPosition();
+    const startVisualSlack = Math.max(
+      0,
+      sessionStore?.getState?.().ropeVisualSlack ?? 0,
+    );
     const startWorld = screenToWorld(
       startX,
       startY,
@@ -75,8 +79,20 @@ export function animateReelIn(
         z: lerp(startWorld.z, castOrigin.z, progress),
       };
 
+      const renderSlack = startVisualSlack * (1 - progress);
+      if (sessionStore?.getState?.().setRopeVisualSlack) {
+        sessionStore.getState().setRopeVisualSlack(renderSlack, 1e-4);
+      }
+      const ropeState = sessionStore?.getState?.();
+
       renderProjectedRope(line, viewport, castOrigin, magnetWorld, {
-        tension: sessionStore?.getState().ropeTension,
+        tension: ropeState?.ropeTension,
+        slack: renderSlack,
+        breakThreshold: Math.max(
+          0,
+          ropeState?.physicsState?.breakThreshold ?? 0,
+        ),
+        timeSeconds: currentTime / 1000,
         lineUnderwater: options.lineUnderwater ?? null,
         lineDebug: options.lineDebug ?? null,
       });
@@ -91,9 +107,10 @@ export function animateReelIn(
       }
 
       if (sessionStore) {
-        sessionStore.getState().setPhase("idle");
-        sessionStore.getState().setPhaseProgress(0);
-        sessionStore.getState().setCastPosition(null, null);
+        const state = sessionStore.getState();
+        state.setPhase("idle");
+        state.setPhaseProgress(0);
+        state.resetRopeRenderState(true);
       }
 
       cleanupDisplayObjects(

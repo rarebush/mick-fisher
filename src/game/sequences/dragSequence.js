@@ -235,7 +235,16 @@ export async function updateDragMechanics(
         const avatarWorld = getAvatarWorldPosition();
         const rawLineLength = magnitude(subtract(fish.position, avatarWorld));
         const spoolCapacity = getSpoolCapacity(physicsState.equipment);
-        const lineLength = Math.min(rawLineLength, spoolCapacity);
+        const straightLineLength = Math.min(rawLineLength, spoolCapacity);
+        const visualSlack = Math.max(
+          0,
+          sessionStore.getState().ropeVisualSlack ?? 0,
+        );
+        const seededSlack = Math.min(
+          visualSlack,
+          Math.max(0, spoolCapacity - straightLineLength),
+        );
+        const lineLength = straightLineLength + seededSlack;
         const spoolRemaining = Math.max(0, spoolCapacity - lineLength);
         sessionStore.getState().setPhysicsState({
           active: true,
@@ -246,9 +255,9 @@ export async function updateDragMechanics(
           lastTension: 0,
           objectState: "kinetic",
           lineLength,
-          straightLineDistance: lineLength,
-          slack: 0,
-          lineTaut: true,
+          straightLineDistance: straightLineLength,
+          slack: seededSlack,
+          lineTaut: seededSlack <= 0,
           spoolCapacity,
           spoolRemaining,
           breakThreshold: physicsState.equipment?.lineStrength ?? 0,

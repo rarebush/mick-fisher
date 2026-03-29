@@ -36,7 +36,19 @@ export function updateRopeTicker({
   }
 
   const nextRopeUpdateTime = now;
-  const tension = sessionStore?.getState().ropeTension ?? 50;
+  const sessionState = sessionStore?.getState?.();
+  const tension = sessionState?.ropeTension ?? 50;
+  const physicsState = sessionState?.physicsState;
+  const visualSlack = Math.max(0, sessionState?.ropeVisualSlack ?? 0);
+  const draggingWithPhysics = phase === "drag" && Boolean(physicsState?.active);
+  const physicsSlack = Math.max(0, physicsState?.slack ?? 0);
+  const slack = draggingWithPhysics ? physicsSlack : visualSlack;
+  const breakThreshold = Math.max(0, physicsState?.breakThreshold ?? 0);
+
+  if (draggingWithPhysics && sessionState?.setRopeVisualSlack) {
+    sessionState.setRopeVisualSlack(physicsSlack, 1e-4);
+  }
+
   const ropeState = updateRopePhysics(
     app,
     sessionStore,
@@ -55,6 +67,9 @@ export function updateRopeTicker({
       ropeState.magnetWorld,
       {
         tension,
+        slack,
+        breakThreshold,
+        timeSeconds: now / 1000,
         lineUnderwater: dragLineUnderwater,
         lineDebug: dragLineDebug,
       },
