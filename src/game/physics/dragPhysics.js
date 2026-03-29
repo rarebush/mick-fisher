@@ -35,6 +35,26 @@ function clampTargetToWorld(target) {
   clampTargetToBounds(target, getWaterBounds());
 }
 
+function clampFishToSimulationBounds(target) {
+  if (!target?.position) return;
+  const xLimit = Math.max(1, PHYSICS_CONSTANTS.FISH_SIM_X_LIMIT ?? 300);
+  const maxY = Math.max(
+    WORLD_Y.WATER_NEAR + 1,
+    PHYSICS_CONSTANTS.FISH_SIM_Y_MAX ?? 300,
+  );
+  target.position.x = clamp(target.position.x, -xLimit, xLimit);
+  // Hard wall rule only: fish may not move in front of the wall (y < 0).
+  target.position.y = clamp(target.position.y, WORLD_Y.WATER_NEAR, maxY);
+}
+
+function clampTargetByType(target, targetType) {
+  if (targetType === "fish") {
+    clampFishToSimulationBounds(target);
+    return;
+  }
+  clampTargetToWorld(target);
+}
+
 export function updateDragPhysics(deltaTime, isHolding, physicsState) {
   const state = {
     ...physicsState,
@@ -309,7 +329,7 @@ export function updateDragPhysics(deltaTime, isHolding, physicsState) {
   state.target.velocity.x = objectVelocityVector.x;
   state.target.velocity.y = objectVelocityVector.y;
   objectVelocityVector = state.target.velocity;
-  clampTargetToWorld(state.target);
+  clampTargetByType(state.target, state.targetType);
 
   const lineAxisResult = getLineAxis(avatar2D, state.target.position);
   const lineAxis = lineAxisResult.axis;

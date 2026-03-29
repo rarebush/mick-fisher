@@ -3,8 +3,10 @@ import {
   FISH_FIGHT_CONSTANTS,
   PHYSICS_CONSTANTS,
   SLIP_CONSTANTS,
+  TEMPERAMENT_ALIASES,
   TEMPERAMENT_MODIFIERS,
 } from "./physicsConstants.js";
+import { WORLD_Y } from "../mechanics/worldDimensions.js";
 import { clamp } from "./vectorUtils.js";
 
 function rollAttachmentPoint() {
@@ -73,50 +75,59 @@ export function createMetallicTargetFromItem(item, position) {
 export function createFishTarget(species, size, hookPosition) {
   const template = getFishSpecies(species);
   if (!template) return null;
-  const sizeData = template.sizes[size];
-  const temperament = TEMPERAMENT_MODIFIERS[template.temperament];
+  const resolvedSize = template.sizes[size] ? size : "medium";
+  const sizeData = template.sizes[resolvedSize];
+  const resolvedTemperament =
+    TEMPERAMENT_ALIASES[template.temperament] ?? template.temperament;
+  const temperament =
+    TEMPERAMENT_MODIFIERS[resolvedTemperament] ?? TEMPERAMENT_MODIFIERS.normal;
   const runRange = FISH_FIGHT_CONSTANTS.RUN_DURATION_RANGE;
   const restRange = FISH_FIGHT_CONSTANTS.REST_DURATION_RANGE;
-  const fightTempo = temperament?.directionChangeMod ?? 1;
   const runDuration =
-    (runRange.min + Math.random() * (runRange.max - runRange.min)) * fightTempo;
+    (runRange.min + Math.random() * (runRange.max - runRange.min)) *
+    (temperament.runDurationMultiplier ?? 1);
   const restDuration =
     (restRange.min + Math.random() * (restRange.max - restRange.min)) *
-    fightTempo;
+    (temperament.restDurationMultiplier ?? 1);
   const energyMultiplier =
     sizeData.energyMultiplier ?? sizeData.massMultiplier ?? 1;
   const maxEnergy = template.maxEnergy * energyMultiplier;
   const mass = template.mass * sizeData.massMultiplier;
   const energyRegen = (template.energyRegen ?? 0) * energyMultiplier;
+  const spawnPosition = {
+    x: hookPosition?.x ?? 0,
+    y: Math.max(
+      WORLD_Y.WATER_NEAR + 0.05,
+      hookPosition?.y ?? WORLD_Y.WATER_NEAR + 1.5,
+    ),
+  };
   return {
     id: `fish_${Date.now()}`,
     species,
-    size,
+    size: resolvedSize,
     category: template.category,
     mass,
     dragFactor: template.dragFactor,
     kineticDragCoefficient:
       template.dragFactor * PHYSICS_CONSTANTS.KINETIC_DRAG_BASE,
-    position: { x: hookPosition.x, y: hookPosition.y },
+    position: spawnPosition,
     velocity: { x: 0, y: 0 },
     isMoving: true,
     baseStrength: template.baseStrength * sizeData.strengthMultiplier,
     maxEnergy,
     energyRegen,
-    temperament: template.temperament,
+    temperament: resolvedTemperament,
     panicThreshold: template.panicThreshold,
     state: "hooked",
     energy: maxEnergy,
     panicLevel: 0,
     targetDirection: { x: 0, y: 1 },
-    directionChangeTimer:
-      template.directionChangeFrequency * temperament.directionChangeMod,
-    directionChangeFrequency:
-      template.directionChangeFrequency * temperament.directionChangeMod,
+    directionChangeTimer: template.directionChangeFrequency,
+    directionChangeFrequency: template.directionChangeFrequency,
     fightPhase: "run",
     fightPhaseTimer: runDuration,
-    fightRunDuration: runDuration,
-    fightRestDuration: restDuration,
+    fightRunDurationBase: runDuration,
+    fightRestDurationBase: restDuration,
     currentForce: { x: 0, y: 0 },
     lineStress: 0,
     baseValue: template.baseValue * sizeData.valueMultiplier,

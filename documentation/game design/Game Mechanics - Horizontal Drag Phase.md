@@ -4,9 +4,30 @@
 Player pulls item horizontally through water toward shore/bank. Tension controls drag speed and slip accumulation rate. This phase focuses on balancing speed (high tension) against risk (slip build-up and instant rip-off at max tension).
 
 **Fishing Variant (Fight Phase):**
-For rod fishing, this phase becomes a **fight** rather than a steady drag. The fish alternates between **bursts away from the player** and **rest windows** where the player can reel in. When the fish moves away, tension should spike quickly (near-max) based on fish speed/stamina, creating a high-risk window. Fish movement can **drift toward the player** during rest windows to generate slack and snap-taut risk; forward progress should still primarily happen during rest windows or brief player-favored moments.
+For rod fishing, this phase becomes a **fight** rather than a steady drag. The fish alternates between **running bursts away from the player** and **rest windows** where the player can reel in. When the fish runs, tension should spike quickly based on fish strength, panic, and stamina. During rest windows, fish continue to swim but with reduced force output (they do **not** intentionally drift toward the player).
 
 **Rhythm Goal:** Strike → fish runs away (tension spikes) → rest window (player reels) → fish runs away again → repeat until capture.
+
+## Hooked Fish Behavior Model (Current)
+
+- Fish AI outputs a swim force vector only (direction + magnitude); drag physics resolves line tension, payout, and movement outcomes.
+- Fish avoid swimming into the wall at `world y = 0` by biasing direction away from the wall when close.
+- Fish have a slight bias to swim away from the player whenever line tension is above zero.
+- Hooked fish use two phases:
+  - **Run:** standard force multiplier, higher directional volatility.
+  - **Rest:** reduced force multiplier, lower directional volatility, less frequent meaningful turns.
+- Fish have a panic meter:
+  - Panic rises faster above panic threshold.
+  - Higher panic increases potential force output.
+  - Higher panic increases likelihood and significance of direction changes.
+- Fish have temperament types that modulate panic, force, and direction behavior:
+  - **Relaxed:** less force baseline, slower panic buildup, generally steadier.
+  - **Normal:** baseline behavior.
+  - **Cautious:** faster panic buildup, more reactive direction behavior.
+  - **Aggressive:** higher force baseline and stronger directional reactivity across phases.
+- Run/rest timing is weighted by temperament, panic, and energy:
+  - More panic tends to shorten rests and sustain fight pressure.
+  - Lower energy tends to lengthen rests and reduce sustained run pressure.
 
 ---
 

@@ -36,6 +36,17 @@
   stroke-width: 1;
 }
 
+.fish-ai-debug-widget__bounds {
+  fill: rgba(7, 18, 28, 0.25);
+  stroke: rgba(196, 218, 240, 0.18);
+  stroke-width: 1;
+}
+
+.fish-ai-debug-widget__grid {
+  stroke: rgba(196, 218, 240, 0.12);
+  stroke-width: 1;
+}
+
 .fish-ai-debug-widget__origin {
   fill: rgba(176, 211, 244, 0.9);
 }

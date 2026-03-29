@@ -6,6 +6,9 @@ import {
 } from "../mechanics/worldConstants.js";
 import { clamp, distance2D } from "../physics/vectorUtils.js";
 
+// Temporary tuning switch: keep strain color feedback but disable rope shake.
+const ENABLE_STRAIN_VIBRATION = true;
+
 export const CORNER_PROJECTION_CONFIG = {
   baseSamples: 20,
   transitionSamples: 4,
@@ -149,7 +152,7 @@ const getVisualState = (options, config) => {
     color,
     strainRatio,
     vibration: {
-      amplitudePx: maxVibrationPx * strainBlend,
+      amplitudePx: ENABLE_STRAIN_VIBRATION ? maxVibrationPx * strainBlend : 0,
       frequency: vibrationFrequency,
       timeSeconds,
     },
@@ -481,10 +484,6 @@ export function renderProjectedRope(
     options.lineDebug.clear();
   }
 
-  const tension =
-    Number.isFinite(options?.tension) && options.tension !== null
-      ? options.tension
-      : 50;
   const slack =
     Number.isFinite(options?.slack) && options.slack !== null
       ? Math.max(0, options.slack)

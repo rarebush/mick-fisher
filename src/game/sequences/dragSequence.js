@@ -264,6 +264,8 @@ export async function updateDragMechanics(
           waitState: null,
         });
         sessionStore.getState().setRopeTension(0);
+        sessionStore.getState().setPhase("drag");
+        sessionStore.getState().setPhaseProgress(0);
         gameStore.getState().setGamePhase("dragging");
         gameStore.getState().setCaughtItem(fishId);
         gameStore.setState((state) => ({
