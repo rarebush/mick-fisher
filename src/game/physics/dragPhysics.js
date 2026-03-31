@@ -54,8 +54,8 @@ function clampFishToSimulationBounds(target) {
   target.position.y = clamp(target.position.y, WORLD_Y.WATER_NEAR, maxY);
 }
 
-function clampTargetByType(target, targetType) {
-  if (targetType === "fish") {
+function clampTargetByType(target, boundsType) {
+  if (boundsType === "fish") {
     clampFishToSimulationBounds(target);
     return;
   }
@@ -154,7 +154,7 @@ export function updateDragPhysics(deltaTime, isHolding, physicsState) {
       : scale(objectVelocityVector, -kineticDragCoefficient * speed);
 
   const useKineticFriction =
-    state.targetType === "metallic" && Boolean(state.target.isMoving);
+    Boolean(state.target.hasFriction) && Boolean(state.target.isMoving);
   const frictionResult = useKineticFriction
     ? getFriction(state.target, objectVelocityVector, true)
     : { x: 0, y: 0 };
@@ -163,77 +163,66 @@ export function updateDragPhysics(deltaTime, isHolding, physicsState) {
       ? frictionResult
       : { x: 0, y: 0 };
 
-  const forceWithoutPlayer =
-    state.targetType === "metallic"
-      ? add(
-          add(swimForceVector, velocityDragVector),
-          add(externalForceVector, frictionForceVector),
-        )
-      : add(add(swimForceVector, velocityDragVector), externalForceVector);
+  // All object forces excluding the player. Friction is {0,0} for targets
+  // without hasFriction (e.g. fish), so the sum is always the same shape.
+  const forceWithoutPlayer = add(
+    add(swimForceVector, velocityDragVector),
+    add(externalForceVector, frictionForceVector),
+  );
 
-  const fishOutwardForce =
-    state.targetType === "fish"
-      ? dotProduct(forceWithoutPlayer, previousAxis)
-      : 0;
-  const clutchForce =
-    state.targetType === "fish"
-      ? Math.min(Math.max(fishOutwardForce, 0), effectiveDragThreshold)
-      : 0;
-  const lineInwardForce =
-    state.targetType === "fish" && previousLineTaut
-      ? Math.max(clutchForce, isHolding ? avatarPullForce : 0)
-      : 0;
   /*
-   * Intentional clutch-reactivity asymmetry between fish and metallic paths:
-   * - Fish path (`fishOutwardForce`) uses `forceWithoutPlayer`, which includes
-   *   swim, current, and velocity drag. Fish body drag is transmitted through
-   *   the fish to the line attachment point, so the clutch should react to it.
-   * - Metallic path (`metallicLineLoadForce`) uses swim + current only,
-   *   excluding velocity drag and kinetic friction. Those dissipative forces act
-   *   at the object-medium interface and are absorbed by water/riverbed rather
-   *   than loading the reel through the line.
+   * Unified clutch pipeline (works for both fish and metallic targets).
+   *
+   * Clutch-reactivity asymmetry is parameterized by target.includesDragInClutchLoad:
+   * - Fish (true): velocity drag loads the clutch because drag is transmitted
+   *   through the fish body to the line attachment point.
+   * - Metallic (false): velocity drag and kinetic friction are dissipated at
+   *   the object-medium interface and do not load the line/reel.
    */
-  const metallicLineLoadForce =
-    dotProduct(swimForceVector, previousAxis) +
-    dotProduct(externalForceVector, previousAxis);
-  const metallicReactiveDrag = previousLineTaut
-    ? Math.min(Math.max(metallicLineLoadForce, 0), effectiveDragThreshold)
-    : 0;
-  const metallicPlayerForce = previousLineTaut
-    ? Math.max(metallicReactiveDrag, isHolding ? avatarPullForce : 0)
-    : 0;
-  const playerForceVectorForMotion = previousLineTaut
-    ? scale(
-        previousAxis,
-        -(state.targetType === "fish" ? lineInwardForce : metallicPlayerForce),
-      )
-    : { x: 0, y: 0 };
-  const isOverwhelmed =
-    state.targetType === "fish" &&
-    previousLineTaut &&
-    fishOutwardForce > 0 &&
-    fishOutwardForce > lineInwardForce;
-  const isHeld =
-    state.targetType === "fish" &&
-    previousLineTaut &&
-    fishOutwardForce > 0 &&
-    !isOverwhelmed;
+  const clutchLoadForces = state.target.includesDragInClutchLoad
+    ? forceWithoutPlayer
+    : add(swimForceVector, externalForceVector);
 
+  // Project all object forces and clutch-relevant forces onto line axis.
+  const radialObjectForce = dotProduct(forceWithoutPlayer, previousAxis);
+  const outwardForce = dotProduct(clutchLoadForces, previousAxis);
+
+  // Clutch reacts to positive (outward) force component, capped at drag threshold.
+  const reactiveDragForMotion = previousLineTaut
+    ? Math.min(Math.max(outwardForce, 0), effectiveDragThreshold)
+    : 0;
+
+  // Player force is the greater of clutch reaction and active reel pull.
+  const playerForce = previousLineTaut
+    ? Math.max(reactiveDragForMotion, isHolding ? avatarPullForce : 0)
+    : 0;
+
+  const playerForceVectorForMotion = previousLineTaut
+    ? scale(previousAxis, -playerForce)
+    : { x: 0, y: 0 };
+
+  // Force balance descriptors — emerge naturally from the radial contest.
+  // For metallic targets outwardForce is typically ~0 (no swim), so isHeld
+  // and isOverwhelmed will be false, which is correct.
+  const isOverwhelmed =
+    previousLineTaut && outwardForce > 0 && outwardForce > playerForce;
+  const isHeld = previousLineTaut && outwardForce > 0 && !isOverwhelmed;
+
+  // Decompose into tangential (free, perpendicular to line) + radial (clutch-constrained).
   const tangentialForce = subtract(
     forceWithoutPlayer,
-    scale(previousAxis, fishOutwardForce),
+    scale(previousAxis, radialObjectForce),
   );
-  const radialNetForce =
-    state.targetType === "fish" && previousLineTaut
-      ? fishOutwardForce - lineInwardForce
-      : fishOutwardForce;
-  const radialForceVector = scale(previousAxis, radialNetForce);
-  // Fish: clutch constraint decomposes into tangential (free) + radial (clamped by clutch/player)
-  // Metallic: clutch-constrained inward force opposes object forces (max of reactive drag and player pull)
-  const netForceVector =
-    state.targetType === "fish"
-      ? add(tangentialForce, radialForceVector)
-      : add(forceWithoutPlayer, playerForceVectorForMotion);
+  const radialNetForce = previousLineTaut
+    ? radialObjectForce - playerForce
+    : radialObjectForce;
+  const netForceVector = add(
+    tangentialForce,
+    scale(previousAxis, radialNetForce),
+  );
+
+  // Legacy aliases for output compatibility.
+  const fishOutwardForce = outwardForce;
 
   const mass = Math.max(
     state.target.mass ?? 0,
@@ -252,7 +241,7 @@ export function updateDragPhysics(deltaTime, isHolding, physicsState) {
   let intrinsicApproachRate = 0;
   let effectiveReelCap = 0;
 
-  if (state.targetType === "metallic" && !state.target.isMoving) {
+  if (Boolean(state.target.hasStaticFriction) && !state.target.isMoving) {
     objectVelocityVector = { x: 0, y: 0 };
   } else {
     objectVelocityVector = add(
@@ -279,7 +268,7 @@ export function updateDragPhysics(deltaTime, isHolding, physicsState) {
     const objectApproachRateUnclamped =
       unclampedRadialVelocity < 0 ? Math.abs(unclampedRadialVelocity) : 0;
 
-    if (state.targetType === "fish" && previousLineTaut && isHeld) {
+    if (previousLineTaut && isHeld) {
       const outwardRadialVelocity = Math.max(
         0,
         dotProduct(objectVelocityVector, previousAxis),
@@ -319,10 +308,10 @@ export function updateDragPhysics(deltaTime, isHolding, physicsState) {
 
     if (
       magnitude(objectVelocityVector) < PHYSICS_CONSTANTS.MOTION_EPSILON &&
-      (state.targetType !== "metallic" || staticBreakTimer <= 0)
+      (!state.target.hasStaticFriction || staticBreakTimer <= 0)
     ) {
       objectVelocityVector = { x: 0, y: 0 };
-      if (state.targetType === "metallic") {
+      if (state.target.hasStaticFriction) {
         objectState = "static";
       }
     }
@@ -339,7 +328,10 @@ export function updateDragPhysics(deltaTime, isHolding, physicsState) {
   state.target.velocity.x = objectVelocityVector.x;
   state.target.velocity.y = objectVelocityVector.y;
   objectVelocityVector = state.target.velocity;
-  clampTargetByType(state.target, state.targetType);
+  clampTargetByType(
+    state.target,
+    state.target.simBoundsType ?? state.targetType,
+  );
 
   const lineAxisResult = getLineAxis(avatar2D, state.target.position);
   const lineAxis = lineAxisResult.axis;
@@ -378,12 +370,7 @@ export function updateDragPhysics(deltaTime, isHolding, physicsState) {
   let slack = Math.max(0, state.lineLength - straightLineDistance);
   let lineTaut = slack <= slackEpsilon;
 
-  if (
-    state.targetType === "fish" &&
-    lineTaut &&
-    !isOverwhelmed &&
-    straightLineDistance > state.lineLength
-  ) {
+  if (lineTaut && !isOverwhelmed && straightLineDistance > state.lineLength) {
     const overshoot = straightLineDistance - state.lineLength;
     state.target.position = subtract(
       state.target.position,
@@ -418,7 +405,7 @@ export function updateDragPhysics(deltaTime, isHolding, physicsState) {
       : scale(objectVelocityVector, -kineticDragCoefficient * lineLoadSpeed);
 
   const frictionForLineLoadResult =
-    state.targetType === "metallic" && Boolean(state.target.isMoving)
+    Boolean(state.target.hasFriction) && Boolean(state.target.isMoving)
       ? getFriction(state.target, objectVelocityVector, true)
       : { x: 0, y: 0 };
   const frictionForLineLoadVector =
@@ -431,35 +418,27 @@ export function updateDragPhysics(deltaTime, isHolding, physicsState) {
   const externalForce = dotProduct(externalForceVector, lineAxis);
   const frictionForce = dotProduct(frictionForLineLoadVector, lineAxis);
   // Total non-player radial force balance on the object along the line axis.
-  // Includes swim, current, velocity drag, and (for metallic) kinetic friction.
-  // Used for payout/contest decisions and tension accounting at the object end.
+  // Friction is 0 for targets without hasFriction, so one formula works for both.
   const objectLineForce =
-    state.targetType === "metallic"
-      ? swimForce + velocityDrag + externalForce + frictionForce
-      : swimForce + velocityDrag + externalForce;
-  // Environmental line load transmitted to the reel mechanism.
-  // Includes swim + current only; excludes dissipative medium forces.
-  // Used to compute reactive drag (clutch response).
-  const lineLoadForce = swimForce + externalForce;
+    swimForce + velocityDrag + externalForce + frictionForce;
+  // Clutch-relevant line load: parameterized by includesDragInClutchLoad.
+  // Fish: includes all forces (drag transmits through body to line).
+  // Metallic: swim + current only (dissipative forces don't load reel).
+  const lineLoadForce = state.target.includesDragInClutchLoad
+    ? objectLineForce
+    : swimForce + externalForce;
 
-  const fishOutwardResistance = Math.max(fishOutwardForce, 0);
-  const clutchForceAccounting =
-    state.targetType === "fish" && lineTaut ? clutchForce : 0;
-  let reactiveDrag;
-  let playerLineForce;
-  let lineInwardForceAccounting;
+  const outwardResistance = Math.max(outwardForce, 0);
+  const clutchForceAccounting = lineTaut ? reactiveDragForMotion : 0;
 
-  if (state.targetType === "fish") {
-    reactiveDrag = clutchForceAccounting;
-    lineInwardForceAccounting = lineTaut
-      ? Math.max(clutchForceAccounting, isHolding ? avatarPullForce : 0)
-      : 0;
-    playerLineForce = lineInwardForceAccounting;
-  } else {
-    reactiveDrag = Math.min(Math.max(lineLoadForce, 0), effectiveDragThreshold);
-    playerLineForce = Math.max(reactiveDrag, isHolding ? avatarPullForce : 0);
-    lineInwardForceAccounting = playerLineForce;
-  }
+  // Post-move accounting — unified for all target types.
+  let reactiveDrag = lineTaut
+    ? Math.min(Math.max(lineLoadForce, 0), effectiveDragThreshold)
+    : 0;
+  let playerLineForce = lineTaut
+    ? Math.max(reactiveDrag, isHolding ? avatarPullForce : 0)
+    : 0;
+  let lineInwardForceAccounting = playerLineForce;
   let tension = 0;
   let linePayout = 0;
   let slackChangeRate = 0;
@@ -488,31 +467,29 @@ export function updateDragPhysics(deltaTime, isHolding, physicsState) {
       recoveryBudgetRemaining -= recovery;
     }
   } else {
-    const fishRadialResistance =
-      fishOutwardResistance > 0
-        ? fishOutwardResistance
+    // Object's radial resistance for tension accounting: use outward object
+    // force when positive, otherwise fall back to sum of positive force
+    // components (prevents tension reading zero while player is actively
+    // reeling against drag/current).
+    const objectRadialResistance =
+      outwardResistance > 0
+        ? outwardResistance
         : isHolding
           ? Math.max(velocityDrag, 0) +
             Math.max(externalForce, 0) +
             Math.max(swimForce, 0)
           : 0;
-    shouldPayOutLine =
-      state.targetType === "fish"
-        ? fishOutwardForce > 0 && fishOutwardForce > lineInwardForceAccounting
-        : objectLineForce > playerLineForce;
 
-    if (state.targetType === "fish") {
-      tension = Math.min(lineInwardForceAccounting, fishRadialResistance);
+    shouldPayOutLine = objectLineForce > 0 && objectLineForce > playerLineForce;
+
+    if (shouldPayOutLine) {
+      tension = playerLineForce;
+    } else if (objectLineForce > 0) {
+      tension = Math.min(objectLineForce, playerLineForce);
     } else {
-      if (shouldPayOutLine) {
-        tension = playerLineForce;
-      } else if (objectLineForce > 0) {
-        tension = Math.min(objectLineForce, playerLineForce);
-      } else {
-        tension = 0;
-      }
-      tension = Math.max(0, tension);
+      tension = 0;
     }
+    tension = Math.max(0, Math.min(tension, objectRadialResistance));
 
     if (isHolding && objectApproachRate > 0) {
       const recoveryRate = clampActive
@@ -563,7 +540,7 @@ export function updateDragPhysics(deltaTime, isHolding, physicsState) {
     slack = 0;
   }
 
-  if (state.targetType === "metallic") {
+  if (state.target.hasStaticFriction) {
     staticFrictionThreshold =
       state.target.staticFrictionThreshold ??
       state.target.mass * PHYSICS_CONSTANTS.STATIC_FRICTION_COEFFICIENT;
@@ -704,10 +681,7 @@ export function updateDragPhysics(deltaTime, isHolding, physicsState) {
     typeof globalThis !== "undefined" &&
     Boolean(globalThis.__MF_DRAG_TICK_LOGS__);
   if (tickLogEnabled) {
-    const forceContestMargin =
-      state.targetType === "fish"
-        ? fishOutwardForce - lineInwardForceAccounting
-        : objectLineForce - playerLineForce;
+    const forceContestMargin = objectLineForce - playerLineForce;
     const tickDebugPairs = [
       ["targetType", state.targetType],
       ["isHolding", isHolding ? 1 : 0],
@@ -753,7 +727,7 @@ export function updateDragPhysics(deltaTime, isHolding, physicsState) {
   }
 
   if (
-    state.targetType === "metallic" &&
+    state.target.hasStaticFriction &&
     state.target?.isMoving &&
     objectState === "kinetic" &&
     postStaticBreakDebugFramesRemaining > 0
