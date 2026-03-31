@@ -15,6 +15,9 @@
 export const PHYSICS_CONSTANTS = {
   STATIC_FRICTION_COEFFICIENT: 0.8,
   KINETIC_FRICTION_COEFFICIENT: 0.2,
+  // TODO(balance): Metallic objects feel very light once moving because they
+  // have no self-propulsion and minimal dynamic resistance. Consider adding
+  // riverbed bumping / snag-like resistance to give them more weight feel.
   KINETIC_DRAG_BASE: 5,
   ROPE_SYSTEM_INERTIA: 50,
   TENSION_DECAY_BASE: 30,
@@ -44,6 +47,8 @@ export const PHYSICS_CONSTANTS = {
   FRICTION_MIN_SPEED: 0.01,
   MAX_SNAP_VELOCITY: 0.5,
   POST_STATIC_BREAK_DEBUG_FRAMES: 20,
+  // TODO(balance): Slip is currently disabled while core drag balance is tuned.
+  // Re-enable and tune slip rates/thresholds as part of holistic balance pass.
   DISABLE_MAGNET_SLIP: true,
   // Fish simulation can move beyond render-framed water bounds.
   // Keep only a hard near-wall rule and broad safety caps for numeric stability.
@@ -123,6 +128,12 @@ export const STRIKE_CONSTANTS = {
 export const QUICK_RELEASE_DURATION_MS = 1500;
 
 // UI-facing tension range labels.
+// TODO(balance): These thresholds are absolute values that happen to work with
+// current starter equipment. When stronger rods/lines are introduced, tension
+// will exceed these ranges. Normalise tension against a reference value
+// (e.g. lineStrength or maxPullForce) so the zones scale with equipment tier
+// and new fish species. See also SLIP_CONSTANTS.TENSION_NORMALIZATION_MAX and
+// the line-condition decay logic in dragPhysics.js.
 export const TENSION_ZONES = {
   LOW_MAX: 40,
   WORKING_MAX: 75,
@@ -130,6 +141,8 @@ export const TENSION_ZONES = {
 };
 
 // Metallic slip accumulation and detachment multipliers.
+// TODO(balance): These multipliers are first-pass placeholders. Tune alongside
+// TENSION_ZONES normalisation and equipment tiers during holistic balance pass.
 export const SLIP_CONSTANTS = {
   MASTER_MULTIPLIER: 0.1,
   BASE_RATE_OFFSET: 0.25,

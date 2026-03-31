@@ -5,12 +5,7 @@
  */
 
 import { PHYSICS_CONSTANTS } from "./physicsConstants.js";
-import {
-  clamp,
-  magnitude,
-  normalize,
-  subtract,
-} from "./vectorUtils.js";
+import { clamp, magnitude, normalize, subtract } from "./vectorUtils.js";
 
 export function getLineAxis(avatarPosition, targetPosition) {
   const delta = subtract(targetPosition, avatarPosition);

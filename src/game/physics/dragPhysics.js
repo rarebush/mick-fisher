@@ -579,8 +579,7 @@ export function updateDragPhysics(deltaTime, isHolding, physicsState) {
        * effect is small at current epsilon because only sub-epsilon velocity is
        * discarded; risk grows if epsilon or static-gate delay is increased.
        */
-      magnitude(state.target.velocity) <
-        PHYSICS_CONSTANTS.MOTION_EPSILON * 0.8
+      magnitude(state.target.velocity) < PHYSICS_CONSTANTS.MOTION_EPSILON * 0.8
     ) {
       state.target.isMoving = false;
       objectState = "static";
