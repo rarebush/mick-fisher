@@ -13,11 +13,6 @@
 
 // Core line/drag simulation constants.
 export const PHYSICS_CONSTANTS = {
-  WATER_DENSITY: 1.0,
-  BASELINE_WATER_RESISTANCE: 2.0,
-  TURBULENCE_FACTOR: 0.05,
-  LINE_DRAG_PER_METER: 0.02,
-  REEL_EFFICIENCY_FALLOFF: 0.1,
   STATIC_FRICTION_COEFFICIENT: 0.8,
   KINETIC_FRICTION_COEFFICIENT: 0.2,
   KINETIC_DRAG_BASE: 5,
@@ -46,7 +41,6 @@ export const PHYSICS_CONSTANTS = {
   LINE_AXIS_MIN_DISTANCE: 0.0001,
   FORCE_INTEGRATION_MIN_MASS: 0.001,
   VELOCITY_DRAG_MIN_SPEED: 0.0001,
-  WATER_DRAG_MIN_SPEED: 0.001,
   FRICTION_MIN_SPEED: 0.01,
   MAX_SNAP_VELOCITY: 0.5,
   POST_STATIC_BREAK_DEBUG_FRAMES: 20,
@@ -55,15 +49,6 @@ export const PHYSICS_CONSTANTS = {
   // Keep only a hard near-wall rule and broad safety caps for numeric stability.
   FISH_SIM_X_LIMIT: 300,
   FISH_SIM_Y_MAX: 300,
-};
-
-// Reel torque response curve as normalized tension increases from 0..1.
-export const ENGINE_TORQUE_CONSTANTS = {
-  LOW_TENSION_MAX: 0.4,
-  MID_TENSION_MAX: 0.75,
-  LOW_ZONE_OUTPUT_MAX: 0.1,
-  MID_ZONE_OUTPUT_MAX: 0.6,
-  HIGH_ZONE_OUTPUT_MAX: 1.0,
 };
 
 // Legacy heat model constants retained for compatibility.

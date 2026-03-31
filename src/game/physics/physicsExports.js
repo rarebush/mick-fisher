@@ -6,7 +6,6 @@
  */
 
 export {
-  ENGINE_TORQUE_CONSTANTS,
   PHYSICS_CONSTANTS,
   FISH_FIGHT_CONSTANTS,
   FISH_TARGET_CONSTANTS,
@@ -35,13 +34,9 @@ export {
 } from "./targetFactory.js";
 export { initializeWaitPhase, updateWaitPhase } from "./waitPhase.js";
 export {
-  getEngineTorque,
-  getPullForce,
-  getWaterDrag,
   getCurrentForce,
   getFriction,
   getLineAxis,
-  getSignedAxisVelocity,
   getAvatarPullForceFromRpm,
   getDragThresholdCurrent,
   getDragThresholdMax,
