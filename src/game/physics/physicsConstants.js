@@ -1,3 +1,17 @@
+/**
+ * Simulation tuning hub for drag-phase systems.
+ *
+ * This module intentionally contains multiple constant groups used across:
+ * - Core drag/line physics
+ * - Fish fight behavior and fish target initialization
+ * - Metallic target profile derivation and slip
+ * - Wait/strike phase timing
+ *
+ * Keeping these in one file preserves a single balancing surface while
+ * making ownership explicit via grouped exports.
+ */
+
+// Core line/drag simulation constants.
 export const PHYSICS_CONSTANTS = {
   WATER_DENSITY: 1.0,
   BASELINE_WATER_RESISTANCE: 2.0,
@@ -26,9 +40,16 @@ export const PHYSICS_CONSTANTS = {
   SPOOL_EMPTY_SLACK: 0.4,
   STATIC_BREAK_DURATION: 0.15,
   STATIC_BREAK_RESISTANCE_SCALE: 0.55,
+  // General numeric cutoffs used in physics integration.
   MOTION_EPSILON: 0.02,
   SLACK_EPSILON: 1e-10,
+  LINE_AXIS_MIN_DISTANCE: 0.0001,
+  FORCE_INTEGRATION_MIN_MASS: 0.001,
+  VELOCITY_DRAG_MIN_SPEED: 0.0001,
+  WATER_DRAG_MIN_SPEED: 0.001,
+  FRICTION_MIN_SPEED: 0.01,
   MAX_SNAP_VELOCITY: 0.5,
+  POST_STATIC_BREAK_DEBUG_FRAMES: 20,
   DISABLE_MAGNET_SLIP: true,
   // Fish simulation can move beyond render-framed water bounds.
   // Keep only a hard near-wall rule and broad safety caps for numeric stability.
@@ -36,6 +57,16 @@ export const PHYSICS_CONSTANTS = {
   FISH_SIM_Y_MAX: 300,
 };
 
+// Reel torque response curve as normalized tension increases from 0..1.
+export const ENGINE_TORQUE_CONSTANTS = {
+  LOW_TENSION_MAX: 0.4,
+  MID_TENSION_MAX: 0.75,
+  LOW_ZONE_OUTPUT_MAX: 0.1,
+  MID_ZONE_OUTPUT_MAX: 0.6,
+  HIGH_ZONE_OUTPUT_MAX: 1.0,
+};
+
+// Legacy heat model constants retained for compatibility.
 export const HEAT_CONSTANTS = {
   BUILD_RATE: 25,
   DECAY_RATE: 15,
@@ -43,6 +74,7 @@ export const HEAT_CONSTANTS = {
   FAILURE_THRESHOLD: 100,
 };
 
+// Line wear and snap-risk accumulation while under load.
 export const LINE_CONDITION_CONSTANTS = {
   MAX: 100,
   HOT_ZONE_THRESHOLD: 85,
@@ -52,6 +84,7 @@ export const LINE_CONDITION_CONSTANTS = {
   HOT_ZONE_SNAP_SCALE: 0.18,
 };
 
+// Fish behavior and force-intent tuning used by updateFishAI.
 export const FISH_FIGHT_CONSTANTS = {
   RUN_DURATION_RANGE: { min: 1.1, max: 2.2 },
   REST_DURATION_RANGE: { min: 0.9, max: 1.8 },
@@ -71,6 +104,19 @@ export const FISH_FIGHT_CONSTANTS = {
   MIN_RUN_DURATION: 0.35,
   DIRECTION_BLEND_RATE: 12,
   FORCE_BLEND_RATE: 14,
+  TENSION_ACTIVE_EPSILON: 0.0001,
+  ZERO_VECTOR_EPSILON: 0.0001,
+  PANIC_INCREASE_BASE: 8,
+  PANIC_OVERLOAD_BONUS: 6,
+  PANIC_DECAY_BASE: 20,
+  FIGHTING_ENTER_THRESHOLD: 50,
+  FIGHTING_EXIT_THRESHOLD: 20,
+  DIRECTION_RATE_PANIC_REDUCTION: 0.5,
+  DIRECTION_CHANGE_MIN_INTERVAL: 0.12,
+  DIRECTION_CHANGE_RANDOM_JITTER: 0.35,
+  DEBUG_RANDOM_DIRECTION_MIN_INTERVAL: 0.01,
+  RUN_ENERGY_DRAIN_RATE: 6,
+  REST_ENERGY_DRAIN_RATE: 1.8,
   // Debug toggle: when true, fish do not bias direction away from the player.
   DISABLE_AWAY_FROM_PLAYER_BIAS: false,
   // Debug toggle: when true, fish do not bias direction away from the wall.
@@ -81,22 +127,29 @@ export const FISH_FIGHT_CONSTANTS = {
   DEBUG_RANDOM_DIRECTION_INTERVAL: 0.2,
 };
 
+// Wait/strike phase timing and feedback values.
 export const STRIKE_CONSTANTS = {
   WINDOW_SECONDS: 0.85,
   SCREEN_SHAKE_INTENSITY: 6,
   SCREEN_SHAKE_DURATION: 0.25,
 };
 
+// Input quick-release activation window.
 export const QUICK_RELEASE_DURATION_MS = 1500;
 
+// UI-facing tension range labels.
 export const TENSION_ZONES = {
   LOW_MAX: 40,
   WORKING_MAX: 75,
   REDLINE_MAX: 100,
 };
 
+// Metallic slip accumulation and detachment multipliers.
 export const SLIP_CONSTANTS = {
   MASTER_MULTIPLIER: 0.1,
+  BASE_RATE_OFFSET: 0.25,
+  TENSION_NORMALIZATION_MAX: 100,
+  ACCUMULATION_SCALE: 100,
   SURFACE_MULTIPLIERS: {
     clean: 1.0,
     rusty: 1.5,
@@ -109,6 +162,47 @@ export const SLIP_CONSTANTS = {
   },
 };
 
+// Metallic target profile derivation defaults and clamps.
+export const METALLIC_TARGET_CONSTANTS = {
+  ATTACHMENT_ROLL_CENTER_MAX: 0.3,
+  ATTACHMENT_ROLL_EDGE_MAX: 0.7,
+  DEFAULT_WEIGHT: 5,
+  DRAG_FACTOR_BASE: 0.2,
+  DRAG_FACTOR_WEIGHT_SCALE: 1.4,
+  DRAG_FACTOR_WEIGHT_DIVISOR: 60,
+  DRAG_FACTOR_MIN: 0.2,
+  DRAG_FACTOR_MAX: 2.4,
+  MAGNETIC_STRENGTH_BASE: 1.2,
+  MAGNETIC_STRENGTH_DEFAULT_SLIP_RATE: 1,
+  MAGNETIC_STRENGTH_SLIP_SCALE: 0.35,
+  MAGNETIC_STRENGTH_MIN: 0.2,
+  MAGNETIC_STRENGTH_MAX: 1.3,
+  BASE_SLIP_LIMIT_START: 120,
+  BASE_SLIP_LIMIT_WEIGHT_SCALE: 0.8,
+  BASE_SLIP_LIMIT_MIN: 30,
+  BASE_SLIP_LIMIT_MAX: 140,
+};
+
+// Fish target initialization defaults and spawn guards.
+export const FISH_TARGET_CONSTANTS = {
+  DEFAULT_SIZE: "medium",
+  SPAWN_X_FALLBACK: 0,
+  SPAWN_Y_WALL_BUFFER: 0.05,
+  SPAWN_Y_FALLBACK_OFFSET: 1.5,
+};
+
+// Wait-phase nibble cadence and bob spring tuning.
+export const WAIT_PHASE_CONSTANTS = {
+  BOB_SPRING_FREQUENCY: 8.0,
+  BOB_SPRING_DAMPING: 0.85,
+  INITIAL_NIBBLE_DELAY_MIN: 2,
+  INITIAL_NIBBLE_DELAY_MAX: 5,
+  NEXT_NIBBLE_DELAY_MIN: 1,
+  NEXT_NIBBLE_DELAY_MAX: 3,
+  MAX_NIBBLES: 3,
+};
+
+// Temperament shaping for fish panic, force, and direction behavior.
 export const TEMPERAMENT_MODIFIERS = {
   relaxed: {
     panicBuildRate: 0.72,
@@ -160,6 +254,7 @@ export const TEMPERAMENT_MODIFIERS = {
   },
 };
 
+// Backward-compatibility aliases for older temperament labels.
 export const TEMPERAMENT_ALIASES = {
   calm: "relaxed",
   skittish: "cautious",

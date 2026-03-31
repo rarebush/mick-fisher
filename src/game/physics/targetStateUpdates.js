@@ -1,3 +1,11 @@
+/**
+ * Per-tick state transforms for drag targets.
+ *
+ * Owns:
+ * - Metallic slip accumulation updates
+ * - Fish behavior state machine (panic, phase, direction, force intent)
+ */
+
 import {
   FISH_FIGHT_CONSTANTS,
   SLIP_CONSTANTS,
@@ -12,12 +20,18 @@ export function updateSlip(item, tension, equipment, deltaTime) {
   const surfaceMultiplier =
     SLIP_CONSTANTS.SURFACE_MULTIPLIERS[item.surfaceCondition] || 1;
   const resistanceBonus = equipment?.slipResistance || 1.0;
-  const tensionFactor = clamp(tension / 100, 0, 1);
+  const tensionFactor = clamp(
+    tension / SLIP_CONSTANTS.TENSION_NORMALIZATION_MAX,
+    0,
+    1,
+  );
   const slipRate =
     SLIP_CONSTANTS.MASTER_MULTIPLIER *
     surfaceMultiplier *
-    (0.25 + tensionFactor);
-  slipAccumulation += (slipRate * deltaTime * 100) / resistanceBonus;
+    (SLIP_CONSTANTS.BASE_RATE_OFFSET + tensionFactor);
+  slipAccumulation +=
+    (slipRate * deltaTime * SLIP_CONSTANTS.ACCUMULATION_SCALE) /
+    resistanceBonus;
   const slipLimit = item.slipLimit || 1;
   const detached = slipAccumulation >= slipLimit;
   return {
@@ -43,7 +57,10 @@ function getAwayVector(fish, avatarPosition) {
     x: fish.position.x - avatarPosition.x,
     y: fish.position.y - avatarPosition.y,
   });
-  if (Math.abs(away.x) <= 0.0001 && Math.abs(away.y) <= 0.0001) {
+  if (
+    Math.abs(away.x) <= FISH_FIGHT_CONSTANTS.ZERO_VECTOR_EPSILON &&
+    Math.abs(away.y) <= FISH_FIGHT_CONSTANTS.ZERO_VECTOR_EPSILON
+  ) {
     return null;
   }
   return away;
@@ -173,19 +190,29 @@ export function updateFishAI(fish, tension, deltaTime, avatarPosition) {
     const normalizedLoad = tension / panicThreshold;
     const overload = Math.max(0, normalizedLoad - 1);
     const panicIncrease =
-      (normalizedLoad * 8 + overload * 6) *
+      (normalizedLoad * FISH_FIGHT_CONSTANTS.PANIC_INCREASE_BASE +
+        overload * FISH_FIGHT_CONSTANTS.PANIC_OVERLOAD_BONUS) *
       (temperament.panicBuildRate ?? 1) *
       deltaTime;
     nextFish.panicLevel = (fish.panicLevel ?? 0) + panicIncrease;
   } else {
-    const panicDecrease = (temperament.panicDecayRate ?? 1) * 20 * deltaTime;
+    const panicDecrease =
+      (temperament.panicDecayRate ?? 1) *
+      FISH_FIGHT_CONSTANTS.PANIC_DECAY_BASE *
+      deltaTime;
     nextFish.panicLevel = (fish.panicLevel ?? 0) - panicDecrease;
   }
   nextFish.panicLevel = clamp(nextFish.panicLevel ?? 0, 0, 100);
 
-  if (nextFish.panicLevel > 50 && fish.state === "hooked") {
+  if (
+    nextFish.panicLevel > FISH_FIGHT_CONSTANTS.FIGHTING_ENTER_THRESHOLD &&
+    fish.state === "hooked"
+  ) {
     nextFish.state = "fighting";
-  } else if (nextFish.panicLevel < 20 && fish.state === "fighting") {
+  } else if (
+    nextFish.panicLevel < FISH_FIGHT_CONSTANTS.FIGHTING_EXIT_THRESHOLD &&
+    fish.state === "fighting"
+  ) {
     nextFish.state = "hooked";
   }
 
@@ -215,7 +242,8 @@ export function updateFishAI(fish, tension, deltaTime, avatarPosition) {
     nextFish.fightPhase === "run"
       ? FISH_FIGHT_CONSTANTS.RUN_DIRECTION_CHANGE_RATE
       : FISH_FIGHT_CONSTANTS.REST_DIRECTION_CHANGE_RATE;
-  const directionRateFromPanic = 1 - panicFactor * 0.5;
+  const directionRateFromPanic =
+    1 - panicFactor * FISH_FIGHT_CONSTANTS.DIRECTION_RATE_PANIC_REDUCTION;
   const directionChangeRate =
     (fish.directionChangeFrequency ?? 1) *
     (temperament.directionChangeRateMultiplier ?? 1) *
@@ -231,7 +259,7 @@ export function updateFishAI(fish, tension, deltaTime, avatarPosition) {
     if (randomDirectionDebug) {
       nextFish.targetDirection = randomDirection;
       nextFish.directionChangeTimer = Math.max(
-        0.01,
+        FISH_FIGHT_CONSTANTS.DEBUG_RANDOM_DIRECTION_MIN_INTERVAL,
         FISH_FIGHT_CONSTANTS.DEBUG_RANDOM_DIRECTION_INTERVAL,
       );
     } else {
@@ -254,7 +282,8 @@ export function updateFishAI(fish, tension, deltaTime, avatarPosition) {
         y: priorTarget.y * (1 - volatility) + randomDirection.y * volatility,
       });
 
-      const tensionActive = tension > 0.0001;
+      const tensionActive =
+        tension > FISH_FIGHT_CONSTANTS.TENSION_ACTIVE_EPSILON;
       const awayBiasDisabled =
         FISH_FIGHT_CONSTANTS.DISABLE_AWAY_FROM_PLAYER_BIAS === true;
       const awayBiasWeight = tensionActive
@@ -276,8 +305,9 @@ export function updateFishAI(fish, tension, deltaTime, avatarPosition) {
       );
       nextFish.targetDirection = candidateDirection;
       nextFish.directionChangeTimer = Math.max(
-        0.12,
-        directionChangeRate + Math.random() * 0.35,
+        FISH_FIGHT_CONSTANTS.DIRECTION_CHANGE_MIN_INTERVAL,
+        directionChangeRate +
+          Math.random() * FISH_FIGHT_CONSTANTS.DIRECTION_CHANGE_RANDOM_JITTER,
       );
     }
   }
@@ -337,10 +367,16 @@ export function updateFishAI(fish, tension, deltaTime, avatarPosition) {
 
   if (nextFish.fightPhase === "run") {
     nextFish.energy =
-      currentEnergy - (temperament.energyDrainRate ?? 1) * 6 * deltaTime;
+      currentEnergy -
+      (temperament.energyDrainRate ?? 1) *
+        FISH_FIGHT_CONSTANTS.RUN_ENERGY_DRAIN_RATE *
+        deltaTime;
   } else {
     nextFish.energy =
-      currentEnergy - (temperament.energyDrainRate ?? 1) * 1.8 * deltaTime;
+      currentEnergy -
+      (temperament.energyDrainRate ?? 1) *
+        FISH_FIGHT_CONSTANTS.REST_ENERGY_DRAIN_RATE *
+        deltaTime;
   }
 
   if (nextFish.fightPhase === "rest" && regenRate > 0) {

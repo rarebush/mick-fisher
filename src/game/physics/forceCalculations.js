@@ -1,4 +1,13 @@
-import { PHYSICS_CONSTANTS } from "./physicsConstants.js";
+/**
+ * Pure force/math helpers used by drag physics integration.
+ *
+ * This module computes scalar and vector force terms without mutating state.
+ */
+
+import {
+  ENGINE_TORQUE_CONSTANTS,
+  PHYSICS_CONSTANTS,
+} from "./physicsConstants.js";
 import {
   clamp,
   dotProduct,
@@ -10,14 +19,29 @@ import {
 export function getEngineTorque(tension, equipment) {
   const normalizedTension = tension / 100;
   let torqueMultiplier;
-  if (normalizedTension < 0.4) {
-    torqueMultiplier = Math.pow(normalizedTension / 0.4, 2) * 0.1;
-  } else if (normalizedTension < 0.75) {
-    const zoneProgress = (normalizedTension - 0.4) / 0.35;
-    torqueMultiplier = 0.1 + zoneProgress * 0.5;
+  if (normalizedTension < ENGINE_TORQUE_CONSTANTS.LOW_TENSION_MAX) {
+    torqueMultiplier =
+      Math.pow(normalizedTension / ENGINE_TORQUE_CONSTANTS.LOW_TENSION_MAX, 2) *
+      ENGINE_TORQUE_CONSTANTS.LOW_ZONE_OUTPUT_MAX;
+  } else if (normalizedTension < ENGINE_TORQUE_CONSTANTS.MID_TENSION_MAX) {
+    const zoneProgress =
+      (normalizedTension - ENGINE_TORQUE_CONSTANTS.LOW_TENSION_MAX) /
+      (ENGINE_TORQUE_CONSTANTS.MID_TENSION_MAX -
+        ENGINE_TORQUE_CONSTANTS.LOW_TENSION_MAX);
+    torqueMultiplier =
+      ENGINE_TORQUE_CONSTANTS.LOW_ZONE_OUTPUT_MAX +
+      zoneProgress *
+        (ENGINE_TORQUE_CONSTANTS.MID_ZONE_OUTPUT_MAX -
+          ENGINE_TORQUE_CONSTANTS.LOW_ZONE_OUTPUT_MAX);
   } else {
-    const zoneProgress = (normalizedTension - 0.75) / 0.25;
-    torqueMultiplier = 0.6 + zoneProgress * 0.4;
+    const zoneProgress =
+      (normalizedTension - ENGINE_TORQUE_CONSTANTS.MID_TENSION_MAX) /
+      (1 - ENGINE_TORQUE_CONSTANTS.MID_TENSION_MAX);
+    torqueMultiplier =
+      ENGINE_TORQUE_CONSTANTS.MID_ZONE_OUTPUT_MAX +
+      zoneProgress *
+        (ENGINE_TORQUE_CONSTANTS.HIGH_ZONE_OUTPUT_MAX -
+          ENGINE_TORQUE_CONSTANTS.MID_ZONE_OUTPUT_MAX);
   }
   return (equipment?.maxPullForce ?? 0) * torqueMultiplier;
 }
@@ -25,7 +49,7 @@ export function getEngineTorque(tension, equipment) {
 export function getLineAxis(avatarPosition, targetPosition) {
   const delta = subtract(targetPosition, avatarPosition);
   const distance = magnitude(delta);
-  if (distance <= 0.0001) {
+  if (distance <= PHYSICS_CONSTANTS.LINE_AXIS_MIN_DISTANCE) {
     return { axis: { x: 0, y: 1 }, distance: 0 };
   }
   return { axis: { x: delta.x / distance, y: delta.y / distance }, distance };
@@ -86,7 +110,7 @@ export function getPullForce(tension, equipment, target, avatarPosition) {
 
 export function getWaterDrag(target, velocity, lineLength) {
   const speed = magnitude(velocity);
-  if (speed < 0.001) return { x: 0, y: 0 };
+  if (speed < PHYSICS_CONSTANTS.WATER_DRAG_MIN_SPEED) return { x: 0, y: 0 };
   const direction = { x: -velocity.x / speed, y: -velocity.y / speed };
   const itemDrag =
     target.dragFactor * PHYSICS_CONSTANTS.WATER_DENSITY * speed * speed;
@@ -121,7 +145,7 @@ export function getFriction(target, velocity, isMoving) {
       threshold: target.mass * PHYSICS_CONSTANTS.STATIC_FRICTION_COEFFICIENT,
     };
   }
-  if (speed < 0.01) return { x: 0, y: 0 };
+  if (speed < PHYSICS_CONSTANTS.FRICTION_MIN_SPEED) return { x: 0, y: 0 };
   const frictionMagnitude =
     target.mass * PHYSICS_CONSTANTS.KINETIC_FRICTION_COEFFICIENT;
   return {

@@ -1,7 +1,14 @@
-import { STRIKE_CONSTANTS } from "./physicsConstants.js";
+/**
+ * Wait/strike phase timing state updates.
+ *
+ * Owns nibble cadence, bite transition, strike window countdown,
+ * and bob spring motion while the cast is waiting.
+ */
 
-const BOB_SPRING_FREQUENCY = 8.0; // Radians/sec
-const BOB_SPRING_DAMPING = 0.85; // 0-1, higher = faster settle
+import { STRIKE_CONSTANTS, WAIT_PHASE_CONSTANTS } from "./physicsConstants.js";
+
+const BOB_SPRING_FREQUENCY = WAIT_PHASE_CONSTANTS.BOB_SPRING_FREQUENCY;
+const BOB_SPRING_DAMPING = WAIT_PHASE_CONSTANTS.BOB_SPRING_DAMPING;
 
 export function initializeWaitPhase(
   equipment,
@@ -15,7 +22,11 @@ export function initializeWaitPhase(
     maxWaitTime: null,
     biteChancePerSecond: equipment.biteChancePerSecond,
     castPosition: { ...castPosition },
-    nibbleTimer: 2 + Math.random() * 3,
+    nibbleTimer:
+      WAIT_PHASE_CONSTANTS.INITIAL_NIBBLE_DELAY_MIN +
+      Math.random() *
+        (WAIT_PHASE_CONSTANTS.INITIAL_NIBBLE_DELAY_MAX -
+          WAIT_PHASE_CONSTANTS.INITIAL_NIBBLE_DELAY_MIN),
     nibbleCount: 0,
     biteOccurred: false,
     result: null,
@@ -59,9 +70,16 @@ export function updateWaitPhase(waitState, deltaTime, strikeQueued = false) {
   }
 
   next.nibbleTimer -= deltaTime;
-  if (next.nibbleTimer <= 0 && next.nibbleCount < 3) {
+  if (
+    next.nibbleTimer <= 0 &&
+    next.nibbleCount < WAIT_PHASE_CONSTANTS.MAX_NIBBLES
+  ) {
     next.nibbleCount += 1;
-    next.nibbleTimer = 1 + Math.random() * 2;
+    next.nibbleTimer =
+      WAIT_PHASE_CONSTANTS.NEXT_NIBBLE_DELAY_MIN +
+      Math.random() *
+        (WAIT_PHASE_CONSTANTS.NEXT_NIBBLE_DELAY_MAX -
+          WAIT_PHASE_CONSTANTS.NEXT_NIBBLE_DELAY_MIN);
     events.nibble = true;
   }
 

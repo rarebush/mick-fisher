@@ -1,6 +1,16 @@
+/**
+ * Target construction for drag phase.
+ *
+ * Owns runtime object creation for:
+ * - Metallic targets (mass/drag/slip profile derivation)
+ * - Fish targets (species-size resolved fight initialization)
+ */
+
 import { getFishSpecies } from "../data/fishDatabase.js";
 import {
+  FISH_TARGET_CONSTANTS,
   FISH_FIGHT_CONSTANTS,
+  METALLIC_TARGET_CONSTANTS,
   PHYSICS_CONSTANTS,
   SLIP_CONSTANTS,
   TEMPERAMENT_ALIASES,
@@ -11,8 +21,10 @@ import { clamp } from "./vectorUtils.js";
 
 function rollAttachmentPoint() {
   const roll = Math.random();
-  if (roll < 0.3) return "center";
-  if (roll < 0.7) return "edge";
+  if (roll < METALLIC_TARGET_CONSTANTS.ATTACHMENT_ROLL_CENTER_MAX) {
+    return "center";
+  }
+  if (roll < METALLIC_TARGET_CONSTANTS.ATTACHMENT_ROLL_EDGE_MAX) return "edge";
   return "corner";
 }
 
@@ -23,21 +35,32 @@ function calculateSlipLimit(baseLimit, attachmentPoint) {
 }
 
 function deriveMetallicProfile(item) {
-  const weight = item?.weight ?? 5;
+  const weight = item?.weight ?? METALLIC_TARGET_CONSTANTS.DEFAULT_WEIGHT;
   const dragFactor = clamp(
-    item?.dragFactor ?? 0.2 + (weight / 60) * 1.4,
-    0.2,
-    2.4,
+    item?.dragFactor ??
+      METALLIC_TARGET_CONSTANTS.DRAG_FACTOR_BASE +
+        (weight / METALLIC_TARGET_CONSTANTS.DRAG_FACTOR_WEIGHT_DIVISOR) *
+          METALLIC_TARGET_CONSTANTS.DRAG_FACTOR_WEIGHT_SCALE,
+    METALLIC_TARGET_CONSTANTS.DRAG_FACTOR_MIN,
+    METALLIC_TARGET_CONSTANTS.DRAG_FACTOR_MAX,
   );
   const magneticStrength = clamp(
-    item?.magneticStrength ?? 1.2 - (item?.slipRate ?? 1) * 0.35,
-    0.2,
-    1.3,
+    item?.magneticStrength ??
+      METALLIC_TARGET_CONSTANTS.MAGNETIC_STRENGTH_BASE -
+        (item?.slipRate ??
+          METALLIC_TARGET_CONSTANTS.MAGNETIC_STRENGTH_DEFAULT_SLIP_RATE) *
+          METALLIC_TARGET_CONSTANTS.MAGNETIC_STRENGTH_SLIP_SCALE,
+    METALLIC_TARGET_CONSTANTS.MAGNETIC_STRENGTH_MIN,
+    METALLIC_TARGET_CONSTANTS.MAGNETIC_STRENGTH_MAX,
   );
   const baseSlipLimit = clamp(
-    item?.baseSlipLimit ?? Math.round(120 - weight * 0.8),
-    30,
-    140,
+    item?.baseSlipLimit ??
+      Math.round(
+        METALLIC_TARGET_CONSTANTS.BASE_SLIP_LIMIT_START -
+          weight * METALLIC_TARGET_CONSTANTS.BASE_SLIP_LIMIT_WEIGHT_SCALE,
+      ),
+    METALLIC_TARGET_CONSTANTS.BASE_SLIP_LIMIT_MIN,
+    METALLIC_TARGET_CONSTANTS.BASE_SLIP_LIMIT_MAX,
   );
   return { dragFactor, magneticStrength, baseSlipLimit };
 }
@@ -46,7 +69,7 @@ export function createMetallicTargetFromItem(item, position) {
   const profile = deriveMetallicProfile(item);
   const attachmentPoint = rollAttachmentPoint();
   const slipLimit = calculateSlipLimit(profile.baseSlipLimit, attachmentPoint);
-  const mass = item?.weight ?? 5;
+  const mass = item?.weight ?? METALLIC_TARGET_CONSTANTS.DEFAULT_WEIGHT;
   return {
     id: item?.id ?? `item_${Date.now()}`,
     type: item?.id ?? "unknown",
@@ -75,7 +98,9 @@ export function createMetallicTargetFromItem(item, position) {
 export function createFishTarget(species, size, hookPosition) {
   const template = getFishSpecies(species);
   if (!template) return null;
-  const resolvedSize = template.sizes[size] ? size : "medium";
+  const resolvedSize = template.sizes[size]
+    ? size
+    : FISH_TARGET_CONSTANTS.DEFAULT_SIZE;
   const sizeData = template.sizes[resolvedSize];
   const resolvedTemperament =
     TEMPERAMENT_ALIASES[template.temperament] ?? template.temperament;
@@ -95,10 +120,11 @@ export function createFishTarget(species, size, hookPosition) {
   const mass = template.mass * sizeData.massMultiplier;
   const energyRegen = (template.energyRegen ?? 0) * energyMultiplier;
   const spawnPosition = {
-    x: hookPosition?.x ?? 0,
+    x: hookPosition?.x ?? FISH_TARGET_CONSTANTS.SPAWN_X_FALLBACK,
     y: Math.max(
-      WORLD_Y.WATER_NEAR + 0.05,
-      hookPosition?.y ?? WORLD_Y.WATER_NEAR + 1.5,
+      WORLD_Y.WATER_NEAR + FISH_TARGET_CONSTANTS.SPAWN_Y_WALL_BUFFER,
+      hookPosition?.y ??
+        WORLD_Y.WATER_NEAR + FISH_TARGET_CONSTANTS.SPAWN_Y_FALLBACK_OFFSET,
     ),
   };
   return {

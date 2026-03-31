@@ -1,3 +1,10 @@
+/**
+ * Main per-frame drag simulation integrator.
+ *
+ * Combines target intent forces, clutch constraints, line slack/tension,
+ * spool dynamics, line condition, and event generation into next physics state.
+ */
+
 import {
   WORLD_Y,
   WORLD_Z,
@@ -21,7 +28,7 @@ import {
   getLineAxis,
   getSpoolCapacity,
 } from "./forceCalculations.js";
-import { updateFishAI, updateSlip } from "./stateUpdates.js";
+import { updateFishAI, updateSlip } from "./targetStateUpdates.js";
 import {
   add,
   clamp,
@@ -142,7 +149,7 @@ export function updateDragPhysics(deltaTime, isHolding, physicsState) {
     state.target.kineticDragCoefficient ??
     (state.target.dragFactor ?? 1) * PHYSICS_CONSTANTS.KINETIC_DRAG_BASE;
   const velocityDragVector =
-    speed < 0.0001
+    speed < PHYSICS_CONSTANTS.VELOCITY_DRAG_MIN_SPEED
       ? { x: 0, y: 0 }
       : scale(objectVelocityVector, -kineticDragCoefficient * speed);
 
@@ -228,7 +235,10 @@ export function updateDragPhysics(deltaTime, isHolding, physicsState) {
       ? add(tangentialForce, radialForceVector)
       : add(forceWithoutPlayer, playerForceVectorForMotion);
 
-  const mass = Math.max(state.target.mass ?? 0, 0.001);
+  const mass = Math.max(
+    state.target.mass ?? 0,
+    PHYSICS_CONSTANTS.FORCE_INTEGRATION_MIN_MASS,
+  );
   const acceleration = scale(netForceVector, 1 / mass);
 
   let objectState =
@@ -566,7 +576,8 @@ export function updateDragPhysics(deltaTime, isHolding, physicsState) {
         state.target.isMoving = true;
         objectState = "kinetic";
         staticBreakTimer = PHYSICS_CONSTANTS.STATIC_BREAK_DURATION;
-        postStaticBreakDebugFramesRemaining = 20;
+        postStaticBreakDebugFramesRemaining =
+          PHYSICS_CONSTANTS.POST_STATIC_BREAK_DEBUG_FRAMES;
       } else {
         state.target.velocity = { x: 0, y: 0 };
         objectState = "static";
