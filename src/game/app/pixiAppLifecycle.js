@@ -18,6 +18,7 @@ export async function setupSceneInternal(pixiApp) {
   pixiApp.app.ticker.add(pixiApp.tickerUpdateFloat, pixiApp);
   pixiApp.app.ticker.add(pixiApp.tickerUpdateScreenShake, pixiApp);
   pixiApp.app.ticker.add(pixiApp.tickerUpdateCastAim, pixiApp);
+  pixiApp.app.ticker.add(pixiApp.tickerUpdateLayerVisibility, pixiApp);
   pixiApp.app.ticker.add(pixiApp.tickerUpdateWaterEffects, pixiApp);
 
   pixiApp.sceneContainer = new PIXI.Container();

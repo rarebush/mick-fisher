@@ -784,9 +784,14 @@ export async function createWaterLayers(
 
   return {
     waterGroup,
+    riverbedTiles,
     waterSurfaceTiles,
     waterObjectsBelow,
     waterObjectsAbove,
+    sparkleTiles,
+    sparkleBloomTiles,
+    foamTiles,
+    edgeFoamTiles,
     causticsFilter,
     underwaterTintFilter,
     waterSurfaceShader,

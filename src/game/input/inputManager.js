@@ -99,6 +99,11 @@ export class InputManager {
       this.isRightPointerDown = true;
       const { x, y } = event.global;
       this.lastRightWorld = this._screenToWorldWater(x, y);
+      const gamePhase = this.gameStore?.getState().gamePhase;
+      if (gamePhase === "dragging") {
+        // Hold right-click = indefinite quick release (duration 0 = no timeout)
+        this.sessionStore?.getState().activateDragQuickRelease?.(0);
+      }
       return;
     }
 
@@ -184,6 +189,10 @@ export class InputManager {
       this.isRightPointerDown = false;
       this.rightPointerId = null;
       this.lastRightWorld = null;
+      const gamePhase = this.gameStore?.getState().gamePhase;
+      if (gamePhase === "dragging") {
+        this.sessionStore?.getState().deactivateDragQuickRelease?.();
+      }
       return;
     }
 

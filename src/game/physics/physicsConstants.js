@@ -54,6 +54,10 @@ export const PHYSICS_CONSTANTS = {
   // Keep only a hard near-wall rule and broad safety caps for numeric stability.
   FISH_SIM_X_LIMIT: 300,
   FISH_SIM_Y_MAX: 300,
+  // Gravity payout: line weight causes slow payout during quick-release.
+  // Rate and max slack both scale with distance (far = full, close = ~0).
+  GRAVITY_PAYOUT_MAX_RATE: 0.75, // m/s at max distance
+  GRAVITY_PAYOUT_MAX_SLACK: 3, // max slack (m) at max distance; scales down when close
 };
 
 // Legacy heat model constants retained for compatibility.

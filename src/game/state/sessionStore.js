@@ -462,6 +462,17 @@ const useSessionStore = create((set, get) => ({
     }
   },
 
+  deactivateDragQuickRelease: () => {
+    clearQuickReleaseTimeout();
+    set((state) => ({
+      dragQuickReleaseActive: false,
+      physicsState: {
+        ...state.physicsState,
+        dragQuickReleaseActive: false,
+      },
+    }));
+  },
+
   setPhase: (phase) => set({ phase }),
 
   setPhaseProgress: (progress) => set({ phaseProgress: clamp(progress, 0, 1) }),

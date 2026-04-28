@@ -54,6 +54,23 @@ const useGameStore = create((set, get) => ({
   reflectionAlpha: 0.35, // Reflection opacity 0-1 (default 0.35)
   waterAlpha: 0.7, // Water surface base opacity (default 0.7)
 
+  // Layer visibility toggles (for performance debugging)
+  layerVisibility: {
+    riverbed: true,
+    submergedWalls: true,
+    waterSurface: true,
+    reflections: true,
+    sparkles: true,
+    sparkleBlooms: true,
+    fluidFoam: true,
+    edgeFoam: true,
+    waterObjectsBelow: true,
+    waterObjectsAbove: true,
+    displacement: true,
+    riverWall: true,
+    walkway: true,
+  },
+
   // Actions
   setGamePhase: (phase) => set({ gamePhase: phase }),
 
@@ -112,6 +129,14 @@ const useGameStore = create((set, get) => ({
       waterAlpha: Number.isFinite(val) ? Math.max(0, Math.min(1, val)) : 0.7,
     });
   },
+
+  toggleLayerVisibility: (layerKey) =>
+    set((state) => ({
+      layerVisibility: {
+        ...state.layerVisibility,
+        [layerKey]: !state.layerVisibility[layerKey],
+      },
+    })),
 
   setRenderScaleMode: (mode) =>
     set({

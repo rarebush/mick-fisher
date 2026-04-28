@@ -29,6 +29,7 @@ import {
   tickerUpdateCastAim,
   tickerUpdateDragMechanics,
   tickerUpdateFloat,
+  tickerUpdateLayerVisibility,
   tickerUpdateRope,
   tickerUpdateScreenShake,
   tickerUpdateSprites,
@@ -274,6 +275,11 @@ export class PixiApp {
   // Ticker method for cast aim oscillators and preview
   tickerUpdateCastAim() {
     return tickerUpdateCastAim(this);
+  }
+
+  // Ticker method for layer visibility toggling (performance debugging)
+  tickerUpdateLayerVisibility() {
+    return tickerUpdateLayerVisibility(this);
   }
 
   // Ticker method for water effects (caustics, foam, sparkle, reflections)

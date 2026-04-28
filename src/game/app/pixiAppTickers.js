@@ -136,6 +136,35 @@ export function tickerUpdateCastAim(pixiApp) {
 }
 
 // Updates all water-related visuals (caustics, foam, sparkle, reflections).
+export function tickerUpdateLayerVisibility(pixiApp) {
+  if (!pixiApp.app || pixiApp.isDestroyed || !pixiApp.environmentLayers) return;
+
+  const { layerVisibility } = pixiApp.gameStore.getState();
+  const env = pixiApp.environmentLayers;
+
+  if (env.riverbedTiles) env.riverbedTiles.visible = layerVisibility.riverbed;
+  if (env.submergedWallTiles)
+    env.submergedWallTiles.visible = layerVisibility.submergedWalls;
+  if (env.waterSurfaceTiles)
+    env.waterSurfaceTiles.visible = layerVisibility.waterSurface;
+  if (env.reflectionContainer)
+    env.reflectionContainer.visible = layerVisibility.reflections;
+  if (env.sparkleTiles) env.sparkleTiles.visible = layerVisibility.sparkles;
+  if (env.sparkleBloomTiles)
+    env.sparkleBloomTiles.visible = layerVisibility.sparkleBlooms;
+  if (env.foamTiles) env.foamTiles.visible = layerVisibility.fluidFoam;
+  if (env.edgeFoamTiles) env.edgeFoamTiles.visible = layerVisibility.edgeFoam;
+  if (env.waterObjectsBelow)
+    env.waterObjectsBelow.visible = layerVisibility.waterObjectsBelow;
+  if (env.waterObjectsAbove)
+    env.waterObjectsAbove.visible = layerVisibility.waterObjectsAbove;
+  if (env.displacementFilter)
+    env.displacementFilter.enabled = layerVisibility.displacement;
+  if (env.riverWallTiles)
+    env.riverWallTiles.visible = layerVisibility.riverWall;
+  if (env.walkwayTiles) env.walkwayTiles.visible = layerVisibility.walkway;
+}
+
 export function tickerUpdateWaterEffects(pixiApp) {
   if (!pixiApp.app || pixiApp.isDestroyed || !pixiApp.environmentLayers) return;
 

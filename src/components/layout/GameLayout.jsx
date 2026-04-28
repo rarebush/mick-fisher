@@ -22,6 +22,7 @@ import WindSpeedInput from "../ui/WindSpeedInput";
 import WindDirectionSlider from "../ui/WindDirectionSlider";
 import ReflectionAlphaSlider from "../ui/ReflectionAlphaSlider";
 import WaterAlphaSlider from "../ui/WaterAlphaSlider";
+import LayerToggles from "../ui/LayerToggles";
 import "../../styles/game-layout.css";
 
 function GameLayout({ onQuit }) {
@@ -70,6 +71,7 @@ function GameLayout({ onQuit }) {
                   <WindDirectionSlider />
                   <ReflectionAlphaSlider />
                   <WaterAlphaSlider />
+                  <LayerToggles />
                 </div>
               )}
               <div className="menu-controls">

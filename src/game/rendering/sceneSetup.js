@@ -280,9 +280,17 @@ export async function setupEnvironmentLayers(
 
   return {
     waterVolume,
+    riverWallTiles,
+    submergedWallTiles,
+    riverbedTiles: waterResult.riverbedTiles,
     waterSurfaceTiles: waterResult.waterSurfaceTiles,
     waterObjectsBelow: waterResult.waterObjectsBelow,
     waterObjectsAbove: waterResult.waterObjectsAbove,
+    sparkleTiles: waterResult.sparkleTiles,
+    sparkleBloomTiles: waterResult.sparkleBloomTiles,
+    foamTiles: waterResult.foamTiles,
+    edgeFoamTiles: waterResult.edgeFoamTiles,
+    reflectionContainer,
     walkwayTiles,
     walkwayVolume,
     viewport,

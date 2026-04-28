@@ -648,6 +648,51 @@ export function updateDragPhysics(deltaTime, isHolding, physicsState) {
 
   const nextAvatarPullForce = getAvatarPullForceFromRpm(rpm, state.equipment);
 
+  // ─── Gravity payout: line weight causes slow payout during quick-release ───
+  // While quick-release is active and the player isn't pulling, the line pays
+  // out under its own weight. Both the rate and the max allowable slack scale
+  // with distance: far = full effect, close = near zero.
+  let gravityPayoutApplied = 0;
+
+  const gravityMaxRate = PHYSICS_CONSTANTS.GRAVITY_PAYOUT_MAX_RATE;
+  const gravityMaxSlack = PHYSICS_CONSTANTS.GRAVITY_PAYOUT_MAX_SLACK;
+
+  if (dragQuickReleaseActive && nextAvatarPullForce <= 0 && !isHolding) {
+    const spoolCap =
+      state.spoolCapacity || PHYSICS_CONSTANTS.DEFAULT_SPOOL_CAPACITY;
+    const distanceRatio = clamp(straightLineDistance / spoolCap, 0, 1);
+
+    // Both rate and cap scale with distance.
+    const effectiveMaxSlack = gravityMaxSlack * distanceRatio;
+    const payoutRate = gravityMaxRate * distanceRatio;
+
+    if (slack < effectiveMaxSlack) {
+      const gravityPayout = payoutRate * deltaTime;
+      const headroom = Math.max(0, effectiveMaxSlack - slack);
+      const clampedPayout = Math.min(
+        gravityPayout,
+        headroom,
+        state.spoolRemaining,
+      );
+
+      if (clampedPayout > 0) {
+        state.lineLength += clampedPayout;
+        state.spoolRemaining = Math.max(
+          0,
+          state.spoolRemaining - clampedPayout,
+        );
+        gravityPayoutApplied = clampedPayout;
+      }
+    }
+  }
+
+  // Recompute slack/taut after gravity payout may have changed lineLength.
+  slack = Math.max(0, state.lineLength - straightLineDistance);
+  lineTaut = slack <= slackEpsilon;
+  if (lineTaut) {
+    slack = 0;
+  }
+
   state.tension = Math.max(0, tension);
   state.snapTautImpulse = 0;
   state.hotZoneTimer = hotZoneTimer;
@@ -708,6 +753,7 @@ export function updateDragPhysics(deltaTime, isHolding, physicsState) {
       ["shouldPayOut", shouldPayOutLine ? 1 : 0],
       ["recoveryApplied", recoveryApplied],
       ["payoutDistance", payoutDistanceApplied],
+      ["gravityPayout", gravityPayoutApplied],
       ["linePayoutRate", linePayout],
       ["spoolRemaining", state.spoolRemaining],
       ["rpm", rpm],
